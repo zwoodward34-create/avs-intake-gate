@@ -17,8 +17,6 @@ from .fee_estimator import cognasync_estimate_from_answers
 
 
 APP_DIR = Path(__file__).resolve().parent
-DATA_DIR = APP_DIR.parent / "data"
-DB_PATH = DATA_DIR / "avs_intake.sqlite3"
 
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 
@@ -121,7 +119,7 @@ def _days_ago(date_str: Optional[str]) -> Optional[int]:
 
 templates.env.filters["badge_class"] = _badge_class
 templates.env.filters["days_ago"] = _days_ago
-templates.env.globals["pending_mo_count"] = lambda: len(db.list_pending_mo(DB_PATH))
+templates.env.globals["pending_mo_count"] = lambda: len(db.list_pending_mo())
 
 
 app = FastAPI(title="AVS Intake Gate")
@@ -130,17 +128,17 @@ app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="stati
 
 @app.on_event("startup")
 def _startup() -> None:
-    db.init_db(DB_PATH)
+    db.init_db()
 
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, status: Optional[str] = None) -> HTMLResponse:
-    intakes = db.list_intakes(DB_PATH, status=status)
+    intakes = db.list_intakes(status=status)
     counts: dict[str, int] = {}
     for row in intakes:
         counts[row.status] = counts.get(row.status, 0) + 1
     all_counts = {}
-    for row in db.list_intakes(DB_PATH):
+    for row in db.list_intakes():
         all_counts[row.status] = all_counts.get(row.status, 0) + 1
 
     return templates.TemplateResponse(
@@ -191,7 +189,6 @@ async def intake_create(request: Request) -> RedirectResponse:
     status = _status_from_recommendation(decision["recommendation"])
 
     intake_id = db.create_intake(
-        DB_PATH,
         inquiry_date=inquiry_date,
         project_name=project_name,
         client_name=client_name,
@@ -212,7 +209,7 @@ async def intake_create(request: Request) -> RedirectResponse:
 
 @app.get("/intakes/{intake_id}", response_class=HTMLResponse)
 def intake_view(request: Request, intake_id: int) -> HTMLResponse:
-    intake = db.get_intake(DB_PATH, intake_id)
+    intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
 
@@ -241,7 +238,7 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
 
 @app.get("/intakes/{intake_id}/edit", response_class=HTMLResponse)
 def intake_edit(request: Request, intake_id: int) -> HTMLResponse:
-    intake = db.get_intake(DB_PATH, intake_id)
+    intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
 
@@ -259,7 +256,7 @@ def intake_edit(request: Request, intake_id: int) -> HTMLResponse:
 
 @app.post("/intakes/{intake_id}")
 async def intake_update(request: Request, intake_id: int) -> RedirectResponse:
-    existing = db.get_intake(DB_PATH, intake_id)
+    existing = db.get_intake(intake_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Not found.")
 
@@ -287,7 +284,6 @@ async def intake_update(request: Request, intake_id: int) -> RedirectResponse:
         status = existing.status
 
     db.update_intake(
-        DB_PATH,
         intake_id,
         inquiry_date=inquiry_date,
         project_name=project_name,
@@ -316,7 +312,7 @@ def _require_mo_passcode_if_configured(passcode: Optional[str]) -> None:
 
 @app.get("/mo-queue", response_class=HTMLResponse)
 def mo_queue(request: Request) -> HTMLResponse:
-    intakes = db.list_pending_mo(DB_PATH)
+    intakes = db.list_pending_mo()
     return templates.TemplateResponse(
         "mo_queue.html",
         {
@@ -329,7 +325,7 @@ def mo_queue(request: Request) -> HTMLResponse:
 
 @app.get("/intakes/{intake_id}/mo-review", response_class=HTMLResponse)
 def mo_review_get(request: Request, intake_id: int) -> HTMLResponse:
-    intake = db.get_intake(DB_PATH, intake_id)
+    intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
 
@@ -358,7 +354,7 @@ def mo_review_post(
     mo_passcode: Optional[str] = Form(None),
     redirect_after: Optional[str] = Form(None),
 ) -> RedirectResponse:
-    intake = db.get_intake(DB_PATH, intake_id)
+    intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
 
@@ -380,7 +376,6 @@ def mo_review_post(
     fee_override = _as_str(mo_fee_override) if fee_decision_norm == "OVERRIDE" else None
 
     db.set_mo_review(
-        DB_PATH,
         intake_id,
         mo_decision=decision_norm,
         mo_notes=_as_str(mo_notes),
@@ -399,19 +394,19 @@ CHECKLIST_KEYS = db.CHECKLIST_KEYS
 
 @app.post("/intakes/{intake_id}/proposal-checklist")
 async def proposal_checklist_update(request: Request, intake_id: int) -> RedirectResponse:
-    intake = db.get_intake(DB_PATH, intake_id)
+    intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
 
     form = await request.form()
     checklist = {key: form.get(key) == "on" for key in CHECKLIST_KEYS}
-    db.set_proposal_checklist(DB_PATH, intake_id, checklist)
+    db.set_proposal_checklist(intake_id, checklist)
     return RedirectResponse(url=f"/intakes/{intake_id}#proposal-prep", status_code=303)
 
 
 @app.get("/reports", response_class=HTMLResponse)
 def reports(request: Request) -> HTMLResponse:
-    all_intakes = db.list_intakes(DB_PATH)
+    all_intakes = db.list_intakes()
     now = datetime.now()
 
     # 1. Total intakes
@@ -675,7 +670,7 @@ def health() -> dict[str, str]:
 
 @app.get("/api/intakes")
 def api_intakes(status: Optional[str] = None) -> list[dict[str, Any]]:
-    rows = db.list_intakes(DB_PATH, status=status)
+    rows = db.list_intakes(status=status)
     return [
         {
             "id": r.id,
