@@ -12,8 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import db
-from .decision import compute_decision
-from .fee_estimator import cognasync_estimate_from_answers
+from .decision import compute_decision, complexity_estimate
+from .fee_estimator import cognasync_estimate_from_answers, check_fee_review_required
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -214,8 +214,10 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
         raise HTTPException(status_code=404, detail="Not found.")
 
     decision = compute_decision(intake.answers)
+    # Inject complexity so fee_estimator doesn't need to import decision.py
+    enriched_answers = {**intake.answers, "_complexity": decision["complexity_estimate"]}
     cognasync_estimate = cognasync_estimate_from_answers(
-        intake.project_name, intake.answers
+        intake.project_name, enriched_answers
     )
     return templates.TemplateResponse(
         "intake_view.html",
@@ -329,7 +331,9 @@ def mo_review_get(request: Request, intake_id: int) -> HTMLResponse:
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
 
-    fee_estimate = cognasync_estimate_from_answers(intake.project_name, intake.answers)
+    _mo_decision = compute_decision(intake.answers)
+    _mo_answers  = {**intake.answers, "_complexity": _mo_decision["complexity_estimate"]}
+    fee_estimate = cognasync_estimate_from_answers(intake.project_name, _mo_answers)
     return templates.TemplateResponse(
         "mo_review.html",
         {
@@ -671,8 +675,12 @@ def health() -> dict[str, str]:
 @app.get("/api/intakes")
 def api_intakes(status: Optional[str] = None) -> list[dict[str, Any]]:
     rows = db.list_intakes(status=status)
-    return [
-        {
+    result = []
+    for r in rows:
+        answers = r.answers or {}
+        cx = complexity_estimate(answers)
+        fee_review, fee_review_reason = check_fee_review_required(answers, cx)
+        result.append({
             "id": r.id,
             "created_at": r.created_at,
             "updated_at": r.updated_at,
@@ -686,6 +694,7 @@ def api_intakes(status: Optional[str] = None) -> list[dict[str, Any]]:
             "red_flag_counts": r.red_flag_counts,
             "mo_decision": r.mo_decision,
             "mo_reviewed_at": r.mo_reviewed_at,
-        }
-        for r in rows
-    ]
+            "fee_requires_review": fee_review,
+            "review_reason": fee_review_reason,
+        })
+    return result

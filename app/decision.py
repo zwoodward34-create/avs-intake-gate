@@ -38,29 +38,81 @@ def _as_int(value: Any) -> Optional[int]:
 
 
 def complexity_estimate(answers: dict[str, Any]) -> str:
-    sf = _as_int(answers.get("approx_sf"))
-    if not sf:
-        return "unknown"
-    if sf < 10_000:
-        return "low"
-    if sf <= 25_000:
-        return "medium"
-    return "high"
+    """
+    Tier scoring:  0 = low  |  1 = medium  |  2 = high
+
+    1. Building type sets the base tier.
+    2. High-risk scope types force HIGH regardless.
+    3. Each qualifying factor bumps the tier up by one (capped at HIGH).
+    """
+    _TIER_NAMES = ["low", "medium", "high"]
+
+    building_type   = (answers.get("building_type")          or "").strip()
+    scope_risk_type = (answers.get("scope_risk_type")        or "").strip()
+    scope_def       = (answers.get("scope_definition")       or "").strip()
+    scope_creep     = (answers.get("scope_creep_likelihood") or "").strip()
+    schedule        = (answers.get("schedule_realism")       or "").strip()
+    arch_status     = (answers.get("architect_status")       or "").strip()
+    project_type    = (answers.get("project_type")           or "").strip()
+    has_drawings    = bool(answers.get("doc_existing_struct_drawings"))
+
+    # 1. Base tier from building type
+    if building_type in {"healthcare", "data_center"}:
+        tier = 2
+    elif building_type in {"mixed_use", "education"}:
+        tier = 1
+    else:                                           # retail, warehouse, other, unknown
+        tier = 0
+
+    # 2. Scope risk type forces HIGH immediately
+    if scope_risk_type in {"ti_high_liability", "adaptive_reuse"}:
+        tier = max(tier, 2)
+
+    # 3. Additional upward factors — each adds one tier, capped at HIGH
+    _existing_building = project_type in {
+        "build_to_suit_retrofit", "tenant_improvement",
+        "addition_expansion", "one_off_unique",
+    }
+    factors = [
+        scope_def    in {"undefined", "partial"},
+        scope_creep  == "likely",
+        schedule     in {"compressed", "unrealistic"},
+        arch_status  in {"new", "not_identified"},
+        _existing_building and not has_drawings,    # missing existing drawings
+    ]
+    for triggered in factors:
+        if triggered:
+            tier = min(tier + 1, 2)
+
+    return _TIER_NAMES[tier]
 
 
 def fee_range_estimate(answers: dict[str, Any]) -> Optional[str]:
-    project_type = (answers.get("project_type") or "").strip()
+    """
+    Quick baseline estimate (base $/SF only, no multipliers).
+    Uses the same rate card as RiskAdjustedFeeEstimator.
+    Shown as a fast read in the summary card; the detailed panel adds multipliers.
+    """
+    from .fee_estimator import _RATE_CARD, _DELIVERY_BUCKET, _floor_fee
+
     sf = _as_int(answers.get("approx_sf"))
     if not sf or sf <= 0:
         return None
-    if project_type in {"new_construction", "repeating_program"}:
-        low, high = sf * 0.75, sf * 1.00
-    elif project_type == "build_to_suit_retrofit":
-        low, high = sf * 0.30, sf * 0.67
-    elif project_type == "tenant_improvement":
-        low, high = sf * 0.25, sf * 0.50
-    else:
-        return None
+
+    pt = (answers.get("project_type") or "").strip()
+    bt = (answers.get("building_type") or "other").strip().lower()
+
+    delivery = _DELIVERY_BUCKET.get(pt)
+    if not delivery:
+        return None   # unknown project type — skip rather than show bad number
+
+    bucket  = _RATE_CARD.get(delivery, _RATE_CARD["ti"])
+    rate_lo, rate_hi = bucket.get(bt, bucket["other"])
+    low  = max(sf * rate_lo, _floor_fee(bt, delivery))
+    high = sf * rate_hi
+    if high < low:
+        high = low
+
     return f"${low:,.0f} \u2013 ${high:,.0f}"
 
 

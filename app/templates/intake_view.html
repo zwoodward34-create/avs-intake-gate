@@ -141,42 +141,58 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
       {% endif %}
     </div>
 
-    {# ── Cognasync Fee Estimator ── #}
-    {% if cognasync_estimate %}
+    {# ── Risk-Adjusted Fee Estimator ── #}
+    {% if cognasync_estimate and not cognasync_estimate.needs_manual_review %}
     {% set cfe = cognasync_estimate %}
     <div class="hr" style="margin:14px 0 10px"></div>
-    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px">
       <span style="font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--accent,#4f8ef7)">Risk-Adjusted Fee Estimator</span>
-      <span class="subtle small">risk-adjusted $/SF model</span>
+      <span class="subtle small">{{ cfe.building_type | replace('_','') }} · {{ cfe.delivery_bucket | upper }} · ${{ "%.2f"|format(cfe.effective_rate_low) }}–${{ "%.2f"|format(cfe.effective_rate_high) }}/SF</span>
     </div>
-    <div class="pi-body" style="gap:12px">
-      <div class="pi-item">
-        <div class="subtle">Suggested Fee Range</div>
-        <div class="pi-value" style="font-size:1.35rem; font-weight:800">
-          ${{ "{:,.0f}".format(cfe.suggested_fee_range.low) }} – ${{ "{:,.0f}".format(cfe.suggested_fee_range.high) }}
-        </div>
-        <div class="subtle small" style="margin-top:2px">Low · High (±10% / +20%)</div>
+
+    {# Review callout — shown when fee needs Mo review before use #}
+    {% if cfe.fee_requires_review %}
+    <div style="background:rgba(255,183,77,0.10); border:1px solid rgba(255,183,77,0.4); border-radius:8px; padding:10px 14px; margin-bottom:12px; display:flex; gap:10px; align-items:flex-start">
+      <span style="color:#ffb74d; font-size:16px; line-height:1.4">&#9888;</span>
+      <div>
+        <div style="font-weight:700; color:#ffb74d; font-size:13px; margin-bottom:2px">Fee requires Mo review before proposal</div>
+        <div class="subtle small">{{ cfe.review_reason }} — this estimate is directional only.</div>
       </div>
-      <div class="pi-item">
-        <div class="subtle">Base (before risk)</div>
-        <div class="pi-value">${{ "{:,.0f}".format(cfe.estimated_base) }}</div>
+    </div>
+    {% endif %}
+
+    {# Suggested fee — prominent #}
+    <div style="background:rgba(79,142,247,0.08); border:1px solid rgba(79,142,247,0.2); border-radius:8px; padding:12px 16px; margin-bottom:12px">
+      <div class="subtle small" style="margin-bottom:4px">{% if cfe.fee_requires_review %}Rough Estimate (directional only){% else %}Suggested Fee Range{% endif %}</div>
+      <div style="font-size:1.5rem; font-weight:900">
+        ${{ "{:,.0f}".format(cfe.suggested_fee_range.low) }} – ${{ "{:,.0f}".format(cfe.suggested_fee_range.high) }}
       </div>
-      <div class="pi-item">
-        <div class="subtle">Risk multiplier</div>
-        <div class="pi-value" style="color:{% if cfe.risk_adjustment_factor > 1.5 %}#e57373{% elif cfe.risk_adjustment_factor > 1.2 %}#ffb74d{% else %}#4caf7d{% endif %}">
-          {{ cfe.risk_adjustment_factor }}×
-        </div>
-      </div>
-      {% if cfe.location_factor > 1.0 %}
-      <div class="pi-item">
-        <div class="subtle">Location mod</div>
-        <div class="pi-value">{{ cfe.location_factor }}×</div>
-      </div>
+      {% if cfe.floor_applied %}
+      <div class="subtle small" style="margin-top:4px; color:#ffb74d">&#9650; Floor of ${{ "{:,.0f}".format(cfe.floor_fee) }} applied</div>
       {% endif %}
     </div>
+
+    {# Step-by-step breakdown #}
+    <div class="pi-body" style="gap:10px; font-size:.85rem">
+      <div class="pi-item">
+        <div class="subtle">① Base ($/SF × SF)</div>
+        <div style="font-weight:700">${{ "{:,.0f}".format(cfe.base_fee_range.low) }} – ${{ "{:,.0f}".format(cfe.base_fee_range.high) }}</div>
+      </div>
+      <div class="pi-item">
+        <div class="subtle">② Complexity ({{ cfe.complexity_multiplier }}×)</div>
+        <div style="font-weight:700">${{ "{:,.0f}".format(cfe.complexity_adjusted_range.low) }} – ${{ "{:,.0f}".format(cfe.complexity_adjusted_range.high) }}</div>
+      </div>
+      <div class="pi-item">
+        <div class="subtle">③ Risk ({{ cfe.risk_multiplier }}× · {{ cfe.flag_count }} flag{{ 's' if cfe.flag_count != 1 else '' }})</div>
+        <div style="font-weight:700; color:{% if cfe.risk_multiplier >= 1.35 %}#e57373{% elif cfe.risk_multiplier >= 1.15 %}#ffb74d{% else %}#4caf7d{% endif %}">
+          ${{ "{:,.0f}".format(cfe.risk_adjusted_range.low) }} – ${{ "{:,.0f}".format(cfe.risk_adjusted_range.high) }}
+        </div>
+      </div>
+    </div>
+
     {% if cfe.warnings %}
     <div style="margin-top:10px; padding:8px 12px; background:rgba(229,115,115,0.10); border-left:3px solid #e57373; border-radius:4px">
-      <div class="subtle small" style="margin-bottom:4px; font-weight:700; color:#e57373">Risk flags driving adjustment</div>
+      <div class="subtle small" style="margin-bottom:4px; font-weight:700; color:#e57373">Risk flags ({{ cfe.flag_count }})</div>
       <div style="display:flex; flex-wrap:wrap; gap:6px">
         {% for w in cfe.warnings %}
           <span class="badge badge-high" style="font-size:11px">{{ w.replace('_', ' ') }}</span>
