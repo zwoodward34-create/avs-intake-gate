@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+{% block content %}
+  <form method="post" action="{% if mode == 'edit' %}/intakes/{{ intake.id }}{% else %}/intakes{% endif %}">
+    <p class="form-instruction">Fill out project basics and check any quick flags. Use detailed screening for complex or unfamiliar projects.</p>
+    <div class="grid grid-2">
+      <div class="card">
+        <h2>Project basics</h2>
+        <div class="row row-2">
+          <div class="field">
+            <label>Project name *</label>
+            <input type="text" name="project_name" value="{{ intake.project_name if intake else '' }}" required />
+          </div>
+          <div class="field">
+            <label>Inquiry date</label>
+            <input type="text" name="inquiry_date" placeholder="YYYY-MM-DD" value="{{ intake.inquiry_date if intake else '' }}" />
+          </div>
+        </div>
+        <div class="row row-2">
+          <div class="field">
+            <label>Client</label>
+            <input type="text" name="client_name" value="{{ intake.client_name if intake else '' }}" />
+          </div>
+          <div class="field">
+            <label>Architect</label>
+            <input type="text" name="architect_name" value="{{ intake.architect_name if intake else '' }}" />
+          </div>
+        </div>
+        <div class="row row-2">
+          <div class="field">
+            <label>Lead contact (email/phone)</label>
+            <input type="text" name="lead_contact" value="{{ intake.lead_contact if intake else '' }}" />
+          </div>
+          <div class="field"></div>
+        </div>
+        <div class="row row-2">
+          <div class="field">
+            <label>City</label>
+            <input type="text" name="city" value="{{ answers.get('city','') if answers else '' }}" />
+          </div>
+          <div class="field">
+            <label>State</label>
+            {% set sv = (answers.get('state') if answers else '') %}
+            <select name="state">
+              <option value="" {% if not sv %}selected{% endif %}>— select —</option>
+              {% for abbr in ['AL','AK','AZ','AR','CA','CO','CT','DC','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'] %}
+                <option value="{{ abbr }}" {% if sv == abbr %}selected{% endif %}>{{ abbr }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="row row-2">
+          <div class="field">
+            <label>Approximate Square Footage</label>
+            <input type="number" name="approx_sf" min="0" step="1" value="{{ answers.get('approx_sf','') if answers else '' }}" />
+          </div>
+          <div class="field">
+            <label>Estimated Construction Cost ($)</label>
+            <input type="number" name="est_construction_cost" min="0" step="1" value="{{ answers.get('est_construction_cost','') if answers else '' }}" />
+          </div>
+        </div>
+        <div class="row row-2">
+          <div class="field">
+            <label>Submitted by</label>
+            <input type="text" name="submitted_by" placeholder="Natalie / Junior PM / Mo / ..." value="{{ intake.submitted_by if intake else '' }}" />
+          </div>
+          <div class="field">
+            <label>Relationship type</label>
+            {% set v = (answers.get('relationship_type') if answers else '') %}
+            <select name="relationship_type">
+              <option value="existing" {% if v == 'existing' %}selected{% endif %}>Existing client</option>
+              <option value="referral" {% if v == 'referral' %}selected{% endif %}>Referred by existing client</option>
+              <option value="partner" {% if v == 'partner' %}selected{% endif %}>Partner referral</option>
+              <option value="new" {% if v in ['', None, 'new'] %}selected{% endif %}>New / cold inquiry</option>
+            </select>
+          </div>
+        </div>
+        <div class="row row-2">
+          <div class="field">
+            <label>Source of inquiry</label>
+            {% set v = (answers.get('inquiry_source') if answers else '') %}
+            <select name="inquiry_source">
+              <option value="architect_direct" {% if v == 'architect_direct' %}selected{% endif %}>Architect direct</option>
+              <option value="developer_direct" {% if v == 'developer_direct' %}selected{% endif %}>Developer direct</option>
+              <option value="repeat_client" {% if v == 'repeat_client' %}selected{% endif %}>Repeat client</option>
+              <option value="referral" {% if v == 'referral' %}selected{% endif %}>Referral</option>
+              <option value="cold_inquiry" {% if v in ['', None, 'cold_inquiry'] %}selected{% endif %}>Cold inquiry / website</option>
+              <option value="other" {% if v == 'other' %}selected{% endif %}>Other</option>
+            </select>
+          </div>
+          <div class="field"></div>
+        </div>
+      </div>
+
+      <div class="card card-red-flags">
+        <h2>Quick red flags (optional)</h2>
+        <div class="subtle">If you just want the 5-minute version, check what applies. You can also fill the detailed sections below.</div>
+        <div class="hr"></div>
+        {% set q = (answers.get('quick_flags', []) if answers else []) %}
+        <div class="checks">
+          <label class="check"><input type="checkbox" name="quick_flags" value="quick_scope_unclear" {% if 'quick_scope_unclear' in q %}checked{% endif %} /><span>Scope is unclear / will evolve</span></label>
+          <label class="check"><input type="checkbox" name="quick_flags" value="quick_ti_high_liability" {% if 'quick_ti_high_liability' in q %}checked{% endif %} /><span>Tenant improvement + high liability (medical/critical)</span></label>
+          <label class="check"><input type="checkbox" name="quick_flags" value="quick_historic_adaptive_reuse" {% if 'quick_historic_adaptive_reuse' in q %}checked{% endif %} /><span>Historic building / adaptive reuse</span></label>
+          <label class="check"><input type="checkbox" name="quick_flags" value="quick_schedule_compressed" {% if 'quick_schedule_compressed' in q %}checked{% endif %} /><span>Schedule compressed or unrealistic</span></label>
+          <label class="check"><input type="checkbox" name="quick_flags" value="quick_hard_stop_deadline" {% if 'quick_hard_stop_deadline' in q %}checked{% endif %} /><span>Hard-stop deadline (permit board/GC/lender)</span></label>
+          <label class="check"><input type="checkbox" name="quick_flags" value="quick_no_site_access" {% if 'quick_no_site_access' in q %}checked{% endif %} /><span>Existing building + no site access</span></label>
+          <label class="check"><input type="checkbox" name="quick_flags" value="quick_missing_geotech_or_drawings" {% if 'quick_missing_geotech_or_drawings' in q %}checked{% endif %} /><span>Missing geotech or existing drawings</span></label>
+          <label class="check"><input type="checkbox" name="quick_flags" value="quick_architect_unresponsive" {% if 'quick_architect_unresponsive' in q %}checked{% endif %} /><span>Architect unresponsive or unproven</span></label>
+          <label class="check"><input type="checkbox" name="quick_flags" value="quick_no_decision_maker" {% if 'quick_no_decision_maker' in q %}checked{% endif %} /><span>No clear decision-maker</span></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible-wrap" style="margin-top:14px">
+      <button type="button" class="collapsible-toggle" id="detailed-screening-toggle" aria-expanded="true" aria-controls="detailed-screening-body">
+        <span>Detailed Screening (optional)</span>
+        <svg class="chevron" id="detailed-screening-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="collapsible-body" id="detailed-screening-body">
+    <div class="card" style="border-top-left-radius:0; border-top-right-radius:0; border-top:none">
+      <h2 style="display:none">Detailed screening</h2>
+      <div class="row row-2">
+        <div class="field">
+          <label>Primary structural material</label>
+          {% set v = answers.get('primary_material') if answers else 'steel' %}
+          <select name="primary_material">
+            <option value="steel"       {% if v in ['', None, 'steel'] %}selected{% endif %}>Steel</option>
+            <option value="concrete"    {% if v == 'concrete' %}selected{% endif %}>Concrete</option>
+            <option value="timber"      {% if v == 'timber' %}selected{% endif %}>Timber / mass timber</option>
+            <option value="masonry"     {% if v == 'masonry' %}selected{% endif %}>Masonry / CMU</option>
+            <option value="cold-formed" {% if v == 'cold-formed' %}selected{% endif %}>Cold-formed steel</option>
+          </select>
+        </div>
+        <div class="field"></div>
+      </div>
+
+      <div class="row row-2">
+        <div class="field">
+          <label>Project type</label>
+          {% set v = answers.get('project_type') if answers else 'unknown' %}
+          <select name="project_type">
+            <option value="repeating_program" {% if v == 'repeating_program' %}selected{% endif %}>Repeating program (Sprouts / rollout)</option>
+            <option value="new_construction" {% if v == 'new_construction' %}selected{% endif %}>New construction</option>
+            <option value="build_to_suit_retrofit" {% if v == 'build_to_suit_retrofit' %}selected{% endif %}>Build-to-suit / retrofit</option>
+            <option value="tenant_improvement" {% if v == 'tenant_improvement' %}selected{% endif %}>Tenant improvement (TI)</option>
+            <option value="addition_expansion" {% if v == 'addition_expansion' %}selected{% endif %}>Addition / expansion</option>
+            <option value="one_off_unique" {% if v == 'one_off_unique' %}selected{% endif %}>One-off / unique</option>
+            <option value="unknown" {% if v in ['', None, 'unknown'] %}selected{% endif %}>Unknown / needs clarification</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Building type</label>
+          {% set v = answers.get('building_type') if answers else 'other' %}
+          <select name="building_type">
+            <option value="retail" {% if v == 'retail' %}selected{% endif %}>Retail / commercial</option>
+            <option value="warehouse" {% if v == 'warehouse' %}selected{% endif %}>Warehouse / industrial</option>
+            <option value="healthcare" {% if v == 'healthcare' %}selected{% endif %}>Healthcare</option>
+            <option value="education" {% if v == 'education' %}selected{% endif %}>Education</option>
+            <option value="data_center" {% if v == 'data_center' %}selected{% endif %}>Data center</option>
+            <option value="mixed_use" {% if v == 'mixed_use' %}selected{% endif %}>Mixed-use</option>
+            <option value="other" {% if v in ['', None, 'other'] %}selected{% endif %}>Other</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row row-2">
+        <div class="field">
+          <label>Architect status</label>
+          {% set v = answers.get('architect_status') if answers else 'unknown' %}
+          <select name="architect_status">
+            <option value="known_good" {% if v == 'known_good' %}selected{% endif %}>Known architect (good track record)</option>
+            <option value="known_fair" {% if v == 'known_fair' %}selected{% endif %}>Known architect (fair track record)</option>
+            <option value="new" {% if v == 'new' %}selected{% endif %}>New architect (no track record)</option>
+            <option value="not_identified" {% if v == 'not_identified' %}selected{% endif %}>Not yet identified</option>
+            <option value="inhouse" {% if v == 'inhouse' %}selected{% endif %}>In-house client design (no architect)</option>
+            <option value="unknown" {% if v in ['', None, 'unknown'] %}selected{% endif %}>Unknown</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Architect responsiveness</label>
+          {% set v = answers.get('architect_responsiveness') if answers else 'unknown' %}
+          <select name="architect_responsiveness">
+            <option value="responsive" {% if v == 'responsive' %}selected{% endif %}>Responsive</option>
+            <option value="unresponsive" {% if v == 'unresponsive' %}selected{% endif %}>Unresponsive (red flag)</option>
+            <option value="unknown" {% if v in ['', None, 'unknown'] %}selected{% endif %}>Unknown</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row row-2">
+        <div class="field">
+          <label>Decision-maker clarity</label>
+          {% set v = answers.get('decision_maker_clarity') if answers else 'unclear' %}
+          <select name="decision_maker_clarity">
+            <option value="direct" {% if v == 'direct' %}selected{% endif %}>Direct contact to decision-maker</option>
+            <option value="pm" {% if v == 'pm' %}selected{% endif %}>Contact to project manager</option>
+            <option value="unclear" {% if v in ['', None, 'unclear'] %}selected{% endif %}>Unclear (red flag)</option>
+            <option value="none" {% if v == 'none' %}selected{% endif %}>No clear point of contact (red flag)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Scope definition</label>
+          {% set v = answers.get('scope_definition') if answers else 'unknown' %}
+          <select name="scope_definition">
+            <option value="defined" {% if v == 'defined' %}selected{% endif %}>Defined (included/excluded clear)</option>
+            <option value="partial" {% if v == 'partial' %}selected{% endif %}>Partially defined</option>
+            <option value="undefined" {% if v == 'undefined' %}selected{% endif %}>Undefined / evolving (red flag)</option>
+            <option value="unknown" {% if v in ['', None, 'unknown'] %}selected{% endif %}>Unknown</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row row-2">
+        <div class="field">
+          <label>Scope risk type</label>
+          {% set v = answers.get('scope_risk_type') if answers else 'standard' %}
+          <select name="scope_risk_type">
+            <option value="standard" {% if v in ['', None, 'standard'] %}selected{% endif %}>Standard retail/warehouse</option>
+            <option value="ti_limited" {% if v == 'ti_limited' %}selected{% endif %}>TI with limited structural changes</option>
+            <option value="ti_high_liability" {% if v == 'ti_high_liability' %}selected{% endif %}>TI with high liability exposure (medical/critical)</option>
+            <option value="adaptive_reuse" {% if v == 'adaptive_reuse' %}selected{% endif %}>Adaptive reuse / historic</option>
+            <option value="government_ahj" {% if v == 'government_ahj' %}selected{% endif %}>Government / AHJ-intensive</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Specialist support available (if high-liability TI)</label>
+          {% set v = answers.get('specialist_support') if answers else 'unknown' %}
+          <select name="specialist_support">
+            <option value="yes" {% if v == 'yes' %}selected{% endif %}>Yes</option>
+            <option value="no" {% if v == 'no' %}selected{% endif %}>No (critical)</option>
+            <option value="unknown" {% if v in ['', None, 'unknown'] %}selected{% endif %}>Unknown</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row row-2">
+        <div class="field">
+          <label>Scope creep likelihood</label>
+          {% set v = answers.get('scope_creep_likelihood') if answers else 'unknown' %}
+          <select name="scope_creep_likelihood">
+            <option value="no" {% if v == 'no' %}selected{% endif %}>No (scope locked)</option>
+            <option value="possible" {% if v == 'possible' %}selected{% endif %}>Possible</option>
+            <option value="likely" {% if v == 'likely' %}selected{% endif %}>Likely (red flag)</option>
+            <option value="unknown" {% if v in ['', None, 'unknown'] %}selected{% endif %}>Unknown</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Schedule realism</label>
+          {% set v = answers.get('schedule_realism') if answers else 'unknown' %}
+          <select name="schedule_realism">
+            <option value="comfortable" {% if v == 'comfortable' %}selected{% endif %}>Comfortable</option>
+            <option value="tight" {% if v == 'tight' %}selected{% endif %}>Tight but doable</option>
+            <option value="compressed" {% if v == 'compressed' %}selected{% endif %}>Compressed (red flag)</option>
+            <option value="unrealistic" {% if v == 'unrealistic' %}selected{% endif %}>Unrealistic (critical)</option>
+            <option value="unknown" {% if v in ['', None, 'unknown'] %}selected{% endif %}>Unknown</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row row-2">
+        <div class="field">
+          <label>Weeks to permit submission (if known)</label>
+          <input type="number" name="weeks_to_permit_submission" min="0" step="1" value="{{ answers.get('weeks_to_permit_submission','') if answers else '' }}" />
+          <div class="subtle">If &lt; 2, this is treated as a critical red flag.</div>
+        </div>
+        <div class="field">
+          <label>Hard-stop deadlines</label>
+          {% set hs = (answers.get('hard_stop_deadlines', []) if answers else []) %}
+          <div class="checks">
+            <label class="check"><input type="checkbox" name="hard_stop_deadlines" value="permit_board" {% if 'permit_board' in hs %}checked{% endif %} /><span>Permit board date</span></label>
+            <label class="check"><input type="checkbox" name="hard_stop_deadlines" value="gc_mobilization" {% if 'gc_mobilization' in hs %}checked{% endif %} /><span>GC mobilization</span></label>
+            <label class="check"><input type="checkbox" name="hard_stop_deadlines" value="lender" {% if 'lender' in hs %}checked{% endif %} /><span>Lender deadline</span></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="row row-2">
+        <div class="field">
+          <label>Site access (existing buildings)</label>
+          {% set v = answers.get('site_access') if answers else 'unknown' %}
+          <select name="site_access">
+            <option value="yes_scheduled" {% if v == 'yes_scheduled' %}selected{% endif %}>Yes — scheduled / readily available</option>
+            <option value="yes_within_week" {% if v == 'yes_within_week' %}selected{% endif %}>Yes — can arrange within 1 week</option>
+            <option value="uncertain" {% if v == 'uncertain' %}selected{% endif %}>Uncertain</option>
+            <option value="no" {% if v == 'no' %}selected{% endif %}>No (critical)</option>
+            <option value="not_applicable" {% if v == 'not_applicable' %}selected{% endif %}>Not applicable (new construction)</option>
+            <option value="unknown" {% if v in ['', None, 'unknown'] %}selected{% endif %}>Unknown</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Docs commitment (if anything is missing)</label>
+          {% set v = answers.get('docs_commitment') if answers else 'unknown' %}
+          <select name="docs_commitment">
+            <option value="yes" {% if v == 'yes' %}selected{% endif %}>Architect will provide (with timeline)</option>
+            <option value="unknown" {% if v in ['', None, 'unknown'] %}selected{% endif %}>Unknown</option>
+            <option value="no" {% if v == 'no' %}selected{% endif %}>Refuses / will not provide (critical)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+      <h2>Documentation checklist</h2>
+      <div class="grid grid-2">
+        <div>
+          <div class="subtle">New construction</div>
+          <div class="checks">
+            <label class="check"><input type="checkbox" name="doc_geotech" {% if answers.get('doc_geotech') %}checked{% endif %} /><span>Geotechnical report</span></label>
+            <label class="check"><input type="checkbox" name="doc_grading_plan" {% if answers.get('doc_grading_plan') %}checked{% endif %} /><span>Grading plan</span></label>
+            <label class="check"><input type="checkbox" name="doc_arch_drawings" {% if answers.get('doc_arch_drawings') %}checked{% endif %} /><span>Architectural drawings (schematic+)</span></label>
+          </div>
+        </div>
+        <div>
+          <div class="subtle">Renovation / existing building</div>
+          <div class="checks">
+            <label class="check"><input type="checkbox" name="doc_existing_struct_drawings" {% if answers.get('doc_existing_struct_drawings') %}checked{% endif %} /><span>Existing structural drawings</span></label>
+            <label class="check"><input type="checkbox" name="doc_site_photos" {% if answers.get('doc_site_photos') %}checked{% endif %} /><span>Site visit photos / survey</span></label>
+          </div>
+        </div>
+      </div>
+      <div class="hr"></div>
+      <div class="subtle">All projects</div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" name="doc_rfp_program" {% if answers.get('doc_rfp_program') %}checked{% endif %} /><span>Architectural program / RFP</span></label>
+        <label class="check"><input type="checkbox" name="doc_site_plan" {% if answers.get('doc_site_plan') %}checked{% endif %} /><span>Site plan with address/coordinates</span></label>
+        <label class="check"><input type="checkbox" name="doc_prelim_schedule" {% if answers.get('doc_prelim_schedule') %}checked{% endif %} /><span>Preliminary schedule/timeline</span></label>
+      </div>
+
+      <div class="field">
+        <label>Notes</label>
+        <textarea name="notes">{{ answers.get('notes','') if answers else '' }}</textarea>
+      </div>
+    </div>
+      </div>{# /collapsible-body #}
+    </div>{# /collapsible-wrap #}
+
+    <div class="form-actions">
+      <a class="btn" href="{% if intake %}/intakes/{{ intake.id }}{% else %}/{% endif %}">Cancel</a>
+      <button class="btn btn-primary btn-submit" type="submit">{% if mode == 'edit' %}Save updates{% else %}Create intake{% endif %}</button>
+    </div>
+  </form>
+{% endblock %}

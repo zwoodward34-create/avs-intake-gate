@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{{ title or "AVS Intake Gate" }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/app.css?v=2" />
+    <script defer src="/static/app.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <div>
+          <div class="title"><a href="/">AVS Intake Gate</a></div>
+          <div class="subtle">Live intake dashboard • {{ now_local }}</div>
+        </div>
+        <div class="actions">
+          <a class="btn btn-primary" href="/intakes/new">New intake</a>
+          <a class="btn" href="/reports">Reports</a>
+          <a class="btn" href="/mo-queue">
+            Mo's Queue
+            {% set _mc = pending_mo_count() %}
+            {% if _mc > 0 %}
+              <span class="mo-badge">{{ _mc }}</span>
+            {% endif %}
+          </a>
+          <a class="btn" href="/api/intakes" target="_blank" rel="noreferrer">API</a>
+        </div>
+      </div>
+      {% block content %}{% endblock %}
+    </div>
+  </body>
+</html>

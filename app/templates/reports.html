@@ -1,0 +1,566 @@
+{% extends "base.html" %}
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<style>
+  /* ── report-local tokens ────────────────────────────────────────────── */
+  .rpt-section-label{
+    font-size:.7rem; font-weight:700; letter-spacing:1.2px;
+    text-transform:uppercase; color:var(--muted); margin-bottom:14px;
+  }
+  /* 12-col bento grid */
+  .rpt-grid{
+    display:grid;
+    gap:14px;
+    grid-template-columns:repeat(12,1fr);
+  }
+  .rpt-c4  { grid-column:span 4  }
+  .rpt-c5  { grid-column:span 5  }
+  .rpt-c6  { grid-column:span 6  }
+  .rpt-c7  { grid-column:span 7  }
+  .rpt-c8  { grid-column:span 8  }
+  .rpt-c12 { grid-column:span 12 }
+  @media(max-width:900px){
+    .rpt-c4,.rpt-c5,.rpt-c6,.rpt-c7,.rpt-c8{ grid-column:span 12 }
+  }
+
+  /* chart wrappers */
+  .ch{ position:relative; width:100% }
+  .ch canvas{ display:block }
+
+  /* donut center label */
+  .donut-wrap{ position:relative; display:flex; align-items:center; gap:20px }
+  .donut-canvas-wrap{ position:relative; flex-shrink:0 }
+  .donut-center{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    pointer-events:none;
+  }
+  .donut-center-num { font-size:1.6rem; font-weight:800; line-height:1 }
+  .donut-center-lbl { font-size:.7rem; color:var(--muted); margin-top:2px; font-family:var(--mono) }
+  .donut-legend{ display:flex; flex-direction:column; gap:8px; flex:1 }
+  .dl-item{ display:flex; align-items:center; gap:8px; font-size:.82rem }
+  .dl-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0 }
+  .dl-val { margin-left:auto; font-weight:700; font-family:var(--mono); font-size:.8rem }
+
+  /* kpi strip above charts */
+  .kpi-strip{
+    display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px
+  }
+  .kpi-chip{
+    flex:1 1 100px;
+    background:var(--card-bg); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
+    border:1px solid var(--border); border-radius:var(--radius);
+    padding:14px 18px; position:relative; overflow:hidden;
+    border-left:3px solid transparent;
+  }
+  .kpi-chip::before{
+    content:''; position:absolute; inset:0; border-radius:inherit;
+    background:linear-gradient(135deg,rgba(255,255,255,.06) 0%,transparent 55%);
+    pointer-events:none;
+  }
+  .kpi-chip-num{ font-size:1.8rem; font-weight:800; line-height:1 }
+  .kpi-chip-lbl{ font-size:.72rem; color:var(--muted); margin-top:4px; font-weight:600; letter-spacing:.4px; text-transform:uppercase }
+  .chip-blue   { border-left-color:var(--accent) }
+  .chip-mint   { border-left-color:var(--good) }
+  .chip-orange { border-left-color:#FF6E40 }
+  .chip-amber  { border-left-color:var(--warn) }
+  .chip-teal   { border-left-color:var(--conditions) }
+  .chip-muted  { border-left-color:rgba(255,255,255,.25) }
+
+  /* architect table inside a card */
+  .arch-row:hover td{ background:rgba(0,229,255,.05) }
+  .no-data{
+    text-align:center; padding:40px 20px;
+    color:var(--muted); font-size:.9rem
+  }
+</style>
+
+{# ── KPI strip ──────────────────────────────────────────────────────────── #}
+<div class="kpi-strip" role="region" aria-label="Key metrics">
+
+  <div class="kpi-chip chip-blue">
+    <div class="kpi-chip-num" style="color:var(--accent)">{{ total_intakes }}</div>
+    <div class="kpi-chip-lbl">Total Intakes</div>
+  </div>
+
+  <div class="kpi-chip chip-muted">
+    <div class="kpi-chip-num">{{ this_month_count }}</div>
+    <div class="kpi-chip-lbl">This Month</div>
+  </div>
+
+  <div class="kpi-chip chip-mint">
+    <div class="kpi-chip-num" style="color:var(--good)">{{ conversion_rate }}</div>
+    <div class="kpi-chip-lbl">Conversion Rate</div>
+  </div>
+
+  <div class="kpi-chip chip-orange">
+    <div class="kpi-chip-num" style="color:#FF6E40">{{ decline_rate }}</div>
+    <div class="kpi-chip-lbl">Decline Rate</div>
+  </div>
+
+  <div class="kpi-chip chip-amber">
+    <div class="kpi-chip-num" style="color:var(--warn)">{{ avg_days }}</div>
+    <div class="kpi-chip-lbl">Avg Days to Decision</div>
+  </div>
+
+  <div class="kpi-chip chip-teal">
+    <div class="kpi-chip-num" style="color:var(--conditions)">{{ avg_mo_to_proposal }}</div>
+    <div class="kpi-chip-lbl">Mo → Proposal</div>
+  </div>
+
+  <div class="kpi-chip chip-mint">
+    <div class="kpi-chip-num" style="color:var(--good); font-size:1.4rem">{{ approved_fee_total }}</div>
+    <div class="kpi-chip-lbl">Approved Pipeline</div>
+  </div>
+
+</div>
+
+{# ── Row 1: Status donut + Monthly trend ────────────────────────────────── #}
+<div class="rpt-grid">
+
+  {# Status breakdown donut #}
+  <article class="card rpt-c5" aria-labelledby="status-lbl">
+    <p class="rpt-section-label" id="status-lbl">Status Breakdown</p>
+    <div class="donut-wrap">
+      <div class="donut-canvas-wrap" style="width:170px;height:170px">
+        <canvas id="statusDonut" aria-label="Donut chart of intake statuses" role="img"></canvas>
+        <div class="donut-center">
+          <span class="donut-center-num">{{ total_intakes }}</span>
+          <span class="donut-center-lbl">total</span>
+        </div>
+      </div>
+      <div class="donut-legend" role="list" id="status-legend"></div>
+    </div>
+  </article>
+
+  {# Monthly intake trend #}
+  <article class="card rpt-c7" aria-labelledby="trend-lbl">
+    <p class="rpt-section-label" id="trend-lbl">Monthly Intake Volume</p>
+    <div class="ch" style="height:190px">
+      <canvas id="monthlyTrend" aria-label="Line chart of monthly intake count" role="img"></canvas>
+    </div>
+  </article>
+
+</div>{# /row1 #}
+
+{# ── Row 2: Red flag bar + Project type stacked ──────────────────────────── #}
+<div class="rpt-grid" style="margin-top:14px">
+
+  {# Red flag frequency — horizontal bar #}
+  <article class="card rpt-c6" aria-labelledby="rf-lbl">
+    <p class="rpt-section-label" id="rf-lbl">Red Flag Frequency — Top 10</p>
+    {% if red_flag_table %}
+      <div class="ch" style="height:280px">
+        <canvas id="rfBar" aria-label="Horizontal bar chart of top red flags" role="img"></canvas>
+      </div>
+    {% else %}
+      <div class="no-data">No red flags recorded yet.</div>
+    {% endif %}
+  </article>
+
+  {# Project type — stacked bar #}
+  <article class="card rpt-c6" aria-labelledby="pt-lbl">
+    <p class="rpt-section-label" id="pt-lbl">Outcome by Project Type</p>
+    {% if project_type_table %}
+      <div class="ch" style="height:280px">
+        <canvas id="ptBar" aria-label="Stacked bar chart of outcomes per project type" role="img"></canvas>
+      </div>
+    {% else %}
+      <div class="no-data">No intakes yet.</div>
+    {% endif %}
+  </article>
+
+</div>{# /row2 #}
+
+{# ── Row 3: Severity donut + Architect table ─────────────────────────────── #}
+<div class="rpt-grid" style="margin-top:14px">
+
+  {# Severity breakdown #}
+  <article class="card rpt-c4" aria-labelledby="sev-lbl">
+    <p class="rpt-section-label" id="sev-lbl">Flag Severity Mix</p>
+    <div class="donut-wrap" style="flex-direction:column; gap:16px; align-items:flex-start">
+      <div class="donut-canvas-wrap" style="width:150px;height:150px;align-self:center">
+        <canvas id="sevDonut" aria-label="Donut chart of flag severity distribution" role="img"></canvas>
+      </div>
+      <div class="donut-legend" id="sev-legend" role="list" style="width:100%"></div>
+    </div>
+  </article>
+
+  {# Architect track record table #}
+  <article class="card rpt-c8" aria-labelledby="arch-lbl">
+    <p class="rpt-section-label" id="arch-lbl">Architect Track Record</p>
+    <p class="subtle" style="font-size:.78rem;margin-bottom:10px">Architects with 2+ submissions only.</p>
+    {% if architect_table %}
+      <div style="overflow-x:auto">
+        <table class="table" role="table">
+          <thead>
+            <tr>
+              <th scope="col">Architect</th>
+              <th scope="col">Projects</th>
+              <th scope="col">Proceeded</th>
+              <th scope="col">Declined</th>
+              <th scope="col">Avg Flags</th>
+              <th scope="col">Top Red Flag</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in architect_table %}
+              <tr class="table-row arch-row">
+                <td style="font-weight:700">{{ row.name }}</td>
+                <td class="mono">{{ row.total }}</td>
+                <td style="color:var(--good);font-weight:700;font-family:var(--mono)">{{ row.proceed }}</td>
+                <td style="color:#FF6E40;font-weight:700;font-family:var(--mono)">{{ row.decline }}</td>
+                <td class="mono">{{ row.avg_red_flags }}</td>
+                <td class="subtle" style="font-size:.8rem">{{ row.top_flag }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="no-data">No architects with multiple submissions yet.</div>
+    {% endif %}
+  </article>
+
+</div>{# /row3 #}
+
+{# ── Row 4: Approved Fee Pipeline ────────────────────────────────────────── #}
+<div class="rpt-grid" style="margin-top:14px">
+  <article class="card rpt-c12" aria-labelledby="pipeline-lbl">
+    <p class="rpt-section-label" id="pipeline-lbl">Approved Fee Pipeline</p>
+    <p class="subtle" style="font-size:.78rem; margin-bottom:12px">
+      Approved projects (Proceed / Proceed with Conditions). Fee reflects Mo override if set, otherwise the Risk-Adjusted estimate midpoint.
+    </p>
+    {% if approved_rows %}
+      <div style="overflow-x:auto">
+        <table class="table" role="table">
+          <thead>
+            <tr>
+              <th scope="col">Project</th>
+              <th scope="col">Client</th>
+              <th scope="col">Status</th>
+              <th scope="col">Fee basis</th>
+              <th scope="col" style="text-align:right">Fee</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set ns = namespace(total=0) %}
+            {% for row in approved_rows %}
+              <tr class="table-row arch-row">
+                <td style="font-weight:700">
+                  <a href="/intakes/{{ row.id }}" style="color:inherit; text-decoration:none">{{ row.project_name }}</a>
+                </td>
+                <td class="subtle">{{ row.client_name }}</td>
+                <td>
+                  {% if row.status == 'PROCEED_WITH_CONDITIONS' %}
+                    <span class="badge" style="background:rgba(100,255,218,0.15); color:#64FFDA; border:1px solid rgba(100,255,218,0.3)">With Conditions</span>
+                  {% else %}
+                    <span class="badge badge-low">Proceed</span>
+                  {% endif %}
+                </td>
+                <td class="subtle" style="font-size:.78rem">{{ row.fee_source }}</td>
+                <td style="text-align:right; font-family:var(--mono); font-weight:700">
+                  {% if row.fee_amount %}
+                    {% set ns.total = ns.total + row.fee_amount %}
+                    ${{ "{:,.0f}".format(row.fee_amount) }}
+                  {% else %}
+                    <span class="subtle">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr style="border-top:1px solid rgba(255,255,255,0.15)">
+              <td colspan="4" style="font-weight:800; padding-top:10px">Total approved pipeline</td>
+              <td style="text-align:right; font-weight:800; font-size:1.05rem; font-family:var(--mono); color:var(--good); padding-top:10px">
+                {{ approved_fee_total }}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    {% else %}
+      <div class="no-data">No approved projects yet.</div>
+    {% endif %}
+  </article>
+</div>{# /row4 #}
+
+{# ── Scripts ─────────────────────────────────────────────────────────────── #}
+<script>
+(function(){
+  /* ── Shared defaults ─────────────────────────────────────────────────── */
+  Chart.defaults.color           = 'rgba(255,255,255,0.65)';
+  Chart.defaults.font.family     = "'DM Sans', ui-sans-serif, system-ui, sans-serif";
+  Chart.defaults.font.size       = 13;
+  Chart.defaults.borderColor     = 'rgba(255,255,255,0.07)';
+
+  const BLUE   = '#00E5FF';
+  const MINT   = '#00E676';
+  const ORANGE = '#FF6E40';
+  const AMBER  = '#FFD740';
+  const TEAL   = '#64FFDA';
+  const RED    = '#FF5252';
+  const PURPLE = '#E040FB';
+
+  function hex2rgba(hex, a){
+    const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  const TOOLTIP = {
+    backgroundColor: 'rgba(10,25,15,0.92)',
+    borderColor:     'rgba(255,255,255,0.12)',
+    borderWidth:      1,
+    titleColor:      '#FFFFFF',
+    bodyColor:       'rgba(255,255,255,0.80)',
+    padding:          12,
+    cornerRadius:     12,
+  };
+
+  /* ── Data from server ────────────────────────────────────────────────── */
+  const statusLabels  = {{ j_status_labels  | safe }};
+  const statusValues  = {{ j_status_values  | safe }};
+  const monthlyLabels = {{ j_monthly_labels | safe }};
+  const monthlyValues = {{ j_monthly_values | safe }};
+  const rfLabels      = {{ j_rf_labels      | safe }};
+  const rfValues      = {{ j_rf_values      | safe }};
+  const rfSevs        = {{ j_rf_sevs        | safe }};
+  const ptLabels      = {{ j_pt_labels      | safe }};
+  const ptProceed     = {{ j_pt_proceed     | safe }};
+  const ptDecline     = {{ j_pt_decline     | safe }};
+  const ptPending     = {{ j_pt_pending     | safe }};
+  const sevLabels     = {{ j_sev_labels     | safe }};
+  const sevValues     = {{ j_sev_values     | safe }};
+
+  /* ── Status color map ────────────────────────────────────────────────── */
+  const STATUS_COLORS = [MINT, AMBER, BLUE, TEAL, ORANGE];
+
+  /* ── 1. Status Donut ─────────────────────────────────────────────────── */
+  const statusCtx = document.getElementById('statusDonut');
+  if(statusCtx && statusValues.some(v=>v>0)){
+    new Chart(statusCtx,{
+      type:'doughnut',
+      data:{
+        labels: statusLabels,
+        datasets:[{
+          data: statusValues,
+          backgroundColor: STATUS_COLORS.map(c=>hex2rgba(c,0.85)),
+          borderColor:     STATUS_COLORS.map(c=>hex2rgba(c,0.30)),
+          borderWidth:2,
+          hoverOffset:6,
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        cutout:'68%',
+        plugins:{
+          legend:{display:false},
+          tooltip:{...TOOLTIP, callbacks:{label:ctx=>` ${ctx.label}: ${ctx.parsed}`}}
+        }
+      }
+    });
+    // Build legend
+    const leg = document.getElementById('status-legend');
+    statusLabels.forEach((lbl,i)=>{
+      if(statusValues[i]===0) return;
+      leg.innerHTML += `<div class="dl-item" role="listitem">
+        <span class="dl-dot" style="background:${STATUS_COLORS[i]}" aria-hidden="true"></span>
+        <span>${lbl}</span>
+        <span class="dl-val">${statusValues[i]}</span>
+      </div>`;
+    });
+  }
+
+  /* ── 2. Monthly Trend Line ───────────────────────────────────────────── */
+  const trendCtx = document.getElementById('monthlyTrend');
+  if(trendCtx && monthlyLabels.length){
+    const grad = trendCtx.getContext('2d').createLinearGradient(0,0,0,190);
+    grad.addColorStop(0, hex2rgba(BLUE,0.28));
+    grad.addColorStop(1, hex2rgba(BLUE,0.00));
+    new Chart(trendCtx,{
+      type:'line',
+      data:{
+        labels: monthlyLabels,
+        datasets:[{
+          label:'Intakes',
+          data: monthlyValues,
+          borderColor: BLUE,
+          backgroundColor: grad,
+          borderWidth:2.5,
+          pointRadius:4, pointHoverRadius:6,
+          pointBackgroundColor: BLUE,
+          tension:0.42, fill:true,
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:TOOLTIP,
+        },
+        scales:{
+          x:{
+            grid:{color:'rgba(255,255,255,0.05)'},
+            ticks:{color:'rgba(255,255,255,0.55)', maxRotation:45, font:{size:12}}
+          },
+          y:{
+            beginAtZero:true,
+            grid:{color:'rgba(255,255,255,0.07)'},
+            ticks:{color:'rgba(255,255,255,0.55)', stepSize:1, font:{size:12}}
+          }
+        }
+      }
+    });
+  }
+
+  /* ── 3. Red Flag Horizontal Bar ──────────────────────────────────────── */
+  const SEV_COLOR = {critical:RED, high:AMBER, medium:BLUE, low:MINT};
+  const rfCtx = document.getElementById('rfBar');
+  if(rfCtx && rfLabels.length){
+    const rfColors = rfSevs.map(s=>hex2rgba(SEV_COLOR[s]||BLUE, 0.80));
+    const rfBorders= rfSevs.map(s=>hex2rgba(SEV_COLOR[s]||BLUE, 0.40));
+    new Chart(rfCtx,{
+      type:'bar',
+      data:{
+        labels: rfLabels,
+        datasets:[{
+          label:'Occurrences',
+          data: rfValues,
+          backgroundColor: rfColors,
+          borderColor:     rfBorders,
+          borderWidth:1,
+          borderRadius:6,
+          borderSkipped:false,
+        }]
+      },
+      options:{
+        indexAxis:'y',
+        responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{...TOOLTIP, callbacks:{
+            label:ctx=>` ${ctx.parsed.x} occurrence${ctx.parsed.x!==1?'s':''}`,
+            title:ctx=>[ctx[0].label],
+          }}
+        },
+        scales:{
+          x:{
+            beginAtZero:true,
+            grid:{color:'rgba(255,255,255,0.07)'},
+            ticks:{color:'rgba(255,255,255,0.55)', stepSize:1, font:{size:12}}
+          },
+          y:{
+            grid:{display:false},
+            ticks:{color:'rgba(255,255,255,0.75)', font:{size:12, weight:'600'}}
+          }
+        }
+      }
+    });
+  }
+
+  /* ── 4. Project Type Stacked Bar ─────────────────────────────────────── */
+  const ptCtx = document.getElementById('ptBar');
+  if(ptCtx && ptLabels.length){
+    // Shorten labels
+    const shortPt = ptLabels.map(l=>l.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()));
+    new Chart(ptCtx,{
+      type:'bar',
+      data:{
+        labels: shortPt,
+        datasets:[
+          {
+            label:'Proceed',
+            data: ptProceed,
+            backgroundColor: hex2rgba(MINT,0.80),
+            borderColor:     hex2rgba(MINT,0.40),
+            borderWidth:1, borderRadius:4, borderSkipped:false,
+          },
+          {
+            label:'Pending / Review',
+            data: ptPending,
+            backgroundColor: hex2rgba(AMBER,0.70),
+            borderColor:     hex2rgba(AMBER,0.35),
+            borderWidth:1, borderRadius:4, borderSkipped:false,
+          },
+          {
+            label:'Declined',
+            data: ptDecline,
+            backgroundColor: hex2rgba(ORANGE,0.80),
+            borderColor:     hex2rgba(ORANGE,0.40),
+            borderWidth:1, borderRadius:4, borderSkipped:false,
+          },
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{mode:'index', intersect:false},
+        plugins:{
+          legend:{
+            position:'top', align:'end',
+            labels:{
+              color:'rgba(255,255,255,0.75)', font:{size:12, weight:'600'},
+              boxWidth:10, boxHeight:10, borderRadius:3,
+              usePointStyle:true, pointStyle:'rectRounded',
+            }
+          },
+          tooltip:TOOLTIP,
+        },
+        scales:{
+          x:{
+            stacked:true,
+            grid:{display:false},
+            ticks:{color:'rgba(255,255,255,0.60)', font:{size:12}}
+          },
+          y:{
+            stacked:true, beginAtZero:true,
+            grid:{color:'rgba(255,255,255,0.07)'},
+            ticks:{color:'rgba(255,255,255,0.55)', stepSize:1, font:{size:12}}
+          }
+        }
+      }
+    });
+  }
+
+  /* ── 5. Severity Donut ───────────────────────────────────────────────── */
+  const SEV_COLORS = [RED, AMBER, BLUE, MINT];
+  const sevCtx = document.getElementById('sevDonut');
+  if(sevCtx && sevValues.some(v=>v>0)){
+    new Chart(sevCtx,{
+      type:'doughnut',
+      data:{
+        labels: sevLabels,
+        datasets:[{
+          data: sevValues,
+          backgroundColor: SEV_COLORS.map(c=>hex2rgba(c,0.85)),
+          borderColor:     SEV_COLORS.map(c=>hex2rgba(c,0.30)),
+          borderWidth:2, hoverOffset:5,
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        cutout:'62%',
+        plugins:{
+          legend:{display:false},
+          tooltip:{...TOOLTIP, callbacks:{label:ctx=>` ${ctx.label}: ${ctx.parsed}`}}
+        }
+      }
+    });
+    // Build legend
+    const leg2 = document.getElementById('sev-legend');
+    sevLabels.forEach((lbl,i)=>{
+      const total = sevValues.reduce((a,b)=>a+b,0);
+      const pct   = total>0 ? Math.round(sevValues[i]/total*100) : 0;
+      leg2.innerHTML += `<div class="dl-item" role="listitem">
+        <span class="dl-dot" style="background:${SEV_COLORS[i]}" aria-hidden="true"></span>
+        <span>${lbl}</span>
+        <span class="dl-val">${sevValues[i]} <span style="opacity:.5;font-weight:400">(${pct}%)</span></span>
+      </div>`;
+    });
+  }
+
+})();
+</script>
+{% endblock %}

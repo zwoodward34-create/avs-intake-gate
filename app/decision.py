@@ -1,0 +1,437 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Optional
+
+
+SEVERITY_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+
+
+@dataclass(frozen=True)
+class RedFlag:
+    key: str
+    title: str
+    severity: str  # low|medium|high|critical
+    category: str
+    detail: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "key": self.key,
+            "title": self.title,
+            "severity": self.severity,
+            "category": self.category,
+            "detail": self.detail,
+        }
+
+
+def _as_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        value_str = str(value).strip()
+        if not value_str:
+            return None
+        return int(value_str)
+    except Exception:
+        return None
+
+
+def complexity_estimate(answers: dict[str, Any]) -> str:
+    sf = _as_int(answers.get("approx_sf"))
+    if not sf:
+        return "unknown"
+    if sf < 10_000:
+        return "low"
+    if sf <= 25_000:
+        return "medium"
+    return "high"
+
+
+def fee_range_estimate(answers: dict[str, Any]) -> Optional[str]:
+    project_type = (answers.get("project_type") or "").strip()
+    sf = _as_int(answers.get("approx_sf"))
+    if not sf or sf <= 0:
+        return None
+    if project_type in {"new_construction", "repeating_program"}:
+        low, high = sf * 0.75, sf * 1.00
+    elif project_type == "build_to_suit_retrofit":
+        low, high = sf * 0.30, sf * 0.67
+    elif project_type == "tenant_improvement":
+        low, high = sf * 0.25, sf * 0.50
+    else:
+        return None
+    return f"${low:,.0f} \u2013 ${high:,.0f}"
+
+
+def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
+    """
+    Converts checklist answers into:
+      - red_flags: list[{key,title,severity,category,detail}]
+      - counts: {critical, high, medium, low, total}
+      - recommendation: PROCEED_TO_PROPOSAL | NEEDS_MO_REVIEW | CLARIFY_FIRST | LIKELY_DECLINE
+      - reason: short explanation
+    """
+    red_flags: list[RedFlag] = []
+    needs_clarification_reasons: list[str] = []
+
+    project_type = (answers.get("project_type") or "").strip()
+    building_type = (answers.get("building_type") or "").strip()
+
+    scope_definition = answers.get("scope_definition")
+    if scope_definition in {"undefined", "evolving"}:
+        red_flags.append(
+            RedFlag(
+                key="scope_undefined",
+                title="Scope is undefined / evolving",
+                severity="high",
+                category="Scope",
+                detail="Scope not locked in writing; likely to change.",
+            )
+        )
+    elif scope_definition in {"unknown", "", None}:
+        needs_clarification_reasons.append("Scope definition is unknown.")
+
+    scope_risk_type = answers.get("scope_risk_type")
+    if scope_risk_type == "ti_high_liability":
+        specialist_support = answers.get("specialist_support")
+        if specialist_support == "no":
+            severity = "critical"
+            detail = "High-liability TI with no specialist support."
+        else:
+            severity = "high"
+            detail = "High-liability TI; Mo approval required."
+        red_flags.append(
+            RedFlag(
+                key="scope_ti_high_liability",
+                title="TI with high liability exposure",
+                severity=severity,
+                category="Scope",
+                detail=detail,
+            )
+        )
+    elif scope_risk_type == "adaptive_reuse":
+        red_flags.append(
+            RedFlag(
+                key="scope_adaptive_reuse",
+                title="Adaptive reuse / historic building",
+                severity="high",
+                category="Scope",
+                detail="Specialized code navigation / higher uncertainty.",
+            )
+        )
+    elif scope_risk_type == "government_ahj":
+        red_flags.append(
+            RedFlag(
+                key="scope_government_ahj",
+                title="Government / AHJ-intensive project",
+                severity="high",
+                category="Scope",
+                detail="Multiple agency reviews; typically longer timelines.",
+            )
+        )
+
+    scope_creep = answers.get("scope_creep_likelihood")
+    if scope_creep == "likely":
+        red_flags.append(
+            RedFlag(
+                key="scope_creep_likely",
+                title="Scope creep likely",
+                severity="high",
+                category="Scope",
+                detail='Vague language like "all structural work required" suggests scope expansion.',
+            )
+        )
+    elif scope_creep in {"unknown", "", None}:
+        # Not always required; treat as a note only if scope isn't defined.
+        if scope_definition in {"unknown", "", None}:
+            needs_clarification_reasons.append("Scope creep likelihood is unknown.")
+
+    # Timeline
+    schedule_realism = answers.get("schedule_realism")
+    if schedule_realism == "compressed":
+        red_flags.append(
+            RedFlag(
+                key="timeline_compressed",
+                title="Compressed schedule",
+                severity="high",
+                category="Timeline",
+                detail="May require overtime; Mo approval recommended; may warrant rush fee.",
+            )
+        )
+    elif schedule_realism == "unrealistic":
+        # Decision matrix highlights unrealistic timeline (esp. < 2 weeks) as critical.
+        red_flags.append(
+            RedFlag(
+                key="timeline_unrealistic",
+                title="Unrealistic timeline",
+                severity="critical",
+                category="Timeline",
+                detail="Timeline cannot be met without cutting corners on QC or scope.",
+            )
+        )
+    elif schedule_realism in {"unknown", "", None}:
+        needs_clarification_reasons.append("Schedule realism is unknown.")
+
+    permit_weeks = _as_int(answers.get("weeks_to_permit_submission"))
+    if permit_weeks is not None and permit_weeks < 2:
+        red_flags.append(
+            RedFlag(
+                key="timeline_less_than_2_weeks",
+                title="Permit submission needed in < 2 weeks",
+                severity="critical",
+                category="Timeline",
+                detail="Hard stop timeline called out as a likely-decline condition.",
+            )
+        )
+
+    hard_stops: list[str] = answers.get("hard_stop_deadlines") or []
+    if isinstance(hard_stops, str):
+        hard_stops = [hard_stops]
+    if any(hard_stops):
+        red_flags.append(
+            RedFlag(
+                key="timeline_hard_stop",
+                title="Hard-stop deadline dependency",
+                severity="high",
+                category="Timeline",
+                detail="Permit board / GC mobilization / lender deadline depends on deliverables.",
+            )
+        )
+
+    # Site access
+    site_access = answers.get("site_access")
+    if site_access == "no":
+        red_flags.append(
+            RedFlag(
+                key="site_no_access",
+                title="Existing building with no site access",
+                severity="critical",
+                category="Site/Docs",
+                detail="No visual inspection increases design risk significantly; Mo decision required.",
+            )
+        )
+    elif site_access in {"uncertain", "unknown", "", None}:
+        # Only matters if project is not clearly new construction.
+        if project_type and project_type not in {"new_construction"}:
+            needs_clarification_reasons.append("Site access is uncertain for an existing building.")
+
+    # Docs checks (core)
+    def doc_bool(key: str) -> bool:
+        return bool(answers.get(key) is True)
+
+    is_new_construction = project_type == "new_construction"
+    is_existing_building = project_type in {
+        "build_to_suit_retrofit",
+        "tenant_improvement",
+        "addition_expansion",
+        "one_off_unique",
+        "unknown",
+        "",
+        None,
+    }
+
+    missing_docs: list[str] = []
+    if is_new_construction:
+        for key, label in [
+            ("doc_geotech", "Geotechnical report"),
+            ("doc_grading_plan", "Grading plan"),
+            ("doc_arch_drawings", "Architectural drawings (schematic or better)"),
+        ]:
+            if not doc_bool(key):
+                missing_docs.append(label)
+    elif is_existing_building:
+        for key, label in [
+            ("doc_existing_struct_drawings", "Existing structural drawings"),
+            ("doc_site_photos", "Site visit photos / survey"),
+        ]:
+            if not doc_bool(key):
+                missing_docs.append(label)
+
+    for key, label in [
+        ("doc_rfp_program", "Architectural program / RFP"),
+        ("doc_site_plan", "Site plan with address/coordinates"),
+        ("doc_prelim_schedule", "Preliminary schedule/timeline"),
+    ]:
+        if not doc_bool(key):
+            missing_docs.append(label)
+
+    docs_commitment = answers.get("docs_commitment")  # yes|no|unknown
+    if missing_docs:
+        if docs_commitment == "no":
+            red_flags.append(
+                RedFlag(
+                    key="docs_refused",
+                    title="Required documentation will not be provided",
+                    severity="critical",
+                    category="Site/Docs",
+                    detail="Cannot design blind; this is a decline signal.",
+                )
+            )
+        elif docs_commitment in {"unknown", "", None}:
+            needs_clarification_reasons.append(
+                "Missing required documentation and commitment to provide is unclear."
+            )
+        else:
+            red_flags.append(
+                RedFlag(
+                    key="docs_missing_but_expected",
+                    title="Required documentation is missing (but expected)",
+                    severity="high",
+                    category="Site/Docs",
+                    detail="Proceed only after confirming delivery timeline for missing items.",
+                )
+            )
+
+    # Architect/client
+    architect_status = answers.get("architect_status")  # known_good|known_fair|new|unknown|not_identified|inhouse
+    architect_responsive = answers.get("architect_responsiveness")  # responsive|unresponsive|unknown
+    if architect_status == "not_identified":
+        needs_clarification_reasons.append("Architect is not identified yet.")
+    if architect_responsive == "unresponsive":
+        red_flags.append(
+            RedFlag(
+                key="architect_unresponsive",
+                title="Architect unresponsive",
+                severity="high",
+                category="Client/Architect",
+                detail="Communication risk; track record of delays/issues.",
+            )
+        )
+    elif architect_status in {"new", "unknown"}:
+        red_flags.append(
+            RedFlag(
+                key="architect_unknown",
+                title="Architect is new/unknown",
+                severity="medium",
+                category="Client/Architect",
+                detail="No track record yet; higher coordination risk.",
+            )
+        )
+
+    decision_maker = answers.get("decision_maker_clarity")  # direct|pm|unclear|none
+    if decision_maker in {"unclear", "none"}:
+        red_flags.append(
+            RedFlag(
+                key="decision_maker_unclear",
+                title="No clear decision-maker",
+                severity="medium",
+                category="Client/Architect",
+                detail="Request clarification before proceeding to avoid chaotic scope/timeline decisions.",
+            )
+        )
+        needs_clarification_reasons.append("Need a single decision-maker / primary contact.")
+
+    # Specialized building type comfort
+    if building_type in {"healthcare", "data_center"}:
+        building_experience = answers.get("building_type_experience")  # yes|no|unknown
+        if building_experience == "no":
+            red_flags.append(
+                RedFlag(
+                    key="building_type_experience_missing",
+                    title="Limited recent experience with building type",
+                    severity="high",
+                    category="Scope",
+                    detail="Healthcare/data center may require specialized expertise; Mo review recommended.",
+                )
+            )
+        elif building_experience in {"unknown", "", None}:
+            needs_clarification_reasons.append(
+                "Need to confirm internal comfort/experience with this building type."
+            )
+
+    # Capacity
+    capacity = answers.get("capacity_available")  # yes|no|unknown
+    if capacity == "no":
+        red_flags.append(
+            RedFlag(
+                key="capacity_constraint",
+                title="Capacity constraint",
+                severity="high",
+                category="Internal",
+                detail="No available bandwidth to resource the project adequately.",
+            )
+        )
+
+    # Quick flags (optional)
+    quick_flags = answers.get("quick_flags") or []
+    if isinstance(quick_flags, str):
+        quick_flags = [quick_flags]
+    quick_map = {
+        "quick_scope_unclear": ("Scope is unclear / will evolve", "high", "Scope"),
+        "quick_ti_high_liability": ("TI + high liability (medical/critical)", "high", "Scope"),
+        "quick_historic_adaptive_reuse": ("Historic building / adaptive reuse", "high", "Scope"),
+        "quick_schedule_compressed": ("Schedule compressed or unrealistic", "high", "Timeline"),
+        "quick_hard_stop_deadline": ("Hard-stop deadline", "high", "Timeline"),
+        "quick_no_site_access": ("Existing building + no site access", "critical", "Site/Docs"),
+        "quick_missing_geotech_or_drawings": ("Missing geotech or existing drawings", "high", "Site/Docs"),
+        "quick_architect_unresponsive": ("Architect unresponsive or unproven", "high", "Client/Architect"),
+        "quick_no_decision_maker": ("No clear decision-maker", "medium", "Client/Architect"),
+    }
+    for q in quick_flags:
+        if q in quick_map:
+            title, severity, category = quick_map[q]
+            red_flags.append(
+                RedFlag(
+                    key=q,
+                    title=title,
+                    severity=severity,
+                    category=category,
+                    detail="Flagged during quick screening.",
+                )
+            )
+
+    # Deduplicate by key (keeping highest severity if repeated)
+    by_key: dict[str, RedFlag] = {}
+    for flag in red_flags:
+        existing = by_key.get(flag.key)
+        if not existing:
+            by_key[flag.key] = flag
+        else:
+            if SEVERITY_ORDER[flag.severity] > SEVERITY_ORDER[existing.severity]:
+                by_key[flag.key] = flag
+
+    red_flags_deduped = list(by_key.values())
+
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "total": 0}
+    for flag in red_flags_deduped:
+        counts[flag.severity] += 1
+        counts["total"] += 1
+
+    critical_count = counts["critical"]
+    total_red_flags = counts["total"]
+
+    if critical_count > 0:
+        recommendation = "LIKELY_DECLINE"
+        reason = "Critical red flag(s) present; likely decline unless Mo overrides."
+    elif needs_clarification_reasons:
+        recommendation = "CLARIFY_FIRST"
+        reason = "Missing critical information: " + "; ".join(needs_clarification_reasons[:3])
+    elif total_red_flags == 0:
+        recommendation = "PROCEED_TO_PROPOSAL"
+        reason = "No red flags detected."
+    elif total_red_flags <= 2:
+        recommendation = "NEEDS_MO_REVIEW"
+        reason = "1–2 red flags detected; Mo should review before proposal."
+    else:
+        recommendation = "NEEDS_MO_REVIEW"
+        reason = "3+ red flags detected (cumulative risk); Mo review required (likely decline)."
+
+    fast_track = (
+        project_type == "repeating_program"
+        and (answers.get("architect_status") or "").strip() == "known_good"
+        and (answers.get("scope_definition") or "").strip() == "defined"
+        and len(red_flags_deduped) == 0
+    )
+
+    return {
+        "red_flags": [f.as_dict() for f in red_flags_deduped],
+        "counts": counts,
+        "recommendation": recommendation,
+        "reason": reason,
+        "missing_docs": missing_docs,
+        "needs_clarification_reasons": needs_clarification_reasons,
+        "complexity_estimate": complexity_estimate(answers),
+        "fee_range_estimate": fee_range_estimate(answers),
+        "fast_track": fast_track,
+    }

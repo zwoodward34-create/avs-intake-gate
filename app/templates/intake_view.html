@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block content %}
+
+  {# ── Page Title ── #}
+  <div class="page-project-title">{{ intake.project_name }}</div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <h2>Summary</h2>
+      <div class="kpi">
+        <span class="pill"><strong>Status</strong> {{ intake.status }}</span>
+        {% if intake.recommendation %}
+          <span class="pill"><strong>Auto</strong> {{ intake.recommendation }}</span>
+        {% endif %}
+        {% if fast_track %}
+          <span class="badge badge-low">Fast Track Eligible</span>
+        {% endif %}
+        <span class="pill"><strong>Updated</strong> {{ intake.updated_at }}</span>
+      </div>
+      <div class="hr"></div>
+      <div class="subtle">{{ intake.client_name or "—" }} • {{ intake.architect_name or "—" }}</div>
+      <div class="hr"></div>
+      <div class="row row-2">
+        <div><div class="subtle">Inquiry date</div><div>{{ intake.inquiry_date or "—" }}</div></div>
+        <div><div class="subtle">Submitted by</div><div>{{ intake.submitted_by or "—" }}</div></div>
+      </div>
+      <div class="row row-2" style="margin-top:10px">
+        <div><div class="subtle">Lead contact</div><div>{{ intake.lead_contact or "—" }}</div></div>
+        <div><div class="subtle">Location</div><div>{{ intake.location_region or "—" }}</div></div>
+      </div>
+      <div class="row row-2" style="margin-top:10px">
+        <div><div class="subtle">Approx. square footage</div><div>{{ answers.get('approx_sf') or "—" }}</div></div>
+        <div><div class="subtle">Est. construction cost</div><div>{% if answers.get('est_construction_cost') %}${{ answers.get('est_construction_cost') }}{% else %}—{% endif %}</div></div>
+      </div>
+      <div class="row row-2" style="margin-top:10px">
+        <div><div class="subtle">Source of inquiry</div><div>{{ answers.get('inquiry_source') or "—" }}</div></div>
+        <div></div>
+      </div>
+      <div class="hr"></div>
+      <div class="subtle">Auto reason</div>
+      <div>{{ intake.recommendation_reason or "—" }}</div>
+      <div class="hr"></div>
+      <div class="actions">
+        <a class="btn" href="/intakes/{{ intake.id }}/edit">Edit</a>
+        <a class="btn btn-primary" href="/intakes/{{ intake.id }}/mo-review">Mo review</a>
+      </div>
+      {% if mo_passcode_enabled %}
+        <div class="subtle small" style="margin-top:8px">Mo review is passcode-protected.</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Red flags</h2>
+      {% set c = intake.red_flag_counts %}
+      <div class="kpi">
+        <span class="badge badge-critical">Critical {{ c.get("critical", 0) }}</span>
+        <span class="badge badge-high">High {{ c.get("high", 0) }}</span>
+        <span class="badge badge-medium">Medium {{ c.get("medium", 0) }}</span>
+        <span class="badge badge-low">Low {{ c.get("low", 0) }}</span>
+        <span class="badge">Total {{ c.get("total", 0) }}</span>
+      </div>
+      <div class="hr"></div>
+      {% if intake.red_flags %}
+        <table class="table">
+          <thead>
+            <tr><th>Severity</th><th>Category</th><th>Flag</th><th>Detail</th></tr>
+          </thead>
+          <tbody>
+            {% for rf in intake.red_flags %}
+              <tr class="rf-row rf-row-{{ rf.severity }}">
+                <td><span class="{{ rf.severity|badge_class }}">{{ rf.severity }}</span></td>
+                <td class="subtle">{{ rf.category }}</td>
+                <td style="font-weight:800">{{ rf.title }}</td>
+                <td class="subtle">{{ rf.detail }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="good">No red flags detected.</div>
+      {% endif %}
+      <div class="hr"></div>
+
+      {# ── Email to Mo ── #}
+      <h2>Email to Mo</h2>
+      <div class="subtle" style="margin-bottom:10px">If flagged, copy this template and send to Mo.</div>
+      <div class="email-card">
+        <div id="mo-email" class="email-body">INTAKE FLAG: {{ intake.project_name }} — {{ intake.architect_name or "Architect TBD" }}
+
+Client: {{ intake.client_name or "—" }}
+Inquiry date: {{ intake.inquiry_date or "—" }}
+
+Red flags:
+{% if intake.red_flags %}
+{% for rf in intake.red_flags %}- ({{ rf.severity }}) {{ rf.title }} — {{ rf.detail }}
+{% endfor %}
+{% else %}- None
+{% endif %}
+
+Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline?</div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn btn-copy-email" type="button" id="copy-email-btn" onclick="buildMoEmail()">
+          <span id="copy-btn-text">Copy to Clipboard</span>
+          <span id="copy-btn-check" style="display:none">&#10003; Copied!</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# ── Project Intelligence card (Phase 2 fields) ── #}
+  {% set _ce = complexity_estimate %}
+  {% if fee_range_estimate or (_ce and _ce != 'unknown') or cognasync_estimate %}
+  <div class="card pi-card" style="margin-top:14px">
+    <div class="pi-header">
+      <span class="pi-icon">&#9650;</span>
+      <span class="pi-title">Project Intelligence</span>
+      <span class="subtle small" style="margin-left:6px">Preliminary estimates — Mo confirms final fee</span>
+    </div>
+    <div class="pi-body">
+      {% if fee_range_estimate %}
+      <div class="pi-item">
+        <div class="subtle">Estimated Fee Range</div>
+        <div class="pi-value">{{ fee_range_estimate }}</div>
+        <div class="subtle small" style="margin-top:2px">Based on historical $/SF rates</div>
+      </div>
+      {% endif %}
+      {% if _ce and _ce != 'unknown' %}
+      <div class="pi-item">
+        <div class="subtle">Complexity Estimate</div>
+        <div class="pi-value" style="margin-top:4px">
+          {% if _ce == 'low' %}
+            <span class="badge badge-low">low</span>
+          {% elif _ce == 'medium' %}
+            <span class="badge badge-high">medium</span>
+          {% elif _ce == 'high' %}
+            <span class="badge badge-critical">high</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    {# ── Cognasync Fee Estimator ── #}
+    {% if cognasync_estimate %}
+    {% set cfe = cognasync_estimate %}
+    <div class="hr" style="margin:14px 0 10px"></div>
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px">
+      <span style="font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--accent,#4f8ef7)">Risk-Adjusted Fee Estimator</span>
+      <span class="subtle small">risk-adjusted $/SF model</span>
+    </div>
+    <div class="pi-body" style="gap:12px">
+      <div class="pi-item">
+        <div class="subtle">Suggested Fee Range</div>
+        <div class="pi-value" style="font-size:1.35rem; font-weight:800">
+          ${{ "{:,.0f}".format(cfe.suggested_fee_range.low) }} – ${{ "{:,.0f}".format(cfe.suggested_fee_range.high) }}
+        </div>
+        <div class="subtle small" style="margin-top:2px">Low · High (±10% / +20%)</div>
+      </div>
+      <div class="pi-item">
+        <div class="subtle">Base (before risk)</div>
+        <div class="pi-value">${{ "{:,.0f}".format(cfe.estimated_base) }}</div>
+      </div>
+      <div class="pi-item">
+        <div class="subtle">Risk multiplier</div>
+        <div class="pi-value" style="color:{% if cfe.risk_adjustment_factor > 1.5 %}#e57373{% elif cfe.risk_adjustment_factor > 1.2 %}#ffb74d{% else %}#4caf7d{% endif %}">
+          {{ cfe.risk_adjustment_factor }}×
+        </div>
+      </div>
+      {% if cfe.location_factor > 1.0 %}
+      <div class="pi-item">
+        <div class="subtle">Location mod</div>
+        <div class="pi-value">{{ cfe.location_factor }}×</div>
+      </div>
+      {% endif %}
+    </div>
+    {% if cfe.warnings %}
+    <div style="margin-top:10px; padding:8px 12px; background:rgba(229,115,115,0.10); border-left:3px solid #e57373; border-radius:4px">
+      <div class="subtle small" style="margin-bottom:4px; font-weight:700; color:#e57373">Risk flags driving adjustment</div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px">
+        {% for w in cfe.warnings %}
+          <span class="badge badge-high" style="font-size:11px">{{ w.replace('_', ' ') }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+  </div>
+  {% endif %}
+
+  {# ── Mo Decision ── #}
+  {% if intake.mo_decision %}
+    {% set _d = intake.mo_decision | lower %}
+    {% if 'proceed' in _d and 'condition' not in _d %}
+      {% set decision_class = "mo-banner mo-banner-proceed" %}
+    {% elif 'decline' in _d %}
+      {% set decision_class = "mo-banner mo-banner-decline" %}
+    {% elif 'clarif' in _d %}
+      {% set decision_class = "mo-banner mo-banner-clarify" %}
+    {% elif 'condition' in _d %}
+      {% set decision_class = "mo-banner mo-banner-conditions" %}
+    {% else %}
+      {% set decision_class = "mo-banner mo-banner-neutral" %}
+    {% endif %}
+  <div class="{{ decision_class }}" style="margin-top:14px">
+    <div class="mo-banner-label">Mo Decision</div>
+    <div class="mo-banner-decision">{{ intake.mo_decision }}</div>
+    <div class="mo-banner-meta">Reviewed {{ intake.mo_reviewed_at }}</div>
+    {% if intake.mo_conditions %}
+      <div class="hr" style="margin:12px 0; opacity:.4"></div>
+      <div class="subtle">Conditions</div>
+      <div style="margin-top:4px">{{ intake.mo_conditions }}</div>
+    {% endif %}
+    {% if intake.mo_notes %}
+      <div class="hr" style="margin:12px 0; opacity:.4"></div>
+      <div class="subtle">Notes</div>
+      <div style="margin-top:4px">{{ intake.mo_notes }}</div>
+    {% endif %}
+    {% if intake.mo_fee_decision %}
+      <div class="hr" style="margin:12px 0; opacity:.4"></div>
+      <div class="subtle">Fee decision</div>
+      {% if intake.mo_fee_decision == 'ACCEPTED' %}
+        <div style="margin-top:4px; font-weight:700; color:#4caf7d">Accepted suggested range</div>
+        {% if cognasync_estimate %}
+        <div class="subtle small">${{ "{:,.0f}".format(cognasync_estimate.suggested_fee_range.low) }} – ${{ "{:,.0f}".format(cognasync_estimate.suggested_fee_range.high) }}</div>
+        {% endif %}
+      {% elif intake.mo_fee_decision == 'OVERRIDE' and intake.mo_fee_override %}
+        <div style="margin-top:4px; font-weight:700; color:#ffb74d">Mo override: ${{ "{:,.0f}".format(intake.mo_fee_override | float) }}</div>
+      {% elif intake.mo_fee_decision == 'DECLINED' %}
+        <div style="margin-top:4px; font-weight:700; color:#888">Deferred — fee not set at this stage</div>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="card mo-pending" style="margin-top:14px">
+    <div class="mo-pending-inner">
+      <div>
+        <div style="font-size:16px; font-weight:700; margin-bottom:4px">Mo Decision</div>
+        <div class="subtle">No decision recorded yet.</div>
+      </div>
+      <a class="btn btn-primary btn-mo-decide" href="/intakes/{{ intake.id }}/mo-review">Record Mo Decision</a>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Proposal Prep Card ── #}
+  {% if intake.status in ('PROCEED_TO_PROPOSAL', 'PROCEED_WITH_CONDITIONS') %}
+  {% set _cl = proposal_checklist %}
+  {% set _checked = (_cl.get('rfp_extracted', False)|int) + (_cl.get('project_classified', False)|int) + (_cl.get('complexity_assessed', False)|int) + (_cl.get('fee_estimated', False)|int) + (_cl.get('scope_items_determined', False)|int) + (_cl.get('proposal_drafted', False)|int) + (_cl.get('proposal_sent', False)|int) %}
+  <div class="card" id="proposal-prep" style="margin-top:14px">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
+      <h2 style="margin:0">Proposal Prep</h2>
+      <span class="pill" style="font-weight:700">{{ _checked }} of 7 complete</span>
+    </div>
+    {% if proposal_completed_at %}
+    <div style="background:#0d3d20; border:1px solid #1a7a3a; border-radius:6px; padding:10px 14px; margin-bottom:12px; color:#4caf7d; font-weight:600; font-size:14px">
+      Proposal completed on {{ proposal_completed_at[:10] }}
+    </div>
+    {% endif %}
+    <div style="background:rgba(255,255,255,0.08); border-radius:6px; height:6px; margin-bottom:14px; overflow:hidden">
+      <div style="background:var(--accent,#4f8ef7); height:100%; width:{{ (_checked / 7 * 100)|int }}%; transition:width .3s"></div>
+    </div>
+
+    {# Summary info #}
+    <div class="row row-2" style="margin-bottom:10px">
+      <div><div class="subtle">Project type</div><div>{{ answers.get('project_type') or '—' }}</div></div>
+      {% if complexity_estimate and complexity_estimate != 'unknown' %}
+      <div>
+        <div class="subtle">Complexity</div>
+        <div>
+          {% if complexity_estimate == 'low' %}<span class="badge badge-low">low</span>
+          {% elif complexity_estimate == 'medium' %}<span class="badge badge-high">medium</span>
+          {% elif complexity_estimate == 'high' %}<span class="badge badge-critical">high</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    <div class="row row-2" style="margin-bottom:10px">
+      {% if fee_range_estimate %}
+      <div><div class="subtle">Fee range estimate</div><div>{{ fee_range_estimate }}</div></div>
+      {% endif %}
+      {% if answers.get('approx_sf') %}
+      <div><div class="subtle">Square footage</div><div>{{ answers.get('approx_sf') }} SF</div></div>
+      {% endif %}
+    </div>
+    {% if answers.get('est_construction_cost') %}
+    <div style="margin-bottom:10px">
+      <div class="subtle">Est. construction cost</div>
+      <div>${{ answers.get('est_construction_cost') }}</div>
+    </div>
+    {% endif %}
+
+    <div class="hr"></div>
+
+    {# Checklist #}
+    <form method="POST" action="/intakes/{{ intake.id }}/proposal-checklist">
+      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px">
+        {% set items = [
+          ('rfp_extracted',          'RFP data extracted (project name, location, SF, building type)'),
+          ('project_classified',     'Project classified (new construction or BTS)'),
+          ('complexity_assessed',    'Complexity assessed (low / medium / high)'),
+          ('fee_estimated',          'Fee estimated using tier matrix'),
+          ('scope_items_determined', 'Scope items determined (A–G or A–H)'),
+          ('proposal_drafted',       'Proposal drafted using standard template'),
+          ('proposal_sent',          'Proposal sent to client'),
+        ] %}
+        {% for key, label in items %}
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer">
+          <input type="checkbox" name="{{ key }}" {% if _cl.get(key) %}checked{% endif %}
+                 style="width:16px; height:16px; accent-color:var(--accent,#4f8ef7); cursor:pointer">
+          <span style="{% if _cl.get(key) %}opacity:.5; text-decoration:line-through{% endif %}">{{ label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <button type="submit" class="btn btn-primary">Save checklist</button>
+    </form>
+  </div>
+  {% endif %}
+
+{% endblock %}

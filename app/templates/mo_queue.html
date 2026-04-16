@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block content %}
+  <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:18px; flex-wrap:wrap">
+    <div>
+      <div style="font-size:22px; font-weight:900; letter-spacing:-.3px">Mo's Queue</div>
+      <div class="subtle">Pending review — oldest first</div>
+    </div>
+    {% if intakes %}
+      <span class="mo-badge" style="font-size:14px; padding:4px 12px; height:auto">{{ intakes|length }} pending</span>
+    {% endif %}
+  </div>
+
+  {% if not intakes %}
+    <div class="card" style="text-align:center; padding:56px 20px">
+      <div class="empty-title">Queue is clear</div>
+      <div class="empty-sub">No intakes pending Mo's review</div>
+      <a class="btn" href="/">Back to dashboard</a>
+    </div>
+  {% endif %}
+
+  {% for intake in intakes %}
+    {% set days = intake.inquiry_date | days_ago %}
+    {% if days is not none %}
+      {% if days > 10 %}
+        {% set aging_border = "border-left: 4px solid #ef4444;" %}
+      {% elif days > 5 %}
+        {% set aging_border = "border-left: 4px solid #f59e0b;" %}
+      {% else %}
+        {% set aging_border = "" %}
+      {% endif %}
+    {% else %}
+      {% set aging_border = "" %}
+    {% endif %}
+    <div class="card mo-queue-card" style="{{ aging_border }}">
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap">
+        <div>
+          <span style="display:flex; align-items:center; gap:6px">
+            <a class="mo-queue-title" href="/intakes/{{ intake.id }}" style="color:var(--text)">{{ intake.project_name }}</a>
+            {% if days is not none and days > 10 %}
+              <span style="font-size:10px; font-weight:700; padding:1px 6px; border-radius:3px; background:#fca5a5; color:#7f1d1d; text-transform:uppercase; letter-spacing:.5px">Aging</span>
+            {% endif %}
+          </span>
+          <div class="mo-queue-meta">
+            {{ intake.client_name or "—" }}{% if intake.architect_name %} · {{ intake.architect_name }}{% endif %}
+          </div>
+          {% if intake.location_region %}
+            <div class="mo-queue-meta">{{ intake.location_region }}</div>
+          {% endif %}
+          <div class="mo-queue-meta">
+            Inquiry: {{ intake.inquiry_date or "—" }}
+            {% if days is not none %}
+              <span style="color:{% if days > 14 %}#fca5a5{% elif days > 7 %}#fde68a{% else %}var(--muted){% endif %}">
+                ({{ days }}d ago)
+              </span>
+            {% endif %}
+          </div>
+        </div>
+        <div style="text-align:right; font-size:12px; color:var(--muted); font-family:var(--mono)">#{{ intake.id }}</div>
+      </div>
+
+      {% if intake.red_flags %}
+        <div class="mo-queue-flags">
+          {% for flag in intake.red_flags %}
+            <span class="{{ flag.severity | badge_class }}">{{ flag.severity | upper }} {{ flag.title }}</span>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <div class="hr"></div>
+
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); margin-bottom:4px">Auto recommendation</div>
+        <div style="font-weight:800; font-size:15px">{{ intake.recommendation or "—" }}</div>
+        {% if intake.recommendation_reason %}
+          <div class="subtle" style="margin-top:3px">{{ intake.recommendation_reason }}</div>
+        {% endif %}
+      </div>
+
+      <form method="post" action="/intakes/{{ intake.id }}/mo-review" id="form-{{ intake.id }}">
+        <input type="hidden" name="redirect_after" value="/mo-queue" />
+
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
+          <button class="btn btn-proceed" type="submit" name="mo_decision" value="PROCEED">Proceed</button>
+          <button class="btn btn-decline" type="submit" name="mo_decision" value="DECLINE">Decline</button>
+          <button class="btn btn-moreinfo" type="submit" name="mo_decision" value="REQUEST_CLARIFICATION">Need More Info</button>
+        </div>
+
+        <div>
+          <button type="button" class="mo-notes-toggle" onclick="toggleNotes('notes-{{ intake.id }}', this)">+ Add notes or conditions</button>
+          <div class="mo-notes-area" id="notes-{{ intake.id }}" style="display:none">
+            <div class="row row-2" style="margin-top:8px">
+              <div class="field">
+                <label>Notes</label>
+                <textarea name="mo_notes" rows="3"></textarea>
+              </div>
+              <div class="field">
+                <label>Conditions</label>
+                <input type="text" name="mo_conditions" placeholder="Optional" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  {% endfor %}
+
+  <script>
+  function toggleNotes(id, btn) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var hidden = el.style.display === 'none';
+    el.style.display = hidden ? 'block' : 'none';
+    btn.textContent = hidden ? '− Hide notes' : '+ Add notes or conditions';
+  }
+  </script>
+{% endblock %}

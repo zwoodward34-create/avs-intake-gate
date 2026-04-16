@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>Mo review</h2>
+    <div style="font-weight:900; font-size:18px">{{ intake.project_name }}</div>
+    <div class="subtle">{{ intake.client_name or "—" }} • {{ intake.architect_name or "—" }}</div>
+    <div class="hr"></div>
+    <div class="subtle">Auto recommendation</div>
+    <div style="font-weight:800">{{ intake.recommendation or "—" }}</div>
+    <div class="subtle">{{ intake.recommendation_reason or "" }}</div>
+    <div class="hr"></div>
+
+    {# ── Fee Estimate Panel ── #}
+    {% if fee_estimate %}
+    {% set fe = fee_estimate %}
+    <div style="background:rgba(79,142,247,0.07); border:1px solid rgba(79,142,247,0.25); border-radius:8px; padding:14px 16px; margin-bottom:16px">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px">
+        <span style="font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--accent,#4f8ef7)">Risk-Adjusted Fee Estimate</span>
+        <span class="subtle small">for review &amp; approval</span>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:18px; margin-bottom:10px">
+        <div>
+          <div class="subtle small">Suggested range</div>
+          <div style="font-size:1.4rem; font-weight:900">${{ "{:,.0f}".format(fe.suggested_fee_range.low) }} – ${{ "{:,.0f}".format(fe.suggested_fee_range.high) }}</div>
+        </div>
+        <div>
+          <div class="subtle small">Base (pre-risk)</div>
+          <div style="font-size:1.1rem; font-weight:700">${{ "{:,.0f}".format(fe.estimated_base) }}</div>
+        </div>
+        <div>
+          <div class="subtle small">Risk multiplier</div>
+          <div style="font-size:1.1rem; font-weight:700; color:{% if fe.risk_adjustment_factor > 1.5 %}#e57373{% elif fe.risk_adjustment_factor > 1.2 %}#ffb74d{% else %}#4caf7d{% endif %}">{{ fe.risk_adjustment_factor }}×</div>
+        </div>
+        {% if fe.location_factor > 1.0 %}
+        <div>
+          <div class="subtle small">Location mod</div>
+          <div style="font-size:1.1rem; font-weight:700">{{ fe.location_factor }}×</div>
+        </div>
+        {% endif %}
+      </div>
+      {% if fe.warnings %}
+      <div style="display:flex; flex-wrap:wrap; gap:5px">
+        {% for w in fe.warnings %}
+          <span class="badge badge-high" style="font-size:11px">{{ w.replace('_', ' ') }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <form method="post" action="/intakes/{{ intake.id }}/mo-review">
+      {% if mo_passcode_enabled %}
+        <div class="field">
+          <label>Mo passcode</label>
+          <input type="text" name="mo_passcode" placeholder="Required" />
+        </div>
+      {% endif %}
+
+      <div class="row row-2">
+        <div class="field">
+          <label>Decision *</label>
+          <select name="mo_decision" required>
+            <option value="PROCEED" {% if intake.mo_decision == 'PROCEED' %}selected{% endif %}>Proceed to proposal</option>
+            <option value="PROCEED_WITH_CONDITIONS" {% if intake.mo_decision == 'PROCEED_WITH_CONDITIONS' %}selected{% endif %}>Proceed with conditions</option>
+            <option value="REQUEST_CLARIFICATION" {% if intake.mo_decision == 'REQUEST_CLARIFICATION' %}selected{% endif %}>Request clarification</option>
+            <option value="DECLINE" {% if intake.mo_decision == 'DECLINE' %}selected{% endif %}>Decline</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Conditions (if any)</label>
+          <input type="text" name="mo_conditions" value="{{ intake.mo_conditions or '' }}" />
+        </div>
+      </div>
+
+      {# ── Fee Decision ── #}
+      {% if fee_estimate %}
+      <div style="border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:14px 16px; margin-bottom:14px">
+        <div style="font-size:13px; font-weight:700; margin-bottom:10px">Fee decision</div>
+        {% set fd = intake.mo_fee_decision %}
+        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px">
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer">
+            <input type="radio" name="mo_fee_decision" value="ACCEPTED"
+                   {% if fd == 'ACCEPTED' or not fd %}checked{% endif %}
+                   onchange="toggleFeeOverride(this)" />
+            <span>Accept suggested range &nbsp;<strong>${{ "{:,.0f}".format(fee_estimate.suggested_fee_range.low) }} – ${{ "{:,.0f}".format(fee_estimate.suggested_fee_range.high) }}</strong></span>
+          </label>
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer">
+            <input type="radio" name="mo_fee_decision" value="OVERRIDE"
+                   {% if fd == 'OVERRIDE' %}checked{% endif %}
+                   onchange="toggleFeeOverride(this)" />
+            <span>Override with my own fee</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer">
+            <input type="radio" name="mo_fee_decision" value="DECLINED"
+                   {% if fd == 'DECLINED' %}checked{% endif %}
+                   onchange="toggleFeeOverride(this)" />
+            <span>Decline to set fee at this stage</span>
+          </label>
+        </div>
+        <div id="fee-override-wrap" style="display:{% if fd == 'OVERRIDE' %}block{% else %}none{% endif %}">
+          <label style="display:block; margin-bottom:4px; font-size:13px" class="subtle">Mo's fee ($)</label>
+          <input type="number" name="mo_fee_override" min="0" step="100"
+                 value="{{ intake.mo_fee_override or '' }}"
+                 placeholder="e.g. 42000"
+                 style="width:220px; padding:8px 10px; background:var(--surface2,#1e2a1e); border:1px solid rgba(255,255,255,0.18); border-radius:6px; color:inherit; font-size:15px" />
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="field">
+        <label>Notes</label>
+        <textarea name="mo_notes">{{ intake.mo_notes or '' }}</textarea>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap">
+        <a class="btn" href="/intakes/{{ intake.id }}">Back</a>
+        <button class="btn btn-primary" type="submit">Save Mo decision</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    function toggleFeeOverride(radio) {
+      document.getElementById('fee-override-wrap').style.display =
+        radio.value === 'OVERRIDE' ? 'block' : 'none';
+    }
+  </script>
+{% endblock %}

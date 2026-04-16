@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/python scripts/self_check.py)",
+      "Bash(.venv/bin/uvicorn app.main:app --reload --port 8000)",
+      "Bash(.venv/bin/python -m uvicorn app.main:app --reload --port 8000)",
+      "Bash(.venv/bin/python -m uvicorn app.main:app --reload --port 8001)",
+      "Bash(ls /Users/woodwardfamily/Documents/Claude/avs-intake-gate/*.py)",
+      "Bash(.venv/bin/python -m uvicorn app.main:app --port 8000 --reload)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/)",
+      "Bash(lsof -iTCP:8000 -sTCP:LISTEN)",
+      "Bash(curl -s http://localhost:8000/reports)",
+      "Bash(python3:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/reports)",
+      "Bash(curl -s http://localhost:8000/)",
+      "Bash(curl -s http://localhost:8000/intakes/3)",
+      "Bash(ls .venv/bin/python*)"
+    ]
+  }
+}
