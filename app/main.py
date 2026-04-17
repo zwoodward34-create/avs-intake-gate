@@ -163,8 +163,35 @@ def intake_new(request: Request) -> HTMLResponse:
             "intake": None,
             "answers": {},
             "now_local": _now_local_iso(),
+            "project_templates": db.list_templates(),
         },
     )
+
+
+@app.get("/api/templates")
+def api_list_templates() -> list[dict[str, Any]]:
+    return [{"id": t.id, "name": t.name, "description": t.description, "answers": t.answers}
+            for t in db.list_templates()]
+
+
+@app.post("/api/templates")
+async def api_create_template(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Template name is required.")
+    template_id = db.create_template(
+        name=name,
+        description=(body.get("description") or "").strip(),
+        answers=body.get("answers") or {},
+    )
+    return {"template_id": template_id}
+
+
+@app.delete("/api/templates/{template_id}")
+def api_delete_template(template_id: int) -> dict[str, Any]:
+    db.delete_template(template_id)
+    return {"deleted": template_id}
 
 
 @app.post("/intakes")

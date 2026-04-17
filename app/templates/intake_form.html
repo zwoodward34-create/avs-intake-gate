@@ -1,6 +1,55 @@
 {% extends "base.html" %}
 {% block content %}
-  <form method="post" action="{% if mode == 'edit' %}/intakes/{{ intake.id }}{% else %}/intakes{% endif %}">
+
+{% if mode == 'new' and project_templates %}
+<div class="card" style="margin-bottom:14px;">
+  <h2 style="margin-top:0;">Apply a template</h2>
+  <p class="subtle">Select a saved template to pre-fill the form for a repeat client or project type.</p>
+  <div class="row row-2" style="align-items:flex-end;">
+    <div class="field" style="margin:0;">
+      <label>Template</label>
+      <select id="template-select">
+        <option value="">— choose a template —</option>
+        {% for tpl in project_templates %}
+        <option value="{{ tpl.id }}"
+          data-answers="{{ tpl.answers_json | e }}"
+        >{{ tpl.name }}{% if tpl.description %} — {{ tpl.description }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+      <button type="button" class="btn btn-primary" onclick="applyTemplate()">Apply</button>
+      <button type="button" class="btn btn-danger" onclick="deleteTemplate()">Delete</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if mode == 'new' %}
+<div style="margin-bottom:14px;text-align:right;">
+  <button type="button" class="btn" onclick="openSaveTemplate()">+ Save form as template</button>
+</div>
+<div id="template-modal" style="display:none;" class="card" style="margin-bottom:14px;">
+  <h2 style="margin-top:0;">Save as template</h2>
+  <div class="row row-2">
+    <div class="field">
+      <label>Template name *</label>
+      <input type="text" id="tpl-name" placeholder="e.g. Sprouts Retail" />
+    </div>
+    <div class="field">
+      <label>Description (optional)</label>
+      <input type="text" id="tpl-desc" placeholder="e.g. Standard rollout project" />
+    </div>
+  </div>
+  <div class="form-actions" style="margin-top:8px;">
+    <button type="button" class="btn" onclick="closeSaveTemplate()">Cancel</button>
+    <button type="button" class="btn btn-primary" onclick="saveTemplate()">Save template</button>
+  </div>
+  <div id="tpl-status" class="subtle" style="margin-top:6px;min-height:18px;"></div>
+</div>
+{% endif %}
+
+  <form method="post" action="{% if mode == 'edit' %}/intakes/{{ intake.id }}{% else %}/intakes{% endif %}" id="intake-form">
     <p class="form-instruction">Fill out project basics and check any quick flags. Use detailed screening for complex or unfamiliar projects.</p>
     <div class="grid grid-2">
       <div class="card">
@@ -337,4 +386,93 @@
       <button class="btn btn-primary btn-submit" type="submit">{% if mode == 'edit' %}Save updates{% else %}Create intake{% endif %}</button>
     </div>
   </form>
+
+<script>
+  function _setField(name, value) {
+    const el = document.querySelector(`[name="${name}"]`);
+    if (!el || value === undefined || value === null) return;
+    if (el.type === 'checkbox') {
+      el.checked = Boolean(value);
+    } else {
+      el.value = String(value);
+    }
+  }
+
+  function applyTemplate() {
+    const sel = document.getElementById('template-select');
+    if (!sel || !sel.value) return;
+    const answers = JSON.parse(sel.options[sel.selectedIndex].dataset.answers || '{}');
+    const FILLABLE = [
+      'city', 'state', 'relationship_type', 'inquiry_source', 'primary_material',
+      'project_type', 'building_type', 'architect_status', 'architect_responsiveness',
+      'decision_maker_clarity', 'scope_definition', 'scope_risk_type', 'specialist_support',
+      'scope_creep_likelihood', 'schedule_realism', 'site_access', 'docs_commitment',
+      'capacity_available',
+    ];
+    const CHECKBOXES = [
+      'doc_geotech', 'doc_grading_plan', 'doc_arch_drawings',
+      'doc_existing_struct_drawings', 'doc_site_photos',
+      'doc_rfp_program', 'doc_site_plan', 'doc_prelim_schedule',
+    ];
+    FILLABLE.forEach(k => _setField(k, answers[k]));
+    CHECKBOXES.forEach(k => _setField(k, answers[k]));
+  }
+
+  async function deleteTemplate() {
+    const sel = document.getElementById('template-select');
+    if (!sel || !sel.value) return;
+    const label = sel.options[sel.selectedIndex].text;
+    if (!confirm(`Delete template "${label}"?`)) return;
+    await fetch(`/api/templates/${sel.value}`, { method: 'DELETE' });
+    window.location.reload();
+  }
+
+  function openSaveTemplate() {
+    document.getElementById('template-modal').style.display = 'block';
+  }
+  function closeSaveTemplate() {
+    document.getElementById('template-modal').style.display = 'none';
+  }
+
+  async function saveTemplate() {
+    const name = document.getElementById('tpl-name').value.trim();
+    const status = document.getElementById('tpl-status');
+    if (!name) { status.textContent = 'Template name is required.'; return; }
+
+    const form = document.getElementById('intake-form');
+    const fd = new FormData(form);
+    const answers = {};
+    const FILLABLE = [
+      'city', 'state', 'relationship_type', 'inquiry_source', 'primary_material',
+      'project_type', 'building_type', 'architect_status', 'architect_responsiveness',
+      'decision_maker_clarity', 'scope_definition', 'scope_risk_type', 'specialist_support',
+      'scope_creep_likelihood', 'schedule_realism', 'site_access', 'docs_commitment',
+      'capacity_available',
+    ];
+    const CHECKBOXES = [
+      'doc_geotech', 'doc_grading_plan', 'doc_arch_drawings',
+      'doc_existing_struct_drawings', 'doc_site_photos',
+      'doc_rfp_program', 'doc_site_plan', 'doc_prelim_schedule',
+    ];
+    FILLABLE.forEach(k => { const v = fd.get(k); if (v) answers[k] = v; });
+    CHECKBOXES.forEach(k => { answers[k] = fd.get(k) === 'on'; });
+
+    status.textContent = 'Saving...';
+    const res = await fetch('/api/templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        description: document.getElementById('tpl-desc').value.trim(),
+        answers,
+      }),
+    });
+    if (res.ok) {
+      status.textContent = 'Saved! Reloading...';
+      window.location.reload();
+    } else {
+      status.textContent = 'Failed to save template.';
+    }
+  }
+</script>
 {% endblock %}

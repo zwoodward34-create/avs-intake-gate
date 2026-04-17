@@ -251,6 +251,58 @@ def set_proposal_checklist(
     )
 
 
+@dataclass(frozen=True)
+class TemplateRow:
+    id: int
+    created_at: str
+    name: str
+    description: str
+    answers_json: str
+
+    @property
+    def answers(self) -> dict[str, Any]:
+        return json.loads(self.answers_json or "{}")
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "TemplateRow":
+        return cls(
+            id=d["id"],
+            created_at=d["created_at"],
+            name=d["name"],
+            description=d.get("description") or "",
+            answers_json=d.get("answers_json") or "{}",
+        )
+
+
+def list_templates() -> list[TemplateRow]:
+    resp = (
+        _client()
+        .table("templates")
+        .select("*")
+        .order("name")
+        .execute()
+    )
+    return [TemplateRow.from_dict(r) for r in resp.data]
+
+
+def create_template(*, name: str, description: str, answers: dict[str, Any]) -> int:
+    resp = (
+        _client()
+        .table("templates")
+        .insert({
+            "name": name,
+            "description": description,
+            "answers_json": json.dumps(answers, ensure_ascii=False),
+        })
+        .execute()
+    )
+    return int(resp.data[0]["id"])
+
+
+def delete_template(template_id: int) -> None:
+    _client().table("templates").delete().eq("id", template_id).execute()
+
+
 def set_mo_review(
     intake_id: int,
     *,
