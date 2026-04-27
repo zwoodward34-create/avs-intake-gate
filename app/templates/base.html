@@ -17,6 +17,7 @@
           <div class="title"><a href="/">AVS Intake Gate</a></div>
           <div class="subtle">Live intake dashboard • {{ now_local }}</div>
         </div>
+        {% if not hide_nav_actions %}
         <div class="actions">
           <a class="btn" href="/">Home</a>
           <a class="btn btn-primary" href="/intakes/new">New intake</a>
@@ -31,6 +32,7 @@
             {% endif %}
           </a>
         </div>
+        {% endif %}
       </div>
       {% block content %}{% endblock %}
     </div>

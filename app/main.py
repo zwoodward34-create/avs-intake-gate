@@ -137,7 +137,7 @@ def _startup() -> None:
 def launch(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         "launch.html",
-        {"request": request, "now_local": _now_local_iso()},
+        {"request": request, "now_local": _now_local_iso(), "hide_nav_actions": True},
     )
 
 
