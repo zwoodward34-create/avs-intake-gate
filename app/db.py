@@ -305,6 +305,10 @@ def create_template(*, name: str, description: str, answers: dict[str, Any]) -> 
     return int(resp.data[0]["id"])
 
 
+def delete_intake(intake_id: int) -> None:
+    _client().table("intakes").delete().eq("id", intake_id).execute()
+
+
 def delete_template(template_id: int) -> None:
     _client().table("templates").delete().eq("id", template_id).execute()
 

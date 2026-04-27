@@ -204,6 +204,15 @@ def api_delete_template(template_id: int) -> dict[str, Any]:
     return {"deleted": template_id}
 
 
+@app.delete("/api/intakes/{intake_id}")
+def api_delete_intake(intake_id: int) -> dict[str, Any]:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    db.delete_intake(intake_id)
+    return {"deleted": intake_id}
+
+
 @app.post("/intakes")
 async def intake_create(request: Request) -> RedirectResponse:
     form = await request.form()

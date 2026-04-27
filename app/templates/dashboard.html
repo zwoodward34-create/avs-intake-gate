@@ -1,5 +1,62 @@
 {% extends "base.html" %}
 {% block content %}
+
+<!-- Delete confirmation modal -->
+<dialog id="delete-modal" style="border:none; border-radius:10px; padding:0; background:#1a1f2e; color:#e2e8f0; box-shadow:0 20px 60px rgba(0,0,0,.6); max-width:420px; width:90%">
+  <div style="padding:28px 28px 20px">
+    <div style="font-size:17px; font-weight:700; margin-bottom:10px; color:#f1f5f9">Delete Intake?</div>
+    <div style="font-size:14px; color:#94a3b8; line-height:1.5">
+      You are about to permanently delete <strong id="delete-modal-name" style="color:#f1f5f9"></strong>.
+      This cannot be undone and the project will be removed from all reports.
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:22px">
+      <button id="delete-modal-cancel" class="btn" style="font-size:13px">Cancel</button>
+      <button id="delete-modal-confirm" class="btn" style="font-size:13px; background:#ef4444; color:#fff; border-color:#ef4444">Delete</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  var pendingId = null;
+  var modal = document.getElementById('delete-modal');
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.delete-intake-btn');
+    if (!btn) return;
+    pendingId = btn.dataset.id;
+    document.getElementById('delete-modal-name').textContent = btn.dataset.name;
+    modal.showModal();
+  });
+
+  document.getElementById('delete-modal-cancel').addEventListener('click', function () {
+    modal.close();
+    pendingId = null;
+  });
+
+  document.getElementById('delete-modal-confirm').addEventListener('click', async function () {
+    if (!pendingId) return;
+    var id = pendingId;
+    modal.close();
+    pendingId = null;
+    try {
+      var resp = await fetch('/api/intakes/' + id, { method: 'DELETE' });
+      if (resp.ok) {
+        var row = document.querySelector('tr[data-intake-id="' + id + '"]');
+        if (row) row.remove();
+      } else {
+        alert('Delete failed. Please try again.');
+      }
+    } catch (err) {
+      alert('Network error. Please try again.');
+    }
+  });
+
+  modal.addEventListener('click', function (e) {
+    if (e.target === modal) { modal.close(); pendingId = null; }
+  });
+})();
+</script>
   <div class="stat-row">
     <a class="stat-card stat-all" href="/dashboard">
       <div class="stat-num">{{ (counts.values()|sum) if counts else 0 }}</div>
@@ -45,6 +102,7 @@
           <th>Recommendation</th>
           <th>Red flags</th>
           <th>Updated</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -61,7 +119,7 @@
           {% else %}
             {% set aging_border = "" %}
           {% endif %}
-          <tr class="table-row" style="{{ aging_border }}">
+          <tr class="table-row" data-intake-id="{{ i.id }}" style="{{ aging_border }}">
             <td><a href="/intakes/{{ i.id }}">#{{ i.id }}</a></td>
             <td>
               <div class="project-name" style="display:flex; align-items:center; gap:6px">
@@ -93,11 +151,20 @@
               {% endif %}
             </td>
             <td class="subtle">{{ i.updated_at }}</td>
+            <td>
+              <button
+                class="btn delete-intake-btn"
+                data-id="{{ i.id }}"
+                data-name="{{ i.project_name | e }}"
+                style="font-size:12px; padding:3px 10px; color:#ef4444; border-color:#ef4444; background:transparent"
+                title="Delete intake"
+              >Delete</button>
+            </td>
           </tr>
         {% endfor %}
         {% if not intakes %}
           <tr>
-            <td colspan="7">
+            <td colspan="8">
               <div class="empty-state">
                 <div class="empty-title">No project intakes yet</div>
                 <div class="empty-sub">Submit your first intake to start screening projects</div>
