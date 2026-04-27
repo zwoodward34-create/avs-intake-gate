@@ -3,6 +3,74 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <style>
+  /* ── Restore original dark theme for this page ──────────────────────── */
+  body{
+    --bg:             #0F2113;
+    --card-bg:        rgba(255,255,255,0.07);
+    --card-bg-deeper: rgba(255,255,255,0.04);
+    --border:         rgba(255,255,255,0.10);
+    --border-hover:   rgba(255,255,255,0.18);
+    --blur:           blur(20px);
+    --radius:         20px;
+    --radius-sm:      12px;
+    --text:           #FFFFFF;
+    --muted:          rgba(255,255,255,0.55);
+    --subtle:         rgba(255,255,255,0.35);
+    --accent:         #00E5FF;
+    --good:           #00E676;
+    --warn:           #FFD740;
+    --bad:            #FF5252;
+    --needs-info:     #00E5FF;
+    --conditions:     #64FFDA;
+    --text-muted:     rgba(255,255,255,0.35);
+
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(ellipse 90% 55% at 15% 0%,  rgba(0,230,118,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 85% 90%, rgba(0,229,255,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 35% at 50% 50%, rgba(15,33,19,1)     0%, transparent 100%);
+    color: var(--text);
+  }
+  /* topbar — remove light-theme border */
+  .topbar{ border-bottom:none; padding-bottom:0; margin-bottom:20px }
+  .title a{ color:var(--text) }
+  /* restore glassmorphism on cards */
+  .card{
+    background: var(--card-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    box-shadow:none;
+    position:relative; overflow:hidden;
+  }
+  .card::before{
+    content:''; position:absolute; inset:0; border-radius:inherit;
+    background:linear-gradient(135deg,rgba(255,255,255,0.06) 0%,transparent 55%);
+    pointer-events:none;
+  }
+  /* restore glassmorphism on nav buttons */
+  .btn{
+    background: var(--card-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    border:1px solid var(--border);
+    color:var(--text); font-size:14px; border-radius:var(--radius-sm);
+  }
+  .btn:hover{ border-color:var(--border-hover); background:rgba(255,255,255,0.11) }
+  .btn-primary{ border-color:rgba(0,229,255,.40); background:rgba(0,229,255,.10); color:var(--text) }
+  .btn-primary:hover{ border-color:rgba(0,229,255,.65); background:rgba(0,229,255,.17) }
+  /* table hover */
+  .table-row:hover td{ background:rgba(0,229,255,0.05) }
+  .table tbody .table-row:nth-child(even) td{ background:rgba(255,255,255,0.018) }
+  .table tbody .table-row:nth-child(even):hover td{ background:rgba(0,229,255,0.05) }
+  .table th{ background:transparent; color:var(--muted) }
+  /* badge */
+  .badge{ background:rgba(255,255,255,0.05); border-color:var(--border); border-radius:999px }
+  .badge-low{ border-color:rgba(0,230,118,.40); color:#00E676; background:rgba(0,230,118,.08) }
+  /* mo badge */
+  .mo-badge{ border-radius:999px; background:rgba(255,215,64,.20); border-color:rgba(255,215,64,.45); color:#FFD740 }
+
   /* ── report-local tokens ────────────────────────────────────────────── */
   .rpt-section-label{
     font-size:.7rem; font-weight:700; letter-spacing:1.2px;
