@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="launch-hero">
+  <div class="launch-eyebrow">AVS Structural Engineers</div>
+  <div class="launch-title">Project Intake Gate</div>
+  <div class="launch-sub">Submit and track project proposals from inquiry through proposal delivery</div>
+</div>
+
+<div class="launch-grid">
+
+  <a class="launch-card launch-card-primary" href="/intakes/new">
+    <div class="launch-card-icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+    </div>
+    <div class="launch-card-title">New Project Proposal</div>
+    <div class="launch-card-desc">Submit a new intake for screening, red flag analysis, and fee estimation</div>
+  </a>
+
+  <a class="launch-card" href="/past-projects">
+    <div class="launch-card-icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+    </div>
+    <div class="launch-card-title">Past Projects</div>
+    <div class="launch-card-desc">Search completed projects by type, wall system, roof, slab, and foundation</div>
+  </a>
+
+  <a class="launch-card" href="/reports">
+    <div class="launch-card-icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+      </svg>
+    </div>
+    <div class="launch-card-title">Reports</div>
+    <div class="launch-card-desc">Pipeline metrics, monthly intake trends, and proposal turnaround stats</div>
+  </a>
+
+  <a class="launch-card" href="/mo-queue">
+    <div class="launch-card-icon" style="position:relative">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+      </svg>
+      {% set _mc = pending_mo_count() %}
+      {% if _mc > 0 %}
+        <span class="launch-mo-badge">{{ _mc }}</span>
+      {% endif %}
+    </div>
+    <div class="launch-card-title">
+      Mo's Queue
+      {% set _mc2 = pending_mo_count() %}
+      {% if _mc2 > 0 %}
+        <span class="mo-badge" style="margin-left:8px">{{ _mc2 }}</span>
+      {% endif %}
+    </div>
+    <div class="launch-card-desc">Review intakes pending Mo's decision and sign-off</div>
+  </a>
+
+</div>
+
+<div class="launch-footer">
+  <a href="/dashboard" class="launch-footer-link">View all intakes →</a>
+</div>
+
+{% endblock %}

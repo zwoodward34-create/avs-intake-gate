@@ -1,27 +1,27 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="stat-row">
-    <a class="stat-card stat-all" href="/">
+    <a class="stat-card stat-all" href="/dashboard">
       <div class="stat-num">{{ (counts.values()|sum) if counts else 0 }}</div>
       <div class="stat-label">All</div>
     </a>
-    <a class="stat-card stat-proceed" href="/?status=PROCEED_TO_PROPOSAL">
+    <a class="stat-card stat-proceed" href="/dashboard?status=PROCEED_TO_PROPOSAL">
       <div class="stat-num">{{ counts.get("PROCEED_TO_PROPOSAL", 0) }}</div>
       <div class="stat-label">Proceed</div>
     </a>
-    <a class="stat-card stat-mo" href="/?status=PENDING_MO_REVIEW">
+    <a class="stat-card stat-mo" href="/dashboard?status=PENDING_MO_REVIEW">
       <div class="stat-num">{{ counts.get("PENDING_MO_REVIEW", 0) }}</div>
       <div class="stat-label">Mo Review</div>
     </a>
-    <a class="stat-card stat-info" href="/?status=NEEDS_INFO">
+    <a class="stat-card stat-info" href="/dashboard?status=NEEDS_INFO">
       <div class="stat-num">{{ counts.get("NEEDS_INFO", 0) }}</div>
       <div class="stat-label">Needs Info</div>
     </a>
-    <a class="stat-card stat-conditions" href="/?status=PROCEED_WITH_CONDITIONS">
+    <a class="stat-card stat-conditions" href="/dashboard?status=PROCEED_WITH_CONDITIONS">
       <div class="stat-num">{{ counts.get("PROCEED_WITH_CONDITIONS", 0) }}</div>
       <div class="stat-label">With Conditions</div>
     </a>
-    <a class="stat-card stat-declined" href="/?status=DECLINED">
+    <a class="stat-card stat-declined" href="/dashboard?status=DECLINED">
       <div class="stat-num">{{ counts.get("DECLINED", 0) }}</div>
       <div class="stat-label">Declined</div>
     </a>

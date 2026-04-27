@@ -134,6 +134,14 @@ def _startup() -> None:
 
 
 @app.get("/", response_class=HTMLResponse)
+def launch(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "launch.html",
+        {"request": request, "now_local": _now_local_iso()},
+    )
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, status: Optional[str] = None) -> HTMLResponse:
     intakes = db.list_intakes(status=status)
     counts: dict[str, int] = {}

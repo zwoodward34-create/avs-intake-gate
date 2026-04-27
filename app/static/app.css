@@ -551,6 +551,79 @@ input[type="checkbox"]{
   color:var(--muted); font-size:14px;
 }
 
+/* ─── Launch page ───────────────────────────────────────────────────────── */
+.launch-hero{
+  text-align:center;
+  padding:56px 0 40px;
+}
+.launch-eyebrow{
+  font-size:12px; font-weight:700; letter-spacing:2px;
+  text-transform:uppercase; color:var(--accent);
+  margin-bottom:12px;
+}
+.launch-title{
+  font-size:36px; font-weight:900; color:var(--text);
+  margin-bottom:10px; line-height:1.1;
+}
+.launch-sub{
+  font-size:15px; color:var(--muted); max-width:480px;
+  margin:0 auto; line-height:1.6;
+}
+.launch-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px;
+  max-width:680px;
+  margin:0 auto;
+}
+.launch-card{
+  display:flex; flex-direction:column; gap:12px;
+  padding:28px 26px;
+  text-decoration:none;
+  border-radius:var(--radius);
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  backdrop-filter:var(--blur);
+  transition:border-color .15s, transform .15s, background .15s;
+}
+.launch-card:hover{
+  border-color:var(--border-hover);
+  background:rgba(255,255,255,0.10);
+  transform:translateY(-3px);
+}
+.launch-card-primary{
+  border-color:rgba(0,229,255,0.45);
+  background:rgba(0,229,255,0.07);
+}
+.launch-card-primary:hover{
+  border-color:var(--accent);
+  background:rgba(0,229,255,0.12);
+}
+.launch-card-icon{
+  color:var(--accent);
+  display:flex; align-items:center;
+}
+.launch-card-primary .launch-card-icon{ color:var(--accent); }
+.launch-card:not(.launch-card-primary) .launch-card-icon{ color:var(--muted); }
+.launch-card-title{
+  font-size:17px; font-weight:700; color:var(--text);
+  display:flex; align-items:center;
+}
+.launch-card-desc{
+  font-size:13px; color:var(--muted); line-height:1.55;
+}
+.launch-footer{
+  text-align:center; margin-top:28px; padding-bottom:20px;
+}
+.launch-footer-link{
+  font-size:13px; color:var(--muted); text-decoration:none;
+}
+.launch-footer-link:hover{ color:var(--text); }
+@media(max-width:560px){
+  .launch-grid{ grid-template-columns:1fr; }
+  .launch-title{ font-size:28px; }
+}
+
 /* ─── IFP calendar indicator (intake form) ──────────────────────────────── */
 .ifp-warning{
   font-size:13px; font-weight:600; color:var(--warn);
