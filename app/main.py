@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import db
+from . import project_search
 from .decision import compute_decision, complexity_estimate
 from .fee_estimator import cognasync_estimate_from_answers, check_fee_review_required
 
@@ -692,6 +693,60 @@ def reports(request: Request) -> HTMLResponse:
             "j_sev_values":     _json.dumps(severity_values),
         },
     )
+
+
+@app.get("/past-projects", response_class=HTMLResponse)
+def past_projects(request: Request) -> HTMLResponse:
+    import json as _json
+    error: Optional[str] = None
+    type_options = project_search.DEFAULT_TYPE_OPTIONS
+    total = 0
+    try:
+        data = project_search.get_projects()
+        type_options = data["type_options"]
+        total = data["total"]
+    except Exception as exc:
+        error = str(exc)
+
+    return templates.TemplateResponse(
+        "past_projects.html",
+        {
+            "request": request,
+            "now_local": _now_local_iso(),
+            "type_options_json": _json.dumps(type_options),
+            "type_keys": list(type_options.keys()),
+            "total": total,
+            "error": error,
+        },
+    )
+
+
+@app.get("/api/past-projects")
+def api_past_projects(
+    type: Optional[str] = None,
+    wallSystem: Optional[str] = None,
+    roof: Optional[str] = None,
+    slab: Optional[str] = None,
+    foundation: Optional[str] = None,
+    limit: int = 500,
+) -> dict[str, Any]:
+    filters = {
+        "type":        type or "",
+        "wallSystem":  wallSystem or "",
+        "roof":        roof or "",
+        "slab":        slab or "",
+        "foundation":  foundation or "",
+    }
+    try:
+        return project_search.search_projects(filters, limit=min(max(limit, 1), 5000))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/past-projects/refresh")
+def api_past_projects_refresh() -> dict[str, str]:
+    project_search.invalidate_cache()
+    return {"status": "cache cleared"}
 
 
 @app.get("/health")

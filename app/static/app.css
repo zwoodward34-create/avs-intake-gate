@@ -504,3 +504,49 @@ input[type="checkbox"]{
 
 /* ─── Reports page ───────────────────────────────────────────────────────── */
 /* (inherits card/table styles — no dedicated overrides needed) */
+
+/* ─── Past Projects search ───────────────────────────────────────────────── */
+.pf-status{ font-size:13px; color:var(--muted); font-family:var(--mono) }
+.pf-status-error{ color:var(--bad) }
+
+.pf-results-grid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:12px;
+}
+@media(min-width:700px){
+  .pf-results-grid{ grid-template-columns:1fr 1fr }
+}
+@media(min-width:1000px){
+  .pf-results-grid{ grid-template-columns:1fr 1fr 1fr }
+}
+
+.pf-card{ padding:16px }
+
+.pf-card-title{
+  font-size:15px; font-weight:800; letter-spacing:-.2px;
+  margin-bottom:10px; color:var(--text);
+}
+
+.pf-kv{ display:grid; grid-template-columns:auto 1fr; gap:4px 12px; align-items:baseline }
+
+.pf-kv-row{ display:contents }
+
+.pf-k{
+  font-size:12px; font-weight:700; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.4px;
+  white-space:nowrap;
+}
+.pf-v{ font-size:13px; color:var(--text) }
+
+.pf-kv-divider{
+  grid-column:1 / -1;
+  height:1px; background:var(--border);
+  margin:6px 0;
+}
+
+.pf-empty{
+  grid-column:1 / -1;
+  text-align:center; padding:40px 20px;
+  color:var(--muted); font-size:14px;
+}

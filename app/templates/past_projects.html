@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+
+<script>
+  const PAGE_TYPE_OPTIONS = {{ type_options_json | safe }};
+  const PAGE_TOTAL = {{ total }};
+</script>
+<script defer src="/static/project_search.js"></script>
+
+<div class="page-project-title">Past Projects</div>
+
+{% if error %}
+<div class="card" style="border-left:3px solid var(--bad); margin-bottom:18px">
+  <div style="color:var(--bad); font-weight:700; margin-bottom:4px">Could not load project database</div>
+  <div class="muted small">{{ error }}</div>
+  <div class="muted small" style="margin-top:8px">
+    Set <code>AVS_PROJECT_FINDER_BUCKET</code> + <code>AVS_PROJECT_FINDER_OBJECT_PATH</code> (Supabase Storage)
+    or <code>AVS_PROJECT_DB_PATH</code> (local file) and restart.
+  </div>
+</div>
+{% endif %}
+
+<!-- Filters -->
+<div class="card" style="margin-bottom:18px">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px">
+    <div style="font-size:15px; font-weight:700">Search Filters</div>
+    <div id="pf-active-filters" class="kpi"></div>
+  </div>
+
+  <div class="row row-2" style="margin-bottom:12px">
+    <div class="field">
+      <label for="pf-type">Project Type</label>
+      <select id="pf-type" class="pf-select">
+        <option value="">(Any)</option>
+        {% for key in type_keys %}
+          <option value="{{ key }}">{{ key }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="pf-wall">Wall System</label>
+      <select id="pf-wall" class="pf-select"></select>
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:16px">
+    <div class="field">
+      <label for="pf-roof">Roof</label>
+      <select id="pf-roof" class="pf-select"></select>
+    </div>
+    <div class="field">
+      <label for="pf-slab">Slab</label>
+      <select id="pf-slab" class="pf-select"></select>
+    </div>
+    <div class="field">
+      <label for="pf-foundation">Foundation</label>
+      <select id="pf-foundation" class="pf-select"></select>
+    </div>
+  </div>
+
+  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+    <button id="pf-find" class="btn btn-primary" {% if error %}disabled{% endif %}>Find Projects</button>
+    <button id="pf-reset" class="btn">Reset</button>
+    <span id="pf-status" class="pf-status"></span>
+  </div>
+</div>
+
+<!-- Results -->
+<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; min-height:22px">
+  <div id="pf-count" class="muted small">
+    {% if not error %}{{ total }} projects loaded. Choose filters and click Find.{% endif %}
+  </div>
+</div>
+
+<div id="pf-results" class="pf-results-grid"></div>
+
+{% endblock %}
