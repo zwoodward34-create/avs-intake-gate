@@ -550,3 +550,18 @@ input[type="checkbox"]{
   text-align:center; padding:40px 20px;
   color:var(--muted); font-size:14px;
 }
+
+/* ─── IFP calendar indicator (intake form) ──────────────────────────────── */
+.ifp-warning{
+  font-size:13px; font-weight:600; color:var(--warn);
+  margin-bottom:6px;
+}
+.ifp-pills{
+  display:flex; flex-wrap:wrap; gap:6px;
+}
+.ifp-pill{
+  background:var(--bad); color:#fff;
+  border-radius:6px; padding:3px 10px;
+  font-size:12px; font-weight:500;
+  white-space:nowrap;
+}

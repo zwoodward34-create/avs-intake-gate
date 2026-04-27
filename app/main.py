@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from . import calendar_sync
 from . import db
 from . import project_search
 from .decision import compute_decision, complexity_estimate
@@ -203,6 +204,7 @@ async def intake_create(request: Request) -> RedirectResponse:
         raise HTTPException(status_code=400, detail="Project name is required.")
 
     inquiry_date = _as_str(form.get("inquiry_date"))
+    ifp_due_date = _as_str(form.get("ifp_due_date"))
     client_name = _as_str(form.get("client_name"))
     architect_name = _as_str(form.get("architect_name"))
     lead_contact = _as_str(form.get("lead_contact"))
@@ -218,6 +220,7 @@ async def intake_create(request: Request) -> RedirectResponse:
 
     intake_id = db.create_intake(
         inquiry_date=inquiry_date,
+        ifp_due_date=ifp_due_date,
         project_name=project_name,
         client_name=client_name,
         architect_name=architect_name,
@@ -296,6 +299,7 @@ async def intake_update(request: Request, intake_id: int) -> RedirectResponse:
         raise HTTPException(status_code=400, detail="Project name is required.")
 
     inquiry_date = _as_str(form.get("inquiry_date"))
+    ifp_due_date = _as_str(form.get("ifp_due_date"))
     client_name = _as_str(form.get("client_name"))
     architect_name = _as_str(form.get("architect_name"))
     lead_contact = _as_str(form.get("lead_contact"))
@@ -316,6 +320,7 @@ async def intake_update(request: Request, intake_id: int) -> RedirectResponse:
     db.update_intake(
         intake_id,
         inquiry_date=inquiry_date,
+        ifp_due_date=ifp_due_date,
         project_name=project_name,
         client_name=client_name,
         architect_name=architect_name,
@@ -746,6 +751,25 @@ def api_past_projects(
 @app.post("/api/past-projects/refresh")
 def api_past_projects_refresh() -> dict[str, str]:
     project_search.invalidate_cache()
+    return {"status": "cache cleared"}
+
+
+@app.get("/api/calendar/ifp-dates")
+def api_calendar_ifp_dates(days: int = 180) -> dict[str, Any]:
+    try:
+        dates = calendar_sync.get_ifp_events(days_ahead=min(max(days, 30), 365))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {
+        "ok": True,
+        "configured": calendar_sync.has_config(),
+        "dates": dates,
+    }
+
+
+@app.post("/api/calendar/refresh")
+def api_calendar_refresh() -> dict[str, str]:
+    calendar_sync.invalidate_cache()
     return {"status": "cache cleared"}
 
 

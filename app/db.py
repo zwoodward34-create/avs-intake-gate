@@ -46,6 +46,7 @@ class IntakeRow:
     mo_fee_override: Optional[str] = None
     proposal_checklist_json: Optional[str] = None
     proposal_completed_at: Optional[str] = None
+    ifp_due_date: Optional[str] = None
 
     @property
     def red_flags(self) -> list[dict[str, Any]]:
@@ -90,6 +91,7 @@ class IntakeRow:
             mo_fee_override=d.get("mo_fee_override"),
             proposal_checklist_json=d.get("proposal_checklist_json"),
             proposal_completed_at=d.get("proposal_completed_at"),
+            ifp_due_date=d.get("ifp_due_date"),
         )
 
 
@@ -139,6 +141,7 @@ def get_intake(intake_id: int) -> Optional[IntakeRow]:
 def create_intake(
     *,
     inquiry_date: Optional[str],
+    ifp_due_date: Optional[str],
     project_name: str,
     client_name: Optional[str],
     architect_name: Optional[str],
@@ -160,6 +163,7 @@ def create_intake(
             "created_at":            now,
             "updated_at":            now,
             "inquiry_date":          inquiry_date,
+            "ifp_due_date":          ifp_due_date,
             "project_name":          project_name,
             "client_name":           client_name,
             "architect_name":        architect_name,
@@ -182,6 +186,7 @@ def update_intake(
     intake_id: int,
     *,
     inquiry_date: Optional[str],
+    ifp_due_date: Optional[str],
     project_name: str,
     client_name: Optional[str],
     architect_name: Optional[str],
@@ -201,6 +206,7 @@ def update_intake(
         .update({
             "updated_at":            _utc_now_iso(),
             "inquiry_date":          inquiry_date,
+            "ifp_due_date":          ifp_due_date,
             "project_name":          project_name,
             "client_name":           client_name,
             "architect_name":        architect_name,

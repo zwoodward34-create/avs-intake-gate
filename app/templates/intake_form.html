@@ -66,6 +66,14 @@
         </div>
         <div class="row row-2">
           <div class="field">
+            <label>IFP Due Date</label>
+            <input type="text" name="ifp_due_date" id="ifp-due-date" placeholder="YYYY-MM-DD" value="{{ intake.ifp_due_date if intake else '' }}" autocomplete="off" />
+            <div id="ifp-calendar-indicator" style="margin-top:8px;"></div>
+          </div>
+          <div class="field"></div>
+        </div>
+        <div class="row row-2">
+          <div class="field">
             <label>Client</label>
             <input type="text" name="client_name" value="{{ intake.client_name if intake else '' }}" />
           </div>
@@ -433,6 +441,54 @@
   function closeSaveTemplate() {
     document.getElementById('template-modal').style.display = 'none';
   }
+
+  // ── IFP Calendar indicator ────────────────────────────────────────────────
+  let _ifpDates = {};
+
+  async function _loadIfpDates() {
+    try {
+      const res  = await fetch('/api/calendar/ifp-dates');
+      const data = await res.json();
+      if (data.ok) {
+        _ifpDates = data.dates || {};
+        _updateIfpIndicator();
+      }
+    } catch (_) { /* calendar is optional — fail silently */ }
+  }
+
+  function _updateIfpIndicator() {
+    const input     = document.getElementById('ifp-due-date');
+    const indicator = document.getElementById('ifp-calendar-indicator');
+    if (!input || !indicator) return;
+
+    const date     = (input.value || '').trim();
+    const projects = date ? (_ifpDates[date] || []) : [];
+
+    if (!projects.length) {
+      indicator.innerHTML = '';
+      return;
+    }
+
+    let html = '';
+    if (projects.length >= 2) {
+      html += `<div class="ifp-warning">&#9888; ${projects.length} projects already due this day — consider a different date.</div>`;
+    }
+    html += '<div class="ifp-pills">';
+    for (const p of projects) {
+      html += `<span class="ifp-pill">${p.replace(/</g,'&lt;')}</span>`;
+    }
+    html += '</div>';
+    indicator.innerHTML = html;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    _loadIfpDates();
+    const input = document.getElementById('ifp-due-date');
+    if (input) {
+      input.addEventListener('input',  _updateIfpIndicator);
+      input.addEventListener('change', _updateIfpIndicator);
+    }
+  });
 
   async function saveTemplate() {
     const name = document.getElementById('tpl-name').value.trim();
