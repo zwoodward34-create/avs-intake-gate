@@ -60,7 +60,16 @@
 
   <div class="field" style="margin-bottom:16px">
     <label for="pf-company">Company</label>
+    {% if company_options %}
+    <select id="pf-company" class="pf-select" {% if error %}disabled{% endif %}>
+      <option value="">(Any)</option>
+      {% for co in company_options %}
+        <option value="{{ co }}">{{ co }}</option>
+      {% endfor %}
+    </select>
+    {% else %}
     <input id="pf-company" type="text" class="pf-text" placeholder="Search by company name…" style="width:100%; box-sizing:border-box" {% if error %}disabled{% endif %} />
+    {% endif %}
   </div>
 
   <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">

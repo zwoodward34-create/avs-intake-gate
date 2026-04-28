@@ -35,7 +35,7 @@ _load_dotenv(PROJECT_ROOT / ".env")
 
 # ── Resolve file path ─────────────────────────────────────────────────────────
 
-def _find_excel(arg: str | None) -> Path:
+def _find_excel(arg) -> Path:
     if arg:
         p = Path(arg).expanduser().resolve()
         if not p.exists():

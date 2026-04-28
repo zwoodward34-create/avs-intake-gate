@@ -140,6 +140,8 @@ def detect_columns(headers: list[str]) -> dict[str, Optional[str]]:
             lambda n: "company" in n,
             lambda n: n == "firm",
             lambda n: n == "client",
+            lambda n: n == "customer",
+            lambda n: "customer" in n,
         ]),
     }
 
@@ -379,6 +381,17 @@ def get_projects() -> dict:
     col_map = detect_columns(parsed["headers"])
     rows = _fix_misalignment(parsed["rows"], col_map, parsed["type_options"])
 
+    company_key = col_map.get("company")
+    company_options: list[str] = []
+    if company_key:
+        seen: set[str] = set()
+        for r in rows:
+            v = str(r.get(company_key) or "").strip()
+            if v and v not in seen:
+                seen.add(v)
+                company_options.append(v)
+        company_options.sort(key=str.lower)
+
     data: dict[str, Any] = {
         "headers": parsed["headers"],
         "col_map": col_map,
@@ -386,6 +399,7 @@ def get_projects() -> dict:
         "rows": rows,
         "sheet_name": parsed["sheet_name"],
         "total": len(rows),
+        "company_options": company_options,
     }
     _cache["data"] = data
     _cache["ts"] = now

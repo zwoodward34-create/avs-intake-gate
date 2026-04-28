@@ -723,10 +723,12 @@ def past_projects(request: Request) -> HTMLResponse:
     error: Optional[str] = None
     type_options = project_search.DEFAULT_TYPE_OPTIONS
     total = 0
+    company_options: list = []
     try:
         data = project_search.get_projects()
         type_options = data["type_options"]
         total = data["total"]
+        company_options = data.get("company_options", [])
     except Exception as exc:
         error = str(exc)
 
@@ -738,6 +740,7 @@ def past_projects(request: Request) -> HTMLResponse:
             "type_options_json": _json.dumps(type_options),
             "type_keys": list(type_options.keys()),
             "total": total,
+            "company_options": company_options,
             "error": error,
         },
     )
