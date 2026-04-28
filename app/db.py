@@ -16,7 +16,7 @@ def _utc_now_iso() -> str:
 def _client() -> Client:
     return create_client(
         os.environ["SUPABASE_URL"],
-        os.environ["SUPABASE_KEY"],
+        os.environ.get("SUPABASE_SERVICE_KEY") or os.environ["SUPABASE_KEY"],
     )
 
 
@@ -370,3 +370,224 @@ def set_mo_review(
         .eq("id", intake_id)
         .execute()
     )
+
+
+# ── Calendar Events ──────────────────────────────────────────────────────────
+
+PHASE_COLORS = {
+    "RFP": "#94a3b8",   # slate-400
+    "50%": "#93c5fd",   # blue-300
+    "75%": "#3b82f6",   # blue-500
+    "90%": "#4f46e5",   # indigo-600
+    "DD":  "#34d399",   # emerald-400
+    "CA":  "#fb923c",   # orange-400
+    "CD":  "#f43f5e",   # rose-500
+    "IFP": "#f59e0b",   # amber-500
+    "REV": "#a855f7",   # purple-500
+    "SD":  "#06b6d4",   # cyan-500
+}
+
+VALID_PHASES = list(PHASE_COLORS.keys())
+
+
+def format_event_title(event: dict) -> str:
+    if event.get("is_ooo"):
+        team = "/".join(event.get("team") or [])
+        return f"OOO: {team}"
+    team = "(" + "/".join(event.get("team") or []) + ")"
+    type_ = "(" + (event.get("project_type") or "") + ")"
+    return (
+        f"{event.get('project_number', '')}-{event.get('client', '')}"
+        f"-{event.get('location', '')} {event.get('phase', '')} - {team} {type_}"
+    )
+
+
+@dataclass(frozen=True)
+class CalendarEventRow:
+    id: str
+    project_number: str
+    client: str
+    location: str
+    phase: str
+    team: list
+    project_type: str
+    start_date: str
+    end_date: str
+    is_ooo: bool
+    metadata: Optional[dict]
+    created_at: str
+    updated_at: str
+
+    @property
+    def title(self) -> str:
+        return format_event_title({
+            "is_ooo": self.is_ooo,
+            "team": self.team,
+            "project_number": self.project_number,
+            "client": self.client,
+            "location": self.location,
+            "phase": self.phase,
+            "project_type": self.project_type,
+        })
+
+    @property
+    def color(self) -> str:
+        return PHASE_COLORS.get(self.phase, "#9ca3af")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "project_number": self.project_number,
+            "client": self.client,
+            "location": self.location,
+            "phase": self.phase,
+            "team": self.team,
+            "project_type": self.project_type,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "is_ooo": self.is_ooo,
+            "metadata": self.metadata,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "title": self.title,
+            "color": self.color,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "CalendarEventRow":
+        return cls(
+            id=d["id"],
+            project_number=d.get("project_number") or "",
+            client=d.get("client") or "",
+            location=d.get("location") or "",
+            phase=d.get("phase") or "",
+            team=d.get("team") or [],
+            project_type=d.get("project_type") or "",
+            start_date=d.get("start_date") or "",
+            end_date=d.get("end_date") or "",
+            is_ooo=bool(d.get("is_ooo", False)),
+            metadata=d.get("metadata"),
+            created_at=d.get("created_at") or "",
+            updated_at=d.get("updated_at") or "",
+        )
+
+
+def list_calendar_events(
+    *,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+) -> list[CalendarEventRow]:
+    q = (
+        _client()
+        .table("calendar_events")
+        .select("*")
+        .order("start_date")
+    )
+    if start:
+        q = q.gte("end_date", start)
+    if end:
+        q = q.lte("start_date", end)
+    resp = q.execute()
+    return [CalendarEventRow.from_dict(r) for r in resp.data]
+
+
+def get_calendar_event(event_id: str) -> Optional[CalendarEventRow]:
+    resp = (
+        _client()
+        .table("calendar_events")
+        .select("*")
+        .eq("id", event_id)
+        .maybe_single()
+        .execute()
+    )
+    return CalendarEventRow.from_dict(resp.data) if resp.data else None
+
+
+def create_calendar_event(
+    *,
+    project_number: str,
+    client: str,
+    location: str,
+    phase: str,
+    team: list,
+    project_type: str,
+    start_date: str,
+    end_date: str,
+    is_ooo: bool = False,
+    metadata: Optional[dict] = None,
+) -> str:
+    now = _utc_now_iso()
+    resp = (
+        _client()
+        .table("calendar_events")
+        .insert({
+            "project_number": project_number,
+            "client":         client,
+            "location":       location,
+            "phase":          phase,
+            "team":           team,
+            "project_type":   project_type,
+            "start_date":     start_date,
+            "end_date":       end_date,
+            "is_ooo":         is_ooo,
+            "metadata":       metadata,
+            "created_at":     now,
+            "updated_at":     now,
+        })
+        .execute()
+    )
+    return str(resp.data[0]["id"])
+
+
+def update_calendar_event(
+    event_id: str,
+    *,
+    project_number: str,
+    client: str,
+    location: str,
+    phase: str,
+    team: list,
+    project_type: str,
+    start_date: str,
+    end_date: str,
+    is_ooo: bool = False,
+    metadata: Optional[dict] = None,
+) -> None:
+    (
+        _client()
+        .table("calendar_events")
+        .update({
+            "project_number": project_number,
+            "client":         client,
+            "location":       location,
+            "phase":          phase,
+            "team":           team,
+            "project_type":   project_type,
+            "start_date":     start_date,
+            "end_date":       end_date,
+            "is_ooo":         is_ooo,
+            "metadata":       metadata,
+            "updated_at":     _utc_now_iso(),
+        })
+        .eq("id", event_id)
+        .execute()
+    )
+
+
+def delete_calendar_event(event_id: str) -> None:
+    _client().table("calendar_events").delete().eq("id", event_id).execute()
+
+
+def count_ifp_on_date(check_date: str) -> int:
+    """Count non-OOO IFP events that span the given date (YYYY-MM-DD)."""
+    resp = (
+        _client()
+        .table("calendar_events")
+        .select("id", count="exact")
+        .eq("phase", "IFP")
+        .eq("is_ooo", False)
+        .lte("start_date", f"{check_date}T23:59:59Z")
+        .gte("end_date", f"{check_date}T00:00:00Z")
+        .execute()
+    )
+    return resp.count or 0

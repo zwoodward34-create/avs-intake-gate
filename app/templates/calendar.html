@@ -1,0 +1,612 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cal-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cal-month-label {
+  font-size: 18px;
+  font-weight: 800;
+  min-width: 190px;
+  text-align: center;
+}
+.cal-nav-btn {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: background .15s;
+}
+.cal-nav-btn:hover { background: var(--card-bg-deeper); }
+
+.cal-phase-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  flex: 1;
+  justify-content: center;
+}
+.phase-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 2px solid transparent;
+  color: #fff;
+  transition: opacity .15s;
+  user-select: none;
+  letter-spacing: .2px;
+}
+.phase-chip.inactive { opacity: .3; }
+
+.cal-grid-wrapper {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: var(--card-bg-deeper);
+  border-bottom: 1px solid var(--border);
+}
+.cal-weekday {
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  text-align: center;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.cal-day {
+  min-height: 108px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 5px;
+  position: relative;
+  cursor: pointer;
+  transition: background .1s;
+}
+.cal-day:hover { background: #faf9f7; }
+.cal-day:nth-child(7n) { border-right: none; }
+.cal-day.other-month { background: var(--card-bg-deeper); }
+.cal-day.other-month .cal-day-num { color: var(--subtle); }
+.cal-day.today .cal-day-num-inner {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+}
+.cal-day.ifp-bloat { background: #fffbeb; }
+.cal-day-num {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ifp-bloat-badge {
+  font-size: 9px;
+  font-weight: 800;
+  background: #f59e0b;
+  color: #fff;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.cal-event-chip {
+  display: block;
+  width: 100%;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity .12s;
+  border: none;
+  text-align: left;
+}
+.cal-event-chip:hover { opacity: .8; }
+.cal-event-chip.ooo-chip {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(0,0,0,.12) 0,
+    rgba(0,0,0,.12) 2px,
+    transparent 2px,
+    transparent 6px
+  );
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.cal-more {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 1px 3px;
+}
+
+/* ── Modal ───────────────────────────────────────── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--card-bg);
+  border-radius: 6px;
+  padding: 24px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+  position: relative;
+}
+.modal h3 { margin: 0 0 16px; font-size: 16px; font-weight: 800; }
+.modal-close {
+  position: absolute;
+  top: 16px; right: 16px;
+  background: none; border: none;
+  cursor: pointer; font-size: 18px;
+  color: var(--muted); line-height: 1;
+}
+.modal-close:hover { color: var(--text); }
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.conflict-banner {
+  display: none;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #92400e;
+  margin-bottom: 12px;
+}
+.conflict-banner.visible { display: block; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn-danger {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #fff;
+}
+.btn-danger:hover { background: #6b1a1a; border-color: #6b1a1a; color: #fff; }
+</style>
+
+<div class="cal-header">
+  <div class="cal-month-nav">
+    <button class="cal-nav-btn" id="prev-month">&#8592;</button>
+    <div class="cal-month-label" id="month-label">—</div>
+    <button class="cal-nav-btn" id="next-month">&#8594;</button>
+  </div>
+  <div class="cal-phase-filters" id="phase-filters"></div>
+  <button class="btn btn-primary" id="add-event-btn">+ Add Event</button>
+</div>
+
+<div class="cal-grid-wrapper">
+  <div class="cal-weekdays">
+    {% for d in ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"] %}
+    <div class="cal-weekday">{{ d }}</div>
+    {% endfor %}
+  </div>
+  <div class="cal-grid" id="cal-grid">
+    <div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--muted)">Loading…</div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="event-modal">
+  <div class="modal">
+    <button class="modal-close" id="modal-close">✕</button>
+    <h3 id="modal-title">Add Event</h3>
+
+    <div class="conflict-banner" id="conflict-banner">
+      ⚠ IFP Bloat — 2 or more IFP events already overlap on one or more days in this range.
+    </div>
+
+    <div class="field">
+      <label style="display:flex;align-items:center;gap:7px;text-transform:none;font-size:13px;font-weight:600;letter-spacing:0">
+        <input type="checkbox" id="is-ooo" style="width:auto">
+        Out of Office (OOO)
+      </label>
+    </div>
+
+    <div id="project-section">
+      <div class="field">
+        <label for="f-project-number">Project #</label>
+        <input type="text" id="f-project-number" placeholder="e.g. 9771">
+      </div>
+      <div class="two-col">
+        <div class="field">
+          <label for="f-client">Client</label>
+          <input type="text" id="f-client" placeholder="e.g. Sprouts">
+        </div>
+        <div class="field">
+          <label for="f-location">Location</label>
+          <input type="text" id="f-location" placeholder="e.g. Hutto,TX">
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="field">
+          <label for="f-phase">Phase</label>
+          <select id="f-phase">
+            {% for p in valid_phases %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-type">Type</label>
+          <input type="text" id="f-type" placeholder="e.g. BTS">
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="f-team">Team initials (comma-separated)</label>
+      <input type="text" id="f-team" placeholder="e.g. JW, SW">
+    </div>
+
+    <div class="two-col">
+      <div class="field">
+        <label for="f-start">Start Date</label>
+        <input type="date" id="f-start">
+      </div>
+      <div class="field">
+        <label for="f-end">End Date</label>
+        <input type="date" id="f-end">
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="delete-btn" style="display:none;margin-right:auto">Delete</button>
+      <button class="btn" id="cancel-btn">Cancel</button>
+      <button class="btn btn-primary" id="save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const PHASE_COLORS = {{ phase_colors | safe }};
+  const OOO_COLOR = '#78716c';
+  const PHASES = {{ valid_phases | tojson }};
+
+  let year = new Date().getFullYear();
+  let month = new Date().getMonth();
+  let events = [];
+  let activePhases = new Set(PHASES);
+  let editingId = null;
+  let pollTimer = null;
+
+  // ── Phase filter chips ──────────────────────────────────────
+  const filtersEl = document.getElementById('phase-filters');
+  PHASES.forEach(phase => {
+    const btn = document.createElement('button');
+    btn.className = 'phase-chip';
+    btn.dataset.phase = phase;
+    btn.style.background = PHASE_COLORS[phase];
+    btn.textContent = phase;
+    btn.addEventListener('click', () => {
+      if (activePhases.has(phase)) { activePhases.delete(phase); btn.classList.add('inactive'); }
+      else { activePhases.add(phase); btn.classList.remove('inactive'); }
+      renderGrid();
+    });
+    filtersEl.appendChild(btn);
+  });
+
+  // ── Helpers ─────────────────────────────────────────────────
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function isoDate(y, m, d) { return `${y}-${pad(m + 1)}-${pad(d)}`; }
+  function monthName(y, m) {
+    return new Date(y, m, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+  }
+  function addMonths(y, m, delta) {
+    const d = new Date(y, m + delta, 1);
+    return [d.getFullYear(), d.getMonth()];
+  }
+  function daysInMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
+
+  function eventsOnDay(dateStr) {
+    return events.filter(ev => {
+      if (ev.is_ooo) return true; // always show OOO
+      if (!activePhases.has(ev.phase)) return false;
+      return ev.start_date.slice(0, 10) <= dateStr && ev.end_date.slice(0, 10) >= dateStr;
+    }).filter(ev =>
+      ev.start_date.slice(0, 10) <= dateStr && ev.end_date.slice(0, 10) >= dateStr
+    );
+  }
+
+  function ifpCountOnDay(dateStr) {
+    return events.filter(ev =>
+      ev.phase === 'IFP' && !ev.is_ooo &&
+      ev.start_date.slice(0, 10) <= dateStr &&
+      ev.end_date.slice(0, 10) >= dateStr
+    ).length;
+  }
+
+  // ── Grid render ─────────────────────────────────────────────
+  function renderGrid() {
+    const today = new Date();
+    const todayStr = isoDate(today.getFullYear(), today.getMonth(), today.getDate());
+    document.getElementById('month-label').textContent = monthName(year, month);
+
+    const firstDow = new Date(year, month, 1).getDay();
+    const dim = daysInMonth(year, month);
+    const [py, pm] = addMonths(year, month, -1);
+    const [ny, nm] = addMonths(year, month, 1);
+    const prevDim = daysInMonth(py, pm);
+    const totalCells = Math.ceil((firstDow + dim) / 7) * 7;
+
+    const grid = document.getElementById('cal-grid');
+    grid.innerHTML = '';
+
+    for (let i = 0; i < totalCells; i++) {
+      let dayNum, dateStr, isCurrentMonth;
+      if (i < firstDow) {
+        dayNum = prevDim - firstDow + i + 1;
+        dateStr = isoDate(py, pm, dayNum);
+        isCurrentMonth = false;
+      } else if (i >= firstDow + dim) {
+        dayNum = i - firstDow - dim + 1;
+        dateStr = isoDate(ny, nm, dayNum);
+        isCurrentMonth = false;
+      } else {
+        dayNum = i - firstDow + 1;
+        dateStr = isoDate(year, month, dayNum);
+        isCurrentMonth = true;
+      }
+
+      const cell = document.createElement('div');
+      cell.className = 'cal-day' +
+        (isCurrentMonth ? '' : ' other-month') +
+        (dateStr === todayStr ? ' today' : '');
+
+      const ifpCount = ifpCountOnDay(dateStr);
+      if (ifpCount >= 2 && isCurrentMonth) cell.classList.add('ifp-bloat');
+
+      // Day number row
+      const numRow = document.createElement('div');
+      numRow.className = 'cal-day-num';
+      const numInner = document.createElement('span');
+      numInner.className = 'cal-day-num-inner';
+      numInner.textContent = dayNum;
+      numRow.appendChild(numInner);
+      if (ifpCount >= 2 && isCurrentMonth) {
+        const badge = document.createElement('span');
+        badge.className = 'ifp-bloat-badge';
+        badge.title = `${ifpCount} IFP events`;
+        badge.textContent = 'IFP×' + ifpCount;
+        numRow.appendChild(badge);
+      }
+      cell.appendChild(numRow);
+
+      // Event chips
+      const dayEvs = eventsOnDay(dateStr);
+      const MAX = 3;
+      dayEvs.slice(0, MAX).forEach(ev => {
+        const chip = document.createElement('button');
+        chip.className = 'cal-event-chip' + (ev.is_ooo ? ' ooo-chip' : '');
+        if (!ev.is_ooo) chip.style.background = PHASE_COLORS[ev.phase] || '#9ca3af';
+        chip.textContent = ev.title;
+        chip.title = ev.title;
+        chip.addEventListener('click', e => { e.stopPropagation(); openEdit(ev); });
+        cell.appendChild(chip);
+      });
+      if (dayEvs.length > MAX) {
+        const more = document.createElement('div');
+        more.className = 'cal-more';
+        more.textContent = `+${dayEvs.length - MAX} more`;
+        cell.appendChild(more);
+      }
+
+      cell.addEventListener('click', () => openAdd(dateStr));
+      grid.appendChild(cell);
+    }
+  }
+
+  // ── Fetch ───────────────────────────────────────────────────
+  async function fetchEvents() {
+    const [py, pm] = addMonths(year, month, -1);
+    const [ny, nm] = addMonths(year, month, 1);
+    const start = isoDate(py, pm, 1) + 'T00:00:00Z';
+    const end   = isoDate(ny, nm, daysInMonth(ny, nm)) + 'T23:59:59Z';
+    try {
+      const res = await fetch(`/api/calendar/events?start=${start}&end=${end}`);
+      if (res.ok) { events = await res.json(); renderGrid(); }
+    } catch (e) { console.error('Calendar fetch', e); }
+  }
+
+  document.getElementById('prev-month').addEventListener('click', () => {
+    [year, month] = addMonths(year, month, -1); fetchEvents();
+  });
+  document.getElementById('next-month').addEventListener('click', () => {
+    [year, month] = addMonths(year, month, 1); fetchEvents();
+  });
+
+  // ── Modal helpers ────────────────────────────────────────────
+  const modal       = document.getElementById('event-modal');
+  const conflictBanner = document.getElementById('conflict-banner');
+  const deleteBtn   = document.getElementById('delete-btn');
+  const projectSect = document.getElementById('project-section');
+  const isOOOCheck  = document.getElementById('is-ooo');
+
+  function toggleOOO(on) {
+    projectSect.style.display = on ? 'none' : 'block';
+  }
+  isOOOCheck.addEventListener('change', () => toggleOOO(isOOOCheck.checked));
+
+  function resetModal() {
+    editingId = null;
+    document.getElementById('modal-title').textContent = 'Add Event';
+    document.getElementById('f-project-number').value = '';
+    document.getElementById('f-client').value = '';
+    document.getElementById('f-location').value = '';
+    document.getElementById('f-phase').value = 'IFP';
+    document.getElementById('f-type').value = '';
+    document.getElementById('f-team').value = '';
+    document.getElementById('f-start').value = '';
+    document.getElementById('f-end').value = '';
+    isOOOCheck.checked = false;
+    toggleOOO(false);
+    conflictBanner.classList.remove('visible');
+    deleteBtn.style.display = 'none';
+  }
+
+  function openAdd(dateStr) {
+    resetModal();
+    document.getElementById('f-start').value = dateStr;
+    document.getElementById('f-end').value = dateStr;
+    modal.classList.add('open');
+  }
+
+  function openEdit(ev) {
+    resetModal();
+    editingId = ev.id;
+    document.getElementById('modal-title').textContent = 'Edit Event';
+    document.getElementById('f-project-number').value = ev.project_number || '';
+    document.getElementById('f-client').value = ev.client || '';
+    document.getElementById('f-location').value = ev.location || '';
+    document.getElementById('f-phase').value = ev.phase || 'IFP';
+    document.getElementById('f-type').value = ev.project_type || '';
+    document.getElementById('f-team').value = (ev.team || []).join(', ');
+    document.getElementById('f-start').value = ev.start_date.slice(0, 10);
+    document.getElementById('f-end').value = ev.end_date.slice(0, 10);
+    isOOOCheck.checked = ev.is_ooo;
+    toggleOOO(ev.is_ooo);
+    deleteBtn.style.display = '';
+    modal.classList.add('open');
+  }
+
+  function closeModal() { modal.classList.remove('open'); }
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  document.getElementById('cancel-btn').addEventListener('click', closeModal);
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+  document.getElementById('add-event-btn').addEventListener('click', () => {
+    const t = new Date();
+    openAdd(isoDate(t.getFullYear(), t.getMonth(), t.getDate()));
+  });
+
+  // Conflict check on phase/date change
+  async function checkConflict() {
+    const phase = document.getElementById('f-phase').value;
+    const startDate = document.getElementById('f-start').value;
+    if (phase !== 'IFP' || !startDate || isOOOCheck.checked) {
+      conflictBanner.classList.remove('visible'); return;
+    }
+    try {
+      const r = await fetch(`/api/calendar/events/check-conflict?date=${startDate}&phase=${phase}`);
+      const d = await r.json();
+      conflictBanner.classList.toggle('visible', d.conflict);
+    } catch (e) { /* silent */ }
+  }
+  document.getElementById('f-phase').addEventListener('change', checkConflict);
+  document.getElementById('f-start').addEventListener('change', checkConflict);
+
+  // ── Save ─────────────────────────────────────────────────────
+  document.getElementById('save-btn').addEventListener('click', async () => {
+    const isOOO = isOOOCheck.checked;
+    const team = document.getElementById('f-team').value
+      .split(',').map(s => s.trim()).filter(Boolean);
+    const startDate = document.getElementById('f-start').value;
+    const endDate   = document.getElementById('f-end').value;
+
+    if (!team.length)         { alert('Team initials are required.'); return; }
+    if (!startDate || !endDate) { alert('Start and end dates are required.'); return; }
+    if (endDate < startDate)  { alert('End date must be on or after start date.'); return; }
+
+    const phase = isOOO ? 'SD' : document.getElementById('f-phase').value;
+    const payload = {
+      project_number: isOOO ? '' : document.getElementById('f-project-number').value.trim(),
+      client:         isOOO ? '' : document.getElementById('f-client').value.trim(),
+      location:       isOOO ? '' : document.getElementById('f-location').value.trim(),
+      phase,
+      team,
+      project_type:   isOOO ? '' : document.getElementById('f-type').value.trim(),
+      start_date:     startDate + 'T00:00:00Z',
+      end_date:       endDate   + 'T23:59:59Z',
+      is_ooo:         isOOO,
+    };
+
+    const url    = editingId ? `/api/calendar/events/${editingId}` : '/api/calendar/events';
+    const method = editingId ? 'PUT' : 'POST';
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || 'Save failed.'); return;
+      }
+      const saved = await res.json();
+      if (saved.ifp_conflict) conflictBanner.classList.add('visible');
+      closeModal();
+      await fetchEvents();
+    } catch (e) { alert('Network error — please try again.'); }
+  });
+
+  // ── Delete ───────────────────────────────────────────────────
+  deleteBtn.addEventListener('click', async () => {
+    if (!editingId || !confirm('Delete this event?')) return;
+    try {
+      const res = await fetch(`/api/calendar/events/${editingId}`, { method: 'DELETE' });
+      if (!res.ok) { alert('Delete failed.'); return; }
+      closeModal();
+      await fetchEvents();
+    } catch (e) { alert('Network error.'); }
+  });
+
+  // ── Init ─────────────────────────────────────────────────────
+  fetchEvents();
+  pollTimer = setInterval(fetchEvents, 30000);
+})();
+</script>
+{% endblock %}

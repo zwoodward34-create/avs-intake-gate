@@ -925,6 +925,113 @@ def api_calendar_refresh() -> dict[str, str]:
     return {"status": "cache cleared"}
 
 
+@app.get("/calendar", response_class=HTMLResponse)
+def calendar_page(request: Request) -> HTMLResponse:
+    import json as _json
+    return templates.TemplateResponse(
+        "calendar.html",
+        {
+            "request": request,
+            "now_local": _now_local_iso(),
+            "phase_colors": _json.dumps(db.PHASE_COLORS),
+            "valid_phases": db.VALID_PHASES,
+        },
+    )
+
+
+def _validate_calendar_payload(body: dict) -> None:
+    if not body.get("phase"):
+        raise HTTPException(status_code=400, detail="phase is required.")
+    if body["phase"] not in db.VALID_PHASES:
+        raise HTTPException(status_code=400, detail=f"Invalid phase: {body['phase']}")
+    if not body.get("start_date"):
+        raise HTTPException(status_code=400, detail="start_date is required.")
+    if not body.get("end_date"):
+        raise HTTPException(status_code=400, detail="end_date is required.")
+
+
+@app.get("/api/calendar/events")
+def api_calendar_events_list(
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+) -> list[dict]:
+    events = db.list_calendar_events(start=start, end=end)
+    return [e.to_dict() for e in events]
+
+
+@app.get("/api/calendar/events/check-conflict")
+def api_calendar_check_conflict(date: str, phase: str) -> dict:
+    if phase != "IFP":
+        return {"conflict": False, "count": 0}
+    count = db.count_ifp_on_date(date)
+    return {"conflict": count >= 2, "count": count}
+
+
+@app.post("/api/calendar/events")
+async def api_calendar_events_create(request: Request) -> dict:
+    from datetime import date as _date, timedelta
+    body = await request.json()
+    _validate_calendar_payload(body)
+    conflict = False
+    if body.get("phase") == "IFP" and not body.get("is_ooo"):
+        start_d = _date.fromisoformat(body["start_date"][:10])
+        end_d = _date.fromisoformat(body["end_date"][:10])
+        d = start_d
+        while d <= end_d:
+            if db.count_ifp_on_date(d.isoformat()) >= 2:
+                conflict = True
+                break
+            d += timedelta(days=1)
+
+    event_id = db.create_calendar_event(
+        project_number=body.get("project_number") or "",
+        client=body.get("client") or "",
+        location=body.get("location") or "",
+        phase=body["phase"],
+        team=body.get("team") or [],
+        project_type=body.get("project_type") or "",
+        start_date=body["start_date"],
+        end_date=body["end_date"],
+        is_ooo=bool(body.get("is_ooo", False)),
+        metadata=body.get("metadata"),
+    )
+    event = db.get_calendar_event(event_id)
+    return {**(event.to_dict() if event else {"id": event_id}), "ifp_conflict": conflict}
+
+
+@app.put("/api/calendar/events/{event_id}")
+async def api_calendar_events_update(request: Request, event_id: str) -> dict:
+    existing = db.get_calendar_event(event_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not found.")
+    body = await request.json()
+    _validate_calendar_payload(body)
+    db.update_calendar_event(
+        event_id,
+        project_number=body.get("project_number") or "",
+        client=body.get("client") or "",
+        location=body.get("location") or "",
+        phase=body["phase"],
+        team=body.get("team") or [],
+        project_type=body.get("project_type") or "",
+        start_date=body["start_date"],
+        end_date=body["end_date"],
+        is_ooo=bool(body.get("is_ooo", False)),
+        metadata=body.get("metadata"),
+    )
+    updated = db.get_calendar_event(event_id)
+    return updated.to_dict() if updated else {"id": event_id}
+
+
+@app.delete("/api/calendar/events/{event_id}")
+def api_calendar_events_delete(event_id: str) -> dict:
+    existing = db.get_calendar_event(event_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not found.")
+    db.delete_calendar_event(event_id)
+    return {"deleted": event_id}
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
