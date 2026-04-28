@@ -58,6 +58,11 @@
     </div>
   </div>
 
+  <div class="field" style="margin-bottom:16px">
+    <label for="pf-company">Company</label>
+    <input id="pf-company" type="text" class="pf-text" placeholder="Search by company name…" style="width:100%; box-sizing:border-box" {% if error %}disabled{% endif %} />
+  </div>
+
   <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
     <button id="pf-find" class="btn btn-primary" {% if error %}disabled{% endif %}>Find Projects</button>
     <button id="pf-reset" class="btn">Reset</button>

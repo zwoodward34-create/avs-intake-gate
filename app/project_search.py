@@ -135,6 +135,12 @@ def detect_columns(headers: list[str]) -> dict[str, Optional[str]]:
             lambda n: n == "foundations",
             lambda n: "found" in n,
         ]),
+        "company": pick([
+            lambda n: n == "company",
+            lambda n: "company" in n,
+            lambda n: n == "firm",
+            lambda n: n == "client",
+        ]),
     }
 
 

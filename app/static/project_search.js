@@ -61,7 +61,7 @@
   function renderPills(filters) {
     const el = $("pf-active-filters");
     el.innerHTML = "";
-    const LABELS = { type: "Type", wallSystem: "Wall", roof: "Roof", slab: "Slab", foundation: "Foundation" };
+    const LABELS = { type: "Type", wallSystem: "Wall", roof: "Roof", slab: "Slab", foundation: "Foundation", company: "Company" };
     const active = Object.entries(filters).filter(([, v]) => v);
     if (!active.length) {
       const p = document.createElement("span");
@@ -95,6 +95,7 @@
     }
 
     const displayFields = [
+      ["Company",    colMap.company],
       ["Type",       colMap.type],
       ["Wall",       colMap.wallSystem],
       ["Roof",       colMap.roof],
@@ -175,6 +176,7 @@
       roof:        $("pf-roof").value,
       slab:        $("pf-slab").value,
       foundation:  $("pf-foundation").disabled ? "" : $("pf-foundation").value,
+      company:     $("pf-company").value.trim(),
     };
 
     renderPills(filters);
@@ -210,6 +212,7 @@
 
   function doReset() {
     $("pf-type").value = "";
+    $("pf-company").value = "";
     refreshDependentDropdowns();
     renderPills({});
     setStatus("", "");
@@ -225,8 +228,8 @@
     $("pf-find").addEventListener("click", doSearch);
     $("pf-reset").addEventListener("click", doReset);
 
-    // Allow Enter key in any select to trigger search
-    document.querySelectorAll(".pf-select").forEach(el => {
+    // Allow Enter key in any select or text input to trigger search
+    document.querySelectorAll(".pf-select, .pf-text").forEach(el => {
       el.addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
     });
 

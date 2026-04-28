@@ -750,6 +750,7 @@ def api_past_projects(
     roof: Optional[str] = None,
     slab: Optional[str] = None,
     foundation: Optional[str] = None,
+    company: Optional[str] = None,
     limit: int = 500,
 ) -> dict[str, Any]:
     filters = {
@@ -758,6 +759,7 @@ def api_past_projects(
         "roof":        roof or "",
         "slab":        slab or "",
         "foundation":  foundation or "",
+        "company":     company or "",
     }
     try:
         return project_search.search_projects(filters, limit=min(max(limit, 1), 5000))
