@@ -354,6 +354,16 @@ async def intake_update(request: Request, intake_id: int) -> RedirectResponse:
     return RedirectResponse(url=f"/intakes/{intake_id}", status_code=303)
 
 
+@app.post("/intakes/{intake_id}/push-to-mo")
+def push_to_mo_queue(intake_id: int) -> RedirectResponse:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    if not intake.mo_decision:
+        db.set_status(intake_id, "PENDING_MO_REVIEW")
+    return RedirectResponse(url=f"/intakes/{intake_id}", status_code=303)
+
+
 def _require_mo_passcode_if_configured(passcode: Optional[str]) -> None:
     expected = os.environ.get("AVS_MO_PASSCODE")
     if not expected:

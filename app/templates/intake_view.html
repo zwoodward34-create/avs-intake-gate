@@ -43,6 +43,15 @@
       <div class="actions">
         <a class="btn" href="/intakes/{{ intake.id }}/edit">Edit</a>
         <a class="btn btn-primary" href="/intakes/{{ intake.id }}/mo-review">Mo review</a>
+        {% if not intake.mo_decision %}
+          {% if intake.status == 'PENDING_MO_REVIEW' %}
+            <span class="badge" style="align-self:center">In Mo's Queue</span>
+          {% else %}
+            <form method="post" action="/intakes/{{ intake.id }}/push-to-mo" style="display:inline">
+              <button type="submit" class="btn btn-queue">Push to Mo's Queue</button>
+            </form>
+          {% endif %}
+        {% endif %}
       </div>
       {% if mo_passcode_enabled %}
         <div class="subtle small" style="margin-top:8px">Mo review is passcode-protected.</div>

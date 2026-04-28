@@ -313,6 +313,17 @@ def delete_template(template_id: int) -> None:
     _client().table("templates").delete().eq("id", template_id).execute()
 
 
+def set_status(intake_id: int, status: str) -> None:
+    now = _utc_now_iso()
+    (
+        _client()
+        .table("intakes")
+        .update({"status": status, "updated_at": now})
+        .eq("id", intake_id)
+        .execute()
+    )
+
+
 def set_mo_review(
     intake_id: int,
     *,
