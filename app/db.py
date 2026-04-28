@@ -47,6 +47,8 @@ class IntakeRow:
     proposal_checklist_json: Optional[str] = None
     proposal_completed_at: Optional[str] = None
     ifp_due_date: Optional[str] = None
+    proposal_text: Optional[str] = None
+    proposal_generated_at: Optional[str] = None
 
     @property
     def red_flags(self) -> list[dict[str, Any]]:
@@ -92,6 +94,8 @@ class IntakeRow:
             proposal_checklist_json=d.get("proposal_checklist_json"),
             proposal_completed_at=d.get("proposal_completed_at"),
             ifp_due_date=d.get("ifp_due_date"),
+            proposal_text=d.get("proposal_text"),
+            proposal_generated_at=d.get("proposal_generated_at"),
         )
 
 
@@ -311,6 +315,21 @@ def delete_intake(intake_id: int) -> None:
 
 def delete_template(template_id: int) -> None:
     _client().table("templates").delete().eq("id", template_id).execute()
+
+
+def save_proposal(intake_id: int, text: str) -> None:
+    now = _utc_now_iso()
+    (
+        _client()
+        .table("intakes")
+        .update({
+            "proposal_text":         text,
+            "proposal_generated_at": now,
+            "updated_at":            now,
+        })
+        .eq("id", intake_id)
+        .execute()
+    )
 
 
 def set_status(intake_id: int, status: str) -> None:

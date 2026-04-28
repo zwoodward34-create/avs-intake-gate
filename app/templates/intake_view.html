@@ -344,4 +344,94 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
   </div>
   {% endif %}
 
+
+  {# ── Proposal Generator ── #}
+  {% if intake.mo_decision in ('PROCEED', 'PROCEED_WITH_CONDITIONS') %}
+
+  {% if intake.proposal_text %}
+  {# ── Existing proposal ── #}
+  <div class="card" id="proposal-section" style="margin-top:14px">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px">
+      <div>
+        <h2 style="margin:0">Generated Proposal</h2>
+        {% if intake.proposal_generated_at %}
+          <div class="subtle small" style="margin-top:2px">Generated {{ intake.proposal_generated_at[:10] }}</div>
+        {% endif %}
+      </div>
+      <button class="btn" type="button" onclick="copyProposal()">Copy to Clipboard</button>
+    </div>
+    <pre id="proposal-text" style="white-space:pre-wrap; font-family:var(--mono); font-size:13px; line-height:1.6; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:16px; overflow-x:auto">{{ intake.proposal_text }}</pre>
+    <div class="hr" style="margin:14px 0 10px"></div>
+    <div style="font-size:13px; font-weight:600; margin-bottom:10px; color:var(--muted)">Regenerate with different fee or notes:</div>
+    <form method="post" action="/intakes/{{ intake.id }}/generate-proposal" id="regen-form">
+      <div class="row row-2" style="margin-bottom:12px">
+        <div class="field">
+          <label>Fee Amount ($)</label>
+          <input type="number" name="fee_amount" min="1000" step="500"
+                 value="{{ proposal_fee_default or '' }}" required />
+        </div>
+        <div class="field">
+          <label>Structural system / scope notes (optional)</label>
+          <input type="text" name="structural_system" placeholder="e.g. tilt-up panels, metal deck, slab on grade"
+                 value="{{ answers.get('structural_system') or '' }}" />
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary" id="regen-btn">Regenerate Proposal</button>
+      <span id="regen-status" class="subtle small" style="margin-left:10px; display:none">Generating with Claude…</span>
+    </form>
+  </div>
+
+  {% else %}
+  {# ── Generate for first time ── #}
+  <div class="card" id="proposal-section" style="margin-top:14px; border-left:3px solid rgba(79,142,247,0.4)">
+    <h2 style="margin-top:0">Generate Proposal Letter</h2>
+    <div class="subtle" style="margin-bottom:14px">
+      Mo approved this intake. Enter the approved fee and Claude will draft the full proposal letter based on the AVS template.
+    </div>
+    <form method="post" action="/intakes/{{ intake.id }}/generate-proposal" id="gen-form">
+      <div class="row row-2" style="margin-bottom:12px">
+        <div class="field">
+          <label>Approved Fee Amount ($) *</label>
+          <input type="number" name="fee_amount" min="1000" step="500"
+                 value="{{ proposal_fee_default or '' }}" required />
+          {% if proposal_fee_default %}
+            <div class="subtle small" style="margin-top:4px">Pre-filled from Mo's fee decision</div>
+          {% endif %}
+        </div>
+        <div class="field">
+          <label>Structural system / scope notes (optional)</label>
+          <input type="text" name="structural_system"
+                 placeholder="e.g. tilt-up panels, metal deck on steel joists, slab on grade"
+                 value="{{ answers.get('structural_system') or '' }}" />
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-submit" id="gen-btn">Generate Proposal</button>
+      <span id="gen-status" class="subtle small" style="margin-left:10px; display:none">Generating with Claude — ~10 seconds…</span>
+    </form>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <script>
+  function copyProposal() {
+    var text = document.getElementById('proposal-text').textContent;
+    navigator.clipboard.writeText(text).then(function() {
+      var btn = event.target;
+      btn.textContent = '✓ Copied!';
+      setTimeout(function() { btn.textContent = 'Copy to Clipboard'; }, 2000);
+    });
+  }
+  ['gen-form','regen-form'].forEach(function(id) {
+    var f = document.getElementById(id);
+    if (!f) return;
+    f.addEventListener('submit', function() {
+      var btn = f.querySelector('[type=submit]');
+      var status = document.getElementById(id === 'gen-form' ? 'gen-status' : 'regen-status');
+      btn.disabled = true;
+      btn.textContent = 'Generating…';
+      if (status) status.style.display = 'inline';
+    });
+  });
+  </script>
+
 {% endblock %}

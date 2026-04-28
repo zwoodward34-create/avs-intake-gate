@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 
+{% if prefill_notice %}
+<div class="card" style="border-left:3px solid var(--accent); margin-bottom:14px">
+  <div style="font-weight:700; color:var(--accent); margin-bottom:4px">Pre-filled from document</div>
+  <div class="subtle small">{{ prefill_notice }} — Review all fields carefully before submitting.</div>
+</div>
+{% endif %}
+
 {% if mode == 'new' and project_templates %}
 <div class="card" style="margin-bottom:14px;">
   <h2 style="margin-top:0;">Apply a template</h2>

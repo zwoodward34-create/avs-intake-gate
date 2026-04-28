@@ -11,9 +11,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from fastapi import UploadFile, File
+
 from . import calendar_sync
 from . import db
+from . import document_extractor
 from . import project_search
+from . import proposal_generator
 from .decision import compute_decision, complexity_estimate
 from .fee_estimator import cognasync_estimate_from_answers, check_fee_review_required
 
@@ -267,6 +271,22 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
     cognasync_estimate = cognasync_estimate_from_answers(
         intake.project_name, enriched_answers
     )
+    # Default fee for proposal generation form
+    proposal_fee_default: Optional[float] = None
+    if intake.mo_fee_decision == "OVERRIDE" and intake.mo_fee_override:
+        try:
+            proposal_fee_default = float(intake.mo_fee_override)
+        except (ValueError, TypeError):
+            pass
+    elif (
+        intake.mo_fee_decision == "ACCEPTED"
+        and cognasync_estimate
+        and not cognasync_estimate.needs_manual_review
+    ):
+        lo = cognasync_estimate.suggested_fee_range.low
+        hi = cognasync_estimate.suggested_fee_range.high
+        proposal_fee_default = round((lo + hi) / 2 / 500) * 500
+
     return templates.TemplateResponse(
         "intake_view.html",
         {
@@ -282,6 +302,7 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
             "proposal_checklist": intake.proposal_checklist,
             "checklist_keys": CHECKLIST_KEYS,
             "proposal_completed_at": intake.proposal_completed_at,
+            "proposal_fee_default": proposal_fee_default,
         },
     )
 
@@ -362,6 +383,127 @@ def push_to_mo_queue(intake_id: int) -> RedirectResponse:
     if not intake.mo_decision:
         db.set_status(intake_id, "PENDING_MO_REVIEW")
     return RedirectResponse(url=f"/intakes/{intake_id}", status_code=303)
+
+
+# ── Document upload + AI extraction ──────────────────────────────────────────
+
+@app.get("/intake/upload", response_class=HTMLResponse)
+def intake_upload_get(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "upload_intake.html",
+        {"request": request, "now_local": _now_local_iso(), "error": None},
+    )
+
+
+@app.post("/intake/upload", response_class=HTMLResponse)
+async def intake_upload_post(request: Request, file: UploadFile = File(...)) -> HTMLResponse:
+    import types
+
+    error: Optional[str] = None
+    prefill: dict[str, Any] = {}
+
+    try:
+        raw = await file.read()
+        if not raw:
+            raise ValueError("Uploaded file is empty.")
+        text = document_extractor.extract_text(file.filename or "upload.txt", raw)
+        if text.startswith("[") and "error" in text.lower():
+            raise ValueError(text)
+        prefill = document_extractor.extract_intake_fields(text)
+    except Exception as exc:
+        error = str(exc)
+        return templates.TemplateResponse(
+            "upload_intake.html",
+            {"request": request, "now_local": _now_local_iso(), "error": error},
+        )
+
+    # Parse city/state from location_region ("Kissimmee, FL" → city, state)
+    city, state = "", ""
+    loc = (prefill.get("location_region") or "").strip()
+    if "," in loc:
+        parts = [p.strip() for p in loc.split(",", 1)]
+        city = parts[0]
+        state = parts[1][:2].upper() if len(parts) > 1 else ""
+
+    # Build a pseudo-intake and answers dict for the form template
+    fake_intake = types.SimpleNamespace(
+        id=None,
+        project_name=prefill.get("project_name") or "",
+        client_name=prefill.get("client_name") or "",
+        architect_name=prefill.get("architect_name") or "",
+        lead_contact=prefill.get("lead_contact") or "",
+        location_region=loc,
+        submitted_by="",
+        inquiry_date="",
+        ifp_due_date=prefill.get("deadline_date") or "",
+        status="",
+    )
+
+    answers: dict[str, Any] = {
+        "city": city,
+        "state": state,
+        "approx_sf": prefill.get("approx_sf") or "",
+        "est_construction_cost": prefill.get("est_construction_cost") or "",
+        "project_type": prefill.get("project_type") or "unknown",
+        "building_type": prefill.get("building_type") or "other",
+        "structural_system": prefill.get("structural_system") or "",
+        "scope_description": prefill.get("scope_description") or "",
+        "architect_firm": prefill.get("architect_firm") or "",
+    }
+
+    return templates.TemplateResponse(
+        "intake_form.html",
+        {
+            "request": request,
+            "mode": "new",
+            "intake": fake_intake,
+            "answers": answers,
+            "now_local": _now_local_iso(),
+            "project_templates": db.list_templates(),
+            "prefill_notice": f"Pre-filled from: {file.filename}",
+        },
+    )
+
+
+# ── Proposal generation ───────────────────────────────────────────────────────
+
+@app.post("/intakes/{intake_id}/generate-proposal")
+def generate_proposal_route(
+    intake_id: int,
+    fee_amount: float = Form(...),
+    structural_system: Optional[str] = Form(None),
+) -> RedirectResponse:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    decision = compute_decision(intake.answers)
+    enriched = {**intake.answers, "_complexity": decision["complexity_estimate"]}
+    if structural_system:
+        enriched["structural_system"] = structural_system
+
+    try:
+        text = proposal_generator.generate_proposal(
+            project_name=intake.project_name or "Project",
+            project_type=intake.answers.get("project_type") or "new_construction",
+            location=intake.location_region or "",
+            building_type=intake.answers.get("building_type") or "retail",
+            approx_sf=int(intake.answers["approx_sf"]) if intake.answers.get("approx_sf") else None,
+            structural_system=enriched.get("structural_system") or "",
+            scope_description=enriched.get("scope_description") or "",
+            architect_name=intake.architect_name or "",
+            architect_firm=enriched.get("architect_firm") or "",
+            architect_email=intake.lead_contact or "",
+            fee_amount=fee_amount,
+            complexity=decision["complexity_estimate"],
+            mo_conditions=intake.mo_conditions or "",
+            mo_notes=intake.mo_notes or "",
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    db.save_proposal(intake_id, text)
+    return RedirectResponse(url=f"/intakes/{intake_id}#proposal-section", status_code=303)
 
 
 def _require_mo_passcode_if_configured(passcode: Optional[str]) -> None:

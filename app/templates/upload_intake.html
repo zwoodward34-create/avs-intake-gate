@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-project-title">Upload RFP or Email</div>
+
+<div class="card" style="margin-bottom:18px">
+  <h2 style="margin-top:0">What this does</h2>
+  <div class="subtle" style="margin-bottom:8px">Upload an architectural RFP, project email, or scope document. Claude extracts the project details and pre-fills the intake form — you review, adjust, and submit.</div>
+  <div class="subtle small">Supported formats: <strong>.pdf</strong> &nbsp;·&nbsp; <strong>.docx</strong> &nbsp;·&nbsp; <strong>.eml</strong> &nbsp;·&nbsp; <strong>.txt</strong></div>
+</div>
+
+{% if error %}
+<div class="card" style="border-left:3px solid var(--bad); margin-bottom:18px">
+  <div style="color:var(--bad); font-weight:700; margin-bottom:6px">Extraction failed</div>
+  <div class="subtle">{{ error }}</div>
+</div>
+{% endif %}
+
+<div class="card">
+  <form method="post" action="/intake/upload" enctype="multipart/form-data" id="upload-form">
+    <div class="field" style="margin-bottom:20px">
+      <label>Document or Email</label>
+      <input type="file" name="file" accept=".pdf,.docx,.eml,.txt" required
+             style="display:block; margin-top:8px; font-size:14px; color:var(--text)" />
+      <div class="subtle small" style="margin-top:6px">Max recommended size: 10 MB</div>
+    </div>
+    <button type="submit" class="btn btn-primary btn-submit" id="upload-btn">
+      Extract &amp; Pre-fill Intake
+    </button>
+    <span id="upload-status" class="subtle small" style="margin-left:12px; display:none">Extracting with Claude — this takes ~10 seconds…</span>
+  </form>
+</div>
+
+<script>
+document.getElementById('upload-form').addEventListener('submit', function () {
+  document.getElementById('upload-btn').disabled = true;
+  document.getElementById('upload-btn').textContent = 'Extracting…';
+  document.getElementById('upload-status').style.display = 'inline';
+});
+</script>
+{% endblock %}
