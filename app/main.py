@@ -814,11 +814,13 @@ def reports(request: Request) -> HTMLResponse:
                 pass
         elif _r.mo_fee_decision in {"ACCEPTED", None}:
             est = cognasync_estimate_from_answers(_r.project_name, _r.answers)
-            if est:
-                low  = est["suggested_fee_range"]["low"]
-                high = est["suggested_fee_range"]["high"]
-                fee_amount = (low + high) / 2
-                fee_source = "Estimate midpoint" if _r.mo_fee_decision == "ACCEPTED" else "Auto estimate"
+            fee_range = (est or {}).get("suggested_fee_range")
+            if fee_range:
+                low  = fee_range.get("low") or 0
+                high = fee_range.get("high") or 0
+                if low and high:
+                    fee_amount = (low + high) / 2
+                    fee_source = "Estimate midpoint" if _r.mo_fee_decision == "ACCEPTED" else "Auto estimate"
         if fee_amount is not None:
             approved_fee_total += fee_amount
         approved_rows.append({
