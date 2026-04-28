@@ -8,6 +8,7 @@ import unicodedata
 from typing import Any, Optional
 
 import openpyxl
+from openpyxl.utils import get_column_letter
 
 DEFAULT_TYPE_OPTIONS: dict[str, dict[str, list[str]]] = {
     "BTS": {
@@ -360,6 +361,39 @@ def _has_supabase_config() -> bool:
     )
 
 
+# ── Data validation company list ─────────────────────────────────────────────
+
+def _get_dv_company_options(buf: bytes, sheet_name: str, company_header: str, headers: list) -> list:
+    """Return the Excel data-validation dropdown list for the company column, if present."""
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(buf), read_only=False, data_only=True)
+        ws = wb[sheet_name]
+        try:
+            col_idx = headers.index(company_header)
+        except ValueError:
+            return []
+        col_letter = get_column_letter(col_idx + 1)
+        for dv in ws.data_validations.dataValidation:
+            if dv.type != "list" or not dv.formula1:
+                continue
+            sqref_cols = set(re.findall(r'([A-Z]+)\d', str(dv.sqref)))
+            if col_letter not in sqref_cols:
+                continue
+            formula = dv.formula1.strip('"')
+            if formula.startswith("=") or "!" in formula:
+                continue  # named range / sheet reference — skip
+            options = [v.strip() for v in formula.split(",") if v.strip()]
+            return sorted(options, key=str.lower)
+        return []
+    except Exception:
+        return []
+    finally:
+        try:
+            wb.close()
+        except Exception:
+            pass
+
+
 # ── In-memory cache (5-minute TTL) ───────────────────────────────────────────
 
 _cache: dict[str, Any] = {"data": None, "ts": 0.0}
@@ -384,13 +418,17 @@ def get_projects() -> dict:
     company_key = col_map.get("company")
     company_options: list[str] = []
     if company_key:
-        seen: set[str] = set()
-        for r in rows:
-            v = str(r.get(company_key) or "").strip()
-            if v and v not in seen:
-                seen.add(v)
-                company_options.append(v)
-        company_options.sort(key=str.lower)
+        dv_options = _get_dv_company_options(buf, parsed["sheet_name"], company_key, parsed["headers"])
+        if dv_options:
+            company_options = dv_options
+        else:
+            seen: set[str] = set()
+            for r in rows:
+                v = str(r.get(company_key) or "").strip()
+                if v and v not in seen:
+                    seen.add(v)
+                    company_options.append(v)
+            company_options.sort(key=str.lower)
 
     data: dict[str, Any] = {
         "headers": parsed["headers"],
