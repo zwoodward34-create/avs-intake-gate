@@ -1,12 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
 
-{% if prefill_notice %}
-<div class="card" style="border-left:3px solid var(--accent); margin-bottom:14px">
-  <div style="font-weight:700; color:var(--accent); margin-bottom:4px">Pre-filled from document</div>
-  <div class="subtle small">{{ prefill_notice }} — Review all fields carefully before submitting.</div>
+<div id="prefill-banner" class="prefill-banner" style="display:none">
+  <div class="prefill-banner-text">
+    <span id="prefill-banner-count" class="prefill-banner-count"></span>
+    <span id="prefill-banner-warn" class="prefill-banner-warn" style="display:none"></span>
+    <span id="prefill-banner-src"  class="prefill-banner-src"></span>
+  </div>
+  <div class="prefill-banner-actions">
+    <button type="button" class="btn btn-danger" onclick="clearPrefill()">Clear all</button>
+    <button type="button" class="btn" onclick="document.getElementById('prefill-banner').style.display='none'">Dismiss</button>
+  </div>
 </div>
-{% endif %}
 
 {% if mode == 'new' and project_templates %}
 <div class="card" style="margin-bottom:14px;">
@@ -495,7 +500,275 @@
       input.addEventListener('input',  _updateIfpIndicator);
       input.addEventListener('change', _updateIfpIndicator);
     }
+    {% if prefill_data %}
+    populateForm({{ prefill_data | tojson }}, {{ prefill_filename | tojson }});
+    {% endif %}
   });
+
+  // ── AI pre-fill ───────────────────────────────────────────────────────────
+
+  function populateForm(data, filename) {
+    if (!data || typeof data !== 'object') return;
+
+    const ds  = data.detailed_screening       || {};
+    const qf  = data.quick_flags              || {};
+    const dc  = data.documentation_checklist  || {};
+    const nc  = dc.new_construction           || {};
+    const rev = dc.renovation_existing        || {};
+    const ap  = dc.all_projects               || {};
+    const hsd = ds.hard_stop_deadlines        || {};
+    const scores   = (data.confidence || {}).scores || {};
+    const lowFlags = (data.confidence || {}).flags  || [];
+
+    let populated = 0;
+
+    function setText(name, value) {
+      if (value === null || value === undefined || value === '') return;
+      const el = document.querySelector(`[name="${name}"]`);
+      if (!el) return;
+      el.value = String(value);
+      populated++;
+    }
+
+    function setSelect(name, value) {
+      if (!value) return;
+      const el = document.querySelector(`select[name="${name}"]`);
+      if (!el) return;
+      for (const opt of el.options) {
+        if (opt.value === value) { el.value = value; populated++; return; }
+      }
+    }
+
+    function setCheckboxVal(name, value, checked) {
+      const el = document.querySelector(`input[type="checkbox"][name="${name}"][value="${value}"]`);
+      if (!el) return;
+      el.checked = Boolean(checked);
+      if (checked) populated++;
+    }
+
+    function setCheckbox(name, checked) {
+      const el = document.querySelector(`input[type="checkbox"][name="${name}"]`);
+      if (!el) return;
+      el.checked = Boolean(checked);
+      if (checked) populated++;
+    }
+
+    // ── Text fields ────────────────────────────────────────────────────────
+    setText('project_name',               data.project_name);
+    setText('inquiry_date',               data.inquiry_date);
+    setText('ifp_due_date',               data.ifp_due_date);
+    setText('client_name',                data.client);
+    setText('architect_name',             data.architect);
+    setText('lead_contact',               data.lead_contact);
+    setText('city',                       data.city);
+    setText('approx_sf',                  data.square_footage);
+    setText('est_construction_cost',      data.estimated_construction_cost);
+    setText('notes',                      data.notes);
+    setText('weeks_to_permit_submission', ds.weeks_to_permit);
+
+    // ── Select fields ──────────────────────────────────────────────────────
+    setSelect('state', data.state);
+
+    setSelect('relationship_type', ({
+      existing_client:  'existing',
+      partner_referral: 'partner',
+      warm_unverified:  'referral',
+      new_cold_inquiry: 'new',
+    })[data.relationship_type]);
+
+    setSelect('inquiry_source', ({
+      architect_direct:    'architect_direct',
+      developer_direct:    'developer_direct',
+      contractor_referral: 'referral',
+      cold_website:        'cold_inquiry',
+    })[data.source_of_inquiry]);
+
+    setSelect('primary_material', ({
+      steel:             'steel',
+      concrete_tilt_up:  'concrete',
+      masonry_cmu:       'masonry',
+      wood_light_frame:  'timber',
+      cold_formed_steel: 'cold-formed',
+      mixed:             'steel',
+    })[ds.primary_structural_material]);
+
+    setSelect('project_type', ({
+      new_construction:         'new_construction',
+      ground_up:                'new_construction',
+      tenant_improvement_ti:    'tenant_improvement',
+      build_to_suit_bts:        'build_to_suit_retrofit',
+      repeating_program_rollout:'repeating_program',
+      renovation_addition:      'addition_expansion',
+    })[ds.project_type]);
+
+    setSelect('building_type', ({
+      retail_commercial:   'retail',
+      warehouse_industrial:'warehouse',
+      healthcare:          'healthcare',
+      education:           'education',
+      data_center:         'data_center',
+      mixed_use:           'mixed_use',
+      food_service_qsr:    'retail',
+      multifamily:         'other',
+      office:              'other',
+    })[ds.building_type]);
+
+    setSelect('architect_status', ({
+      known_good_track_record: 'known_good',
+      new_no_track_record:     'new',
+      not_yet_identified:      'not_identified',
+      unknown:                 'unknown',
+    })[ds.architect_status]);
+
+    setSelect('architect_responsiveness', ({
+      responsive: 'responsive',
+      slow:       'unresponsive',
+      unknown:    'unknown',
+    })[ds.architect_responsiveness]);
+
+    setSelect('decision_maker_clarity', ({
+      direct_contact_to_decision_maker: 'direct',
+      contact_to_project_manager:       'pm',
+      unclear_red_flag:                 'unclear',
+      unknown:                          'unclear',
+    })[ds.decision_maker_clarity]);
+
+    setSelect('scope_definition', ({
+      defined_inclusions_exclusions_clear: 'defined',
+      partially_defined:                   'partial',
+      undefined_evolving:                  'undefined',
+      unknown:                             'unknown',
+    })[ds.scope_definition]);
+
+    setSelect('scope_risk_type', ({
+      standard_retail_warehouse:         'standard',
+      ti_high_liability_medical_critical:'ti_high_liability',
+      adaptive_reuse_historic:           'adaptive_reuse',
+      complex_multi_building:            'standard',
+      unknown:                           'standard',
+    })[ds.scope_risk_type]);
+
+    setSelect('specialist_support', ({
+      yes:        'yes',
+      no_critical:'no',
+      na:         'unknown',
+      unknown:    'unknown',
+    })[ds.specialist_support_available]);
+
+    setSelect('scope_creep_likelihood', ({
+      no_scope_locked: 'no',
+      possible:        'possible',
+      likely:          'likely',
+      unknown:         'unknown',
+    })[ds.scope_creep_likelihood]);
+
+    setSelect('schedule_realism', ({
+      comfortable:     'comfortable',
+      tight_but_doable:'tight',
+      compressed:      'compressed',
+      unrealistic:     'unrealistic',
+      unknown:         'unknown',
+    })[ds.schedule_realism]);
+
+    setSelect('site_access', ({
+      confirmed:                       'yes_scheduled',
+      uncertain:                       'uncertain',
+      not_applicable_new_construction: 'not_applicable',
+      unknown:                         'unknown',
+    })[ds.site_access]);
+
+    setSelect('docs_commitment', ({
+      architect_will_provide_with_timeline: 'yes',
+      client_will_provide:                  'yes',
+      nothing_committed:                    'no',
+      unknown:                              'unknown',
+    })[ds.docs_commitment]);
+
+    // ── Quick flags ────────────────────────────────────────────────────────
+    setCheckboxVal('quick_flags', 'quick_scope_unclear',              qf.scope_unclear_will_evolve);
+    setCheckboxVal('quick_flags', 'quick_ti_high_liability',          qf.high_liability_ti);
+    setCheckboxVal('quick_flags', 'quick_historic_adaptive_reuse',    qf.historic_adaptive_reuse);
+    setCheckboxVal('quick_flags', 'quick_schedule_compressed',        qf.schedule_compressed);
+    setCheckboxVal('quick_flags', 'quick_hard_stop_deadline',         qf.hard_stop_deadline);
+    setCheckboxVal('quick_flags', 'quick_no_site_access',             qf.existing_building_no_site_access);
+    setCheckboxVal('quick_flags', 'quick_missing_geotech_or_drawings',qf.missing_geotech_or_drawings);
+    setCheckboxVal('quick_flags', 'quick_architect_unresponsive',     qf.architect_unresponsive_or_unproven);
+    setCheckboxVal('quick_flags', 'quick_no_decision_maker',          qf.no_clear_decision_maker);
+
+    // ── Hard-stop deadlines ────────────────────────────────────────────────
+    setCheckboxVal('hard_stop_deadlines', 'permit_board',    hsd.permit_board_date);
+    setCheckboxVal('hard_stop_deadlines', 'gc_mobilization', hsd.gc_mobilization);
+    setCheckboxVal('hard_stop_deadlines', 'lender',          hsd.lender_deadline);
+
+    // ── Documentation checklist ────────────────────────────────────────────
+    setCheckbox('doc_geotech',                nc.geotechnical_report);
+    setCheckbox('doc_grading_plan',           nc.grading_plan);
+    setCheckbox('doc_arch_drawings',          nc.architectural_drawings_schematic_plus);
+    setCheckbox('doc_existing_struct_drawings',rev.existing_structural_drawings);
+    setCheckbox('doc_site_photos',            rev.site_visit_photos_survey);
+    setCheckbox('doc_rfp_program',            ap.architectural_program_rfp);
+    setCheckbox('doc_site_plan',              ap.site_plan_with_address);
+    setCheckbox('doc_prelim_schedule',        ap.preliminary_schedule_timeline);
+
+    // Trigger IFP calendar indicator with the newly set date
+    if (typeof _updateIfpIndicator === 'function') _updateIfpIndicator();
+
+    // ── Confidence indicators ──────────────────────────────────────────────
+    const fieldConf = {
+      project_name:      ['project_name'],
+      client:            ['client_name'],
+      architect:         ['architect_name'],
+      square_footage:    ['approx_sf'],
+      relationship_type: ['relationship_type'],
+      scope_definition:  ['scope_definition'],
+      schedule:          ['schedule_realism', 'weeks_to_permit_submission', 'ifp_due_date'],
+    };
+
+    Object.entries(scores).forEach(([key, level]) => {
+      if (level === 'high') return;
+      const cls = level === 'low' ? 'prefill-low' : 'prefill-medium';
+      (fieldConf[key] || []).forEach(name => {
+        const el = document.querySelector(`[name="${name}"]`);
+        if (!el) return;
+        const wrap = el.closest('.field') || el.parentElement;
+        if (wrap) wrap.classList.add(cls);
+        if (level === 'low') { el.dataset.prefillTooltip = '1'; el.title = '⚠ Low confidence — verify'; }
+      });
+    });
+
+    if (scores.quick_flags === 'low') {
+      const card = document.querySelector('.card-red-flags');
+      if (card) card.classList.add('prefill-low');
+    }
+
+    // ── Banner ─────────────────────────────────────────────────────────────
+    const banner = document.getElementById('prefill-banner');
+    if (!banner) return;
+    const countEl = document.getElementById('prefill-banner-count');
+    const warnEl  = document.getElementById('prefill-banner-warn');
+    const srcEl   = document.getElementById('prefill-banner-src');
+    if (countEl) countEl.textContent = `AI filled ${populated} fields`;
+    if (warnEl && lowFlags.length > 0) {
+      warnEl.textContent = ` · ${lowFlags.length} low-confidence field${lowFlags.length !== 1 ? 's' : ''} — verify before submitting`;
+      warnEl.style.display = '';
+    }
+    if (srcEl && filename) srcEl.textContent = ` · from ${filename}`;
+    banner.style.display = 'flex';
+  }
+
+  function clearPrefill() {
+    document.getElementById('intake-form').reset();
+    document.getElementById('prefill-banner').style.display = 'none';
+    document.querySelectorAll('.prefill-low, .prefill-medium').forEach(el => {
+      el.classList.remove('prefill-low', 'prefill-medium');
+    });
+    document.querySelectorAll('[data-prefill-tooltip]').forEach(el => {
+      el.removeAttribute('title');
+      delete el.dataset.prefillTooltip;
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   async function saveTemplate() {
     const name = document.getElementById('tpl-name').value.trim();

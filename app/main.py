@@ -419,39 +419,12 @@ async def intake_upload_post(request: Request, file: UploadFile = File(...)) -> 
             {"request": request, "now_local": _now_local_iso(), "error": error},
         )
 
-    # Parse city/state from location_region ("Kissimmee, FL" → city, state)
-    city, state = "", ""
-    loc = (prefill.get("location_region") or "").strip()
-    if "," in loc:
-        parts = [p.strip() for p in loc.split(",", 1)]
-        city = parts[0]
-        state = parts[1][:2].upper() if len(parts) > 1 else ""
-
-    # Build a pseudo-intake and answers dict for the form template
+    # Render empty form — JS populateForm() handles all field mapping + confidence indicators
     fake_intake = types.SimpleNamespace(
-        id=None,
-        project_name=prefill.get("project_name") or "",
-        client_name=prefill.get("client_name") or "",
-        architect_name=prefill.get("architect_name") or "",
-        lead_contact=prefill.get("lead_contact") or "",
-        location_region=loc,
-        submitted_by="",
-        inquiry_date="",
-        ifp_due_date=prefill.get("deadline_date") or "",
-        status="",
+        id=None, project_name="", client_name="", architect_name="",
+        lead_contact="", location_region="", submitted_by="",
+        inquiry_date="", ifp_due_date="", status="",
     )
-
-    answers: dict[str, Any] = {
-        "city": city,
-        "state": state,
-        "approx_sf": prefill.get("approx_sf") or "",
-        "est_construction_cost": prefill.get("est_construction_cost") or "",
-        "project_type": prefill.get("project_type") or "unknown",
-        "building_type": prefill.get("building_type") or "other",
-        "structural_system": prefill.get("structural_system") or "",
-        "scope_description": prefill.get("scope_description") or "",
-        "architect_firm": prefill.get("architect_firm") or "",
-    }
 
     return templates.TemplateResponse(
         "intake_form.html",
@@ -459,10 +432,11 @@ async def intake_upload_post(request: Request, file: UploadFile = File(...)) -> 
             "request": request,
             "mode": "new",
             "intake": fake_intake,
-            "answers": answers,
+            "answers": {},
             "now_local": _now_local_iso(),
             "project_templates": db.list_templates(),
-            "prefill_notice": f"Pre-filled from: {file.filename}",
+            "prefill_data": prefill,
+            "prefill_filename": file.filename or "uploaded document",
         },
     )
 

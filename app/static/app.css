@@ -621,3 +621,43 @@ input[type="checkbox"]{
   font-size:12px; font-weight:500;
   white-space:nowrap;
 }
+
+/* ─── AI pre-fill confidence indicators ─────────────────────────────────── */
+.prefill-low input,
+.prefill-low select,
+.prefill-low textarea {
+  border-left: 3px solid #C69B2A !important;
+  background: rgba(198,155,42,.07) !important;
+}
+.prefill-medium input,
+.prefill-medium select,
+.prefill-medium textarea {
+  border-left: 3px solid var(--border-hover) !important;
+  background: var(--card-bg-deeper) !important;
+}
+.prefill-low.card-red-flags {
+  border-left-color: #C69B2A;
+}
+
+/* ─── AI pre-fill banner ─────────────────────────────────────────────────── */
+.prefill-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border: 1px solid rgba(30,58,95,.22);
+  border-left: 3px solid var(--accent);
+  background: rgba(30,58,95,.05);
+  border-radius: 4px;
+  margin-bottom: 14px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.prefill-banner-text {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.prefill-banner-count { color: var(--accent); font-weight: 700 }
+.prefill-banner-warn  { color: var(--warn);   font-weight: 600 }
+.prefill-banner-src   { color: var(--muted) }
+.prefill-banner-actions { display:flex; gap:8px; flex-shrink:0 }
