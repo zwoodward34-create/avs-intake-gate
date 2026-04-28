@@ -281,11 +281,13 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
     elif (
         intake.mo_fee_decision == "ACCEPTED"
         and cognasync_estimate
-        and not cognasync_estimate.needs_manual_review
+        and not cognasync_estimate.get("needs_manual_review")
     ):
-        lo = cognasync_estimate.suggested_fee_range.low
-        hi = cognasync_estimate.suggested_fee_range.high
-        proposal_fee_default = round((lo + hi) / 2 / 500) * 500
+        fee_range = cognasync_estimate.get("suggested_fee_range") or {}
+        lo = fee_range.get("low") or 0
+        hi = fee_range.get("high") or 0
+        if lo and hi:
+            proposal_fee_default = round((lo + hi) / 2 / 500) * 500
 
     return templates.TemplateResponse(
         "intake_view.html",
