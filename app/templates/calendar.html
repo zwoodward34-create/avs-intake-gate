@@ -87,12 +87,14 @@
 }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
 .cal-day {
-  min-height: 110px;
+  height: 130px;
+  overflow: hidden;
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   padding: 5px;
   cursor: pointer;
   transition: background .1s;
+  box-sizing: border-box;
 }
 .cal-day:hover { background: #faf9f7; }
 .cal-day:nth-child(7n) { border-right: none; }
@@ -111,10 +113,11 @@
 }
 .cal-day.ifp-bloat { background: #fff1f2; }
 .cal-day-num {
+  height: 22px;
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
-  margin-bottom: 3px;
+  margin-bottom: 2px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -130,21 +133,22 @@
 
 /* ── Event chips ───────────────────────────────────────────── */
 .cal-event-chip {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   width: 100%;
   padding: 2px 5px;
   border-radius: 3px;
   font-size: 11px;
   font-weight: 600;
   color: #fff;
-  margin-bottom: 3px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  margin-bottom: 2px;
   cursor: pointer;
   transition: opacity .12s;
   border: none;
   text-align: left;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 .cal-event-chip:hover { opacity: .82; }
 .cal-event-chip.ooo-chip {
@@ -153,32 +157,42 @@
   border: 1px dashed var(--border-hover);
   font-style: italic;
 }
-/* Team avatar row below the chip title */
-.chip-team-row {
+.chip-title {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.chip-dots {
   display: flex;
   gap: 2px;
-  margin-top: 2px;
-  flex-wrap: wrap;
-}
-.team-avatar {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  font-size: 8px;
-  font-weight: 800;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px solid rgba(255,255,255,.7);
   flex-shrink: 0;
+  align-items: center;
+}
+.chip-dot-inline {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,.5);
 }
 .cal-more {
+  display: block;
+  width: 100%;
   font-size: 10px;
-  color: var(--muted);
-  font-weight: 600;
-  padding: 1px 3px;
+  color: var(--accent);
+  font-weight: 700;
+  padding: 1px 4px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background .1s;
+  margin-top: 1px;
 }
+.cal-more:hover { background: rgba(30,58,95,.08); }
 
 /* ── Modal ─────────────────────────────────────────────────── */
 .modal-overlay {
@@ -391,6 +405,18 @@
   </div>
   <div style="display:flex;gap:6px;align-items:center;font-size:12px;font-weight:600;color:var(--muted)">
     <span style="width:22px;height:14px;border-radius:3px;background:#fff1f2;border:1px dashed #dc2626;display:inline-block"></span> IFP Bloat day
+  </div>
+</div>
+
+<!-- Day-detail modal -->
+<div class="modal-overlay" id="day-detail-overlay">
+  <div class="modal" style="max-width:420px">
+    <button class="modal-close" id="day-detail-close">✕</button>
+    <h3 id="day-detail-title">—</h3>
+    <div id="day-detail-list"></div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-primary" id="day-detail-add-btn">+ Add Event</button>
+    </div>
   </div>
 </div>
 
@@ -631,45 +657,49 @@
       const dayEvs = eventsOnDay(dateStr);
       const MAX = 3;
       dayEvs.slice(0, MAX).forEach(ev => {
-        // Chip wrapper (clickable)
-        const wrap = document.createElement('div');
-        wrap.style.marginBottom = '3px';
-
         const chip = document.createElement('button');
         chip.className = 'cal-event-chip' + (ev.is_ooo ? ' ooo-chip' : '');
         if (!ev.is_ooo) chip.style.background = PHASE_COLORS[ev.phase] || '#9ca3af';
-        chip.textContent = ev.title;
         chip.title = ev.title;
         chip.addEventListener('click', e => { e.stopPropagation(); openEdit(ev); });
-        wrap.appendChild(chip);
 
-        // Team avatar row (only for non-OOO events)
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'chip-title';
+        titleSpan.textContent = ev.title;
+        chip.appendChild(titleSpan);
+
         if (!ev.is_ooo && ev.team && ev.team.length) {
-          const row = document.createElement('div');
-          row.className = 'chip-team-row';
-          row.style.paddingLeft = '3px';
-          ev.team.forEach(m => {
-            const av = document.createElement('div');
-            av.className = 'team-avatar';
-            av.style.background = TEAM_COLORS[m] || '#9ca3af';
-            av.title = m;
-            av.textContent = m;
-            row.appendChild(av);
+          const dots = document.createElement('span');
+          dots.className = 'chip-dots';
+          const show = ev.team.slice(0, 4);
+          show.forEach(m => {
+            const d = document.createElement('span');
+            d.className = 'chip-dot-inline';
+            d.style.background = TEAM_COLORS[m] || 'rgba(255,255,255,.7)';
+            d.title = m;
+            dots.appendChild(d);
           });
-          wrap.appendChild(row);
+          if (ev.team.length > 4) {
+            const more = document.createElement('span');
+            more.style.cssText = 'font-size:9px;font-weight:800;color:rgba(255,255,255,.9)';
+            more.textContent = `+${ev.team.length - 4}`;
+            dots.appendChild(more);
+          }
+          chip.appendChild(dots);
         }
 
-        cell.appendChild(wrap);
+        cell.appendChild(chip);
       });
 
       if (dayEvs.length > MAX) {
-        const more = document.createElement('div');
+        const more = document.createElement('button');
         more.className = 'cal-more';
         more.textContent = `+${dayEvs.length - MAX} more`;
+        more.addEventListener('click', e => { e.stopPropagation(); openDayDetail(dateStr); });
         cell.appendChild(more);
       }
 
-      cell.addEventListener('click', () => openAdd(dateStr));
+      cell.addEventListener('click', () => openDayDetail(dateStr));
       grid.appendChild(cell);
     }
   }
@@ -903,6 +933,85 @@
   document.getElementById('add-event-btn').addEventListener('click', () => {
     const t = new Date();
     openAdd(isoDate(t.getFullYear(), t.getMonth(), t.getDate()));
+  });
+
+  // ── Day-detail popup ─────────────────────────────────────────
+  const dayDetailOverlay = document.getElementById('day-detail-overlay');
+  let dayDetailDate = null;
+
+  function openDayDetail(dateStr) {
+    dayDetailDate = dateStr;
+    const dayEvs = eventsOnDay(dateStr);
+    const d = new Date(dateStr + 'T12:00:00');
+    document.getElementById('day-detail-title').textContent =
+      d.toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' });
+
+    const list = document.getElementById('day-detail-list');
+    list.innerHTML = '';
+
+    if (dayEvs.length === 0) {
+      list.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:12px 0;text-align:center">No events this day</div>';
+    } else {
+      dayEvs.forEach(ev => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)';
+
+        const phaseDot = document.createElement('div');
+        phaseDot.style.cssText = `width:10px;height:10px;border-radius:2px;background:${ev.is_ooo ? '#e7e5e4' : (PHASE_COLORS[ev.phase]||'#9ca3af')};flex-shrink:0;margin-top:3px`;
+        row.appendChild(phaseDot);
+
+        const info = document.createElement('div');
+        info.style.cssText = 'flex:1;min-width:0';
+
+        const title = document.createElement('div');
+        title.style.cssText = 'font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        title.textContent = ev.title;
+        info.appendChild(title);
+
+        const meta = document.createElement('div');
+        meta.style.cssText = 'font-size:11px;color:var(--muted);margin-top:2px';
+        const s = ev.start_date.slice(0,10);
+        const e = ev.end_date.slice(0,10);
+        const dateRange = s === e ? s : `${s} – ${e}`;
+        meta.textContent = ev.is_ooo ? `OOO · ${dateRange}` : `${ev.phase}${ev.tier ? ' · T'+ev.tier : ''} · ${dateRange}`;
+        info.appendChild(meta);
+
+        if (!ev.is_ooo && ev.team && ev.team.length) {
+          const teamRow = document.createElement('div');
+          teamRow.style.cssText = 'display:flex;gap:4px;margin-top:5px;flex-wrap:wrap';
+          ev.team.forEach(m => {
+            const av = document.createElement('div');
+            av.style.cssText = `width:20px;height:20px;border-radius:50%;background:${TEAM_COLORS[m]||'#9ca3af'};display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff;flex-shrink:0`;
+            av.title = m;
+            av.textContent = m;
+            teamRow.appendChild(av);
+          });
+          info.appendChild(teamRow);
+        }
+
+        row.appendChild(info);
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn';
+        editBtn.style.cssText = 'font-size:11px;padding:3px 10px;flex-shrink:0';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => { closeDayDetail(); openEdit(ev); });
+        row.appendChild(editBtn);
+
+        list.appendChild(row);
+      });
+    }
+
+    dayDetailOverlay.classList.add('open');
+  }
+
+  function closeDayDetail() { dayDetailOverlay.classList.remove('open'); }
+
+  document.getElementById('day-detail-close').addEventListener('click', closeDayDetail);
+  dayDetailOverlay.addEventListener('click', e => { if (e.target === dayDetailOverlay) closeDayDetail(); });
+  document.getElementById('day-detail-add-btn').addEventListener('click', () => {
+    closeDayDetail();
+    openAdd(dayDetailDate || isoDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()));
   });
 
   // ── Save ─────────────────────────────────────────────────────
