@@ -71,6 +71,13 @@ class ProjectLoad:
     base_load: float
     effective_load: float
     phase_jump: bool = False
+    start_date: str = ""
+    end_date: str = ""
+    client: str = ""
+    location: str = ""
+    project_number: str = ""
+    project_type: str = ""
+    team: list = field(default_factory=list)
 
 
 @dataclass
@@ -139,6 +146,13 @@ class PersonLoad:
                     "base_load":      round(p.base_load, 2),
                     "effective_load": round(p.effective_load, 2),
                     "phase_jump":     p.phase_jump,
+                    "start_date":     p.start_date,
+                    "end_date":       p.end_date,
+                    "client":         p.client,
+                    "location":       p.location,
+                    "project_number": p.project_number,
+                    "project_type":   p.project_type,
+                    "team":           p.team,
                 }
                 for p in self.projects
             ],
@@ -189,6 +203,13 @@ def compute_weu(events: list[dict]) -> dict[str, PersonLoad]:
                 base_load=base_load,
                 effective_load=effective,
                 phase_jump=phase_jump,
+                start_date=(ev.get("start_date") or "")[:10],
+                end_date=(ev.get("end_date") or "")[:10],
+                client=ev.get("client") or "",
+                location=ev.get("location") or "",
+                project_number=ev.get("project_number") or "",
+                project_type=ev.get("project_type") or "",
+                team=ev.get("team") or [],
             ))
 
             # EIT → Mentor shadow load

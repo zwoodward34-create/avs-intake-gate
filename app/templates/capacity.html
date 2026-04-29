@@ -220,11 +220,106 @@
   border-radius: 3px;
   flex-shrink: 0;
 }
+
+/* ── Clickable project items ──────────────────────────────── */
+.project-item { cursor: pointer; }
+.project-item:hover { background: rgba(0,0,0,.04); border-radius: 3px; }
+
+/* ── Project detail popup ─────────────────────────────────── */
+.proj-detail-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.45); z-index: 1000;
+  align-items: center; justify-content: center;
+}
+.proj-detail-overlay.open { display: flex; }
+.proj-detail-card {
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 20px; width: 100%; max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.25); position: relative;
+}
+.proj-detail-card h3 { margin: 0 0 14px; font-size: 15px; font-weight: 800; padding-right: 28px; }
+.proj-detail-row {
+  display: flex; gap: 10px; margin-bottom: 8px; font-size: 13px; align-items: baseline;
+}
+.proj-detail-label { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; flex-shrink: 0; width: 88px; }
+.proj-detail-value { font-weight: 600; }
+.proj-detail-close {
+  position: absolute; top: 14px; right: 14px;
+  background: none; border: none; cursor: pointer;
+  font-size: 18px; color: var(--muted); line-height: 1;
+}
+.proj-detail-close:hover { color: var(--text); }
+
+/* ── Add-event modal ──────────────────────────────────────── */
+.cap-modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.45); z-index: 1100;
+  align-items: center; justify-content: center;
+}
+.cap-modal-overlay.open { display: flex; }
+.cap-modal {
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 24px; width: 100%; max-width: 500px;
+  max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,.25); position: relative;
+}
+.cap-modal h3 { margin: 0 0 16px; font-size: 16px; font-weight: 800; }
+.cap-modal-close {
+  position: absolute; top: 16px; right: 16px;
+  background: none; border: none; cursor: pointer;
+  font-size: 18px; color: var(--muted); line-height: 1;
+}
+.cap-modal-close:hover { color: var(--text); }
+.cap-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.cap-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* team select inside add-event modal */
+.cap-team-select-wrapper { position: relative; }
+.cap-team-trigger {
+  width: 100%; padding: 9px 32px 9px 11px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px; color: var(--text); cursor: pointer;
+  text-align: left; display: flex; align-items: center; gap: 5px;
+  flex-wrap: wrap; min-height: 40px; transition: border-color .15s;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(107,101,96,.70)' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+}
+.cap-team-trigger:focus,
+.cap-team-trigger.open { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(30,58,95,.10); }
+.cap-team-dropdown {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  z-index: 1200; padding: 4px 0; max-height: 220px; overflow-y: auto;
+}
+.cap-team-dropdown.open { display: block; }
+.cap-team-option {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; cursor: pointer; transition: background .1s; user-select: none;
+}
+.cap-team-option:hover { background: var(--card-bg-deeper); }
+.cap-team-option.selected { background: #eff6ff; }
+.cap-team-option-dot {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800; color: #fff; flex-shrink: 0;
+}
+.cap-team-option-label { font-size: 13px; font-weight: 600; }
+.cap-team-option-check { margin-left: auto; color: var(--accent); font-size: 14px; }
+.cap-selected-avatar {
+  width: 22px; height: 22px; border-radius: 50%;
+  font-size: 9px; font-weight: 800; color: #fff;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
 </style>
 
 <div class="cap-header">
   <h2>Capacity &amp; WEU Heatmap</h2>
-  <div class="cap-refresh-info" id="refresh-info">Refreshing in <span id="countdown">60</span>s</div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <button class="btn btn-primary" id="add-cal-event-btn">+ Add Calendar Event</button>
+    <div class="cap-refresh-info" id="refresh-info">Refreshing in <span id="countdown">60</span>s</div>
+  </div>
 </div>
 
 <div class="cap-warning-banner" id="no-tier-banner">
@@ -341,6 +436,7 @@
     p.projects.forEach(proj => {
       const li = document.createElement('li');
       li.className = 'project-item';
+      li.dataset.proj = JSON.stringify(proj);
       const phaseColor = PHASE_COLORS[proj.phase] || '#9ca3af';
       li.innerHTML = `
         <div class="project-phase-dot" style="background:${phaseColor}" title="${proj.phase}"></div>
@@ -389,6 +485,297 @@
   }
 
   fetchCapacity();
+
+  // ── Make project items clickable ──────────────────────────
+  const _origRenderPerson = renderPerson;
+  // Patch: add click handlers after renderPerson builds its list
+  // (done via event delegation on the content div)
+  document.getElementById('cap-content').addEventListener('click', e => {
+    const li = e.target.closest('.project-item');
+    if (!li) return;
+    const proj = JSON.parse(li.dataset.proj || 'null');
+    if (proj) openProjectDetail(proj);
+  });
+})();
+
+// ── Project detail popup ─────────────────────────────────────
+(function () {
+  const PHASE_COLORS = {{ phase_colors | safe }};
+  const TEAM_COLORS  = {{ team_colors | safe }};
+
+  const overlay = document.createElement('div');
+  overlay.className = 'proj-detail-overlay';
+  overlay.id = 'proj-detail-overlay';
+  overlay.innerHTML = `
+    <div class="proj-detail-card">
+      <button class="proj-detail-close" id="proj-detail-close">✕</button>
+      <h3 id="pd-title">—</h3>
+      <div id="pd-body"></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  document.getElementById('proj-detail-close').addEventListener('click', () => overlay.classList.remove('open'));
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
+
+  window.openProjectDetail = function (proj) {
+    document.getElementById('pd-title').textContent = proj.title || '—';
+    const phaseColor = PHASE_COLORS[proj.phase] || '#9ca3af';
+
+    const dateRange = proj.start_date && proj.end_date
+      ? (proj.start_date === proj.end_date ? proj.start_date : `${proj.start_date} – ${proj.end_date}`)
+      : '—';
+
+    const teamHtml = (proj.team || []).map(m =>
+      `<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:${TEAM_COLORS[m]||'#9ca3af'};font-size:9px;font-weight:800;color:#fff;margin-right:3px" title="${m}">${m}</span>`
+    ).join('');
+
+    document.getElementById('pd-body').innerHTML = `
+      <div class="proj-detail-row">
+        <span class="proj-detail-label">Phase</span>
+        <span class="proj-detail-value" style="display:flex;align-items:center;gap:6px">
+          <span style="width:10px;height:10px;border-radius:2px;background:${phaseColor};display:inline-block;flex-shrink:0"></span>
+          ${proj.phase}
+        </span>
+      </div>
+      <div class="proj-detail-row">
+        <span class="proj-detail-label">Tier</span>
+        <span class="proj-detail-value">${proj.tier ? 'T' + proj.tier : '—'}</span>
+      </div>
+      ${proj.client ? `<div class="proj-detail-row"><span class="proj-detail-label">Client</span><span class="proj-detail-value">${proj.client}</span></div>` : ''}
+      ${proj.location ? `<div class="proj-detail-row"><span class="proj-detail-label">Location</span><span class="proj-detail-value">${proj.location}</span></div>` : ''}
+      ${proj.project_number ? `<div class="proj-detail-row"><span class="proj-detail-label">Project #</span><span class="proj-detail-value">${proj.project_number}</span></div>` : ''}
+      ${proj.project_type ? `<div class="proj-detail-row"><span class="proj-detail-label">Type</span><span class="proj-detail-value">${proj.project_type}</span></div>` : ''}
+      <div class="proj-detail-row">
+        <span class="proj-detail-label">Dates</span>
+        <span class="proj-detail-value">${dateRange}</span>
+      </div>
+      ${(proj.team||[]).length ? `<div class="proj-detail-row"><span class="proj-detail-label">Team</span><span class="proj-detail-value">${teamHtml}</span></div>` : ''}
+      <div class="proj-detail-row">
+        <span class="proj-detail-label">WEU Load</span>
+        <span class="proj-detail-value" style="font-family:var(--mono)">${proj.effective_load.toFixed(2)} WEU${proj.phase_jump ? ' <span style="font-size:10px;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:3px;padding:1px 4px;font-weight:800">+QA</span>' : ''}</span>
+      </div>
+    `;
+    overlay.classList.add('open');
+  };
+})();
+
+// ── Add Calendar Event modal ─────────────────────────────────
+(function () {
+  const PHASE_COLORS = {{ phase_colors | safe }};
+  const TEAM_COLORS  = {{ team_colors | safe }};
+  const VALID_PHASES = {{ valid_phases | tojson }};
+  const TEAM_MEMBERS = {{ team_members | tojson }};
+
+  // Build modal HTML
+  const overlay = document.createElement('div');
+  overlay.className = 'cap-modal-overlay';
+  overlay.id = 'add-event-overlay';
+
+  const phaseOptions = VALID_PHASES.map(p => `<option value="${p}">${p}</option>`).join('');
+  const teamOptionRows = TEAM_MEMBERS.map(m =>
+    `<div class="cap-team-option" data-member="${m}">
+       <span class="cap-team-option-dot" style="background:${TEAM_COLORS[m]||'#9ca3af'}">${m}</span>
+       <span class="cap-team-option-label">${m}</span>
+       <span class="cap-team-option-check" style="display:none">✓</span>
+     </div>`
+  ).join('');
+
+  overlay.innerHTML = `
+    <div class="cap-modal">
+      <button class="cap-modal-close" id="ae-close">✕</button>
+      <h3>Add Calendar Event</h3>
+      <div class="field">
+        <label for="ae-project-number">Project #</label>
+        <input type="text" id="ae-project-number" placeholder="e.g. 9771">
+      </div>
+      <div class="cap-two-col">
+        <div class="field">
+          <label for="ae-client">Client</label>
+          <input type="text" id="ae-client" placeholder="e.g. Sprouts">
+        </div>
+        <div class="field">
+          <label for="ae-location">Location</label>
+          <input type="text" id="ae-location" placeholder="e.g. Hutto, TX">
+        </div>
+      </div>
+      <div class="cap-two-col">
+        <div class="field">
+          <label for="ae-phase">Phase</label>
+          <select id="ae-phase">${phaseOptions}</select>
+        </div>
+        <div class="field">
+          <label for="ae-tier">Tier (1–5)</label>
+          <select id="ae-tier">
+            <option value="">— No tier —</option>
+            <option value="1">1 — Minor</option>
+            <option value="2">2 — Small</option>
+            <option value="3">3 — Standard</option>
+            <option value="4">4 — Large</option>
+            <option value="5">5 — Major</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Team</label>
+        <div class="cap-team-select-wrapper">
+          <button type="button" class="cap-team-trigger" id="ae-team-trigger">
+            <span id="ae-team-placeholder" style="color:var(--subtle)">Select team members…</span>
+          </button>
+          <div class="cap-team-dropdown" id="ae-team-dropdown">${teamOptionRows}</div>
+        </div>
+      </div>
+      <div class="cap-two-col">
+        <div class="field">
+          <label for="ae-start">Start Date</label>
+          <input type="date" id="ae-start">
+        </div>
+        <div class="field">
+          <label for="ae-end">End Date</label>
+          <input type="date" id="ae-end">
+        </div>
+      </div>
+      <div id="ae-save-error" style="display:none;color:#dc2626;font-size:12px;font-weight:600;margin-top:6px"></div>
+      <div class="cap-modal-actions">
+        <button class="btn" id="ae-cancel">Cancel</button>
+        <button class="btn btn-primary" id="ae-save">Save Event</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  let selectedTeam = new Set();
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function today() {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+
+  function renderTeamTrigger() {
+    const trigger = document.getElementById('ae-team-trigger');
+    trigger.innerHTML = '';
+    if (selectedTeam.size === 0) {
+      const ph = document.createElement('span');
+      ph.style.color = 'var(--subtle)';
+      ph.textContent = 'Select team members…';
+      trigger.appendChild(ph);
+    } else {
+      [...selectedTeam].forEach(m => {
+        const av = document.createElement('div');
+        av.className = 'cap-selected-avatar';
+        av.style.background = TEAM_COLORS[m] || '#9ca3af';
+        av.title = m;
+        av.textContent = m;
+        trigger.appendChild(av);
+      });
+    }
+    trigger.style.cssText += ';background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'rgba(107,101,96,.70)\' stroke-width=\'2.5\'%3E%3Cpolyline points=\'6 9 12 15 18 9\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px';
+  }
+
+  function syncTeamChecks() {
+    overlay.querySelectorAll('.cap-team-option').forEach(opt => {
+      const m = opt.dataset.member;
+      const check = opt.querySelector('.cap-team-option-check');
+      if (selectedTeam.has(m)) { opt.classList.add('selected'); check.style.display = ''; }
+      else { opt.classList.remove('selected'); check.style.display = 'none'; }
+    });
+  }
+
+  const trigger = document.getElementById('ae-team-trigger');
+  const dropdown = document.getElementById('ae-team-dropdown');
+  trigger.addEventListener('click', e => {
+    e.stopPropagation();
+    dropdown.classList.toggle('open');
+    trigger.classList.toggle('open', dropdown.classList.contains('open'));
+  });
+  overlay.querySelectorAll('.cap-team-option').forEach(opt => {
+    opt.addEventListener('click', e => {
+      e.stopPropagation();
+      const m = opt.dataset.member;
+      if (selectedTeam.has(m)) selectedTeam.delete(m);
+      else selectedTeam.add(m);
+      syncTeamChecks();
+      renderTeamTrigger();
+    });
+  });
+  document.addEventListener('click', () => {
+    dropdown.classList.remove('open');
+    trigger.classList.remove('open');
+  });
+
+  function openModal() {
+    selectedTeam.clear();
+    syncTeamChecks();
+    renderTeamTrigger();
+    document.getElementById('ae-project-number').value = '';
+    document.getElementById('ae-client').value = '';
+    document.getElementById('ae-location').value = '';
+    document.getElementById('ae-phase').value = 'IFP';
+    document.getElementById('ae-tier').value = '';
+    document.getElementById('ae-start').value = today();
+    document.getElementById('ae-end').value = today();
+    document.getElementById('ae-save-error').style.display = 'none';
+    overlay.classList.add('open');
+  }
+
+  function closeModal() { overlay.classList.remove('open'); }
+
+  document.getElementById('add-cal-event-btn').addEventListener('click', openModal);
+  document.getElementById('ae-close').addEventListener('click', closeModal);
+  document.getElementById('ae-cancel').addEventListener('click', closeModal);
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+  document.getElementById('ae-save').addEventListener('click', async () => {
+    const startDate = document.getElementById('ae-start').value;
+    const endDate   = document.getElementById('ae-end').value;
+    const team = [...selectedTeam];
+    const errEl = document.getElementById('ae-save-error');
+    errEl.style.display = 'none';
+
+    if (!startDate || !endDate) { errEl.textContent = 'Start and end dates are required.'; errEl.style.display = 'block'; return; }
+    if (endDate < startDate)    { errEl.textContent = 'End date must be on or after start date.'; errEl.style.display = 'block'; return; }
+    if (!team.length)           { errEl.textContent = 'Please select at least one team member.'; errEl.style.display = 'block'; return; }
+
+    const tierRaw = document.getElementById('ae-tier').value;
+    const payload = {
+      project_number: document.getElementById('ae-project-number').value.trim(),
+      client:         document.getElementById('ae-client').value.trim(),
+      location:       document.getElementById('ae-location').value.trim(),
+      phase:          document.getElementById('ae-phase').value,
+      tier:           tierRaw ? parseInt(tierRaw) : null,
+      phase_jump:     false,
+      team,
+      project_type:   '',
+      start_date:     startDate + 'T00:00:00Z',
+      end_date:       endDate   + 'T23:59:59Z',
+      is_ooo:         false,
+    };
+
+    const saveBtn = document.getElementById('ae-save');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    try {
+      const res = await fetch('/api/calendar/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        errEl.textContent = err.detail || 'Save failed.';
+        errEl.style.display = 'block';
+      } else {
+        closeModal();
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error — please try again.';
+      errEl.style.display = 'block';
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Event';
+    }
+  });
 })();
 </script>
 {% endblock %}

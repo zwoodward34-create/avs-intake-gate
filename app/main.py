@@ -1043,6 +1043,31 @@ def api_calendar_events_delete(event_id: str) -> dict:
     return {"deleted": event_id}
 
 
+@app.get("/api/intakes/{intake_id}/fee-estimate")
+def api_intake_fee_estimate(intake_id: int) -> dict:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    decision = compute_decision(intake.answers)
+    enriched = {**intake.answers, "_complexity": decision["complexity_estimate"]}
+    est = cognasync_estimate_from_answers(intake.project_name, enriched)
+    midpoint: Optional[float] = None
+    if est and not est.get("needs_manual_review"):
+        fee_range = est.get("suggested_fee_range") or {}
+        lo = fee_range.get("low") or 0
+        hi = fee_range.get("high") or 0
+        if lo and hi:
+            midpoint = round((lo + hi) / 2 / 500) * 500
+    return {
+        "intake_id":        intake_id,
+        "project_name":     intake.project_name,
+        "complexity":       decision["complexity_estimate"],
+        "fee_range":        decision.get("fee_range_estimate"),
+        "cognasync":        est,
+        "suggested_midpoint": midpoint,
+    }
+
+
 @app.get("/capacity", response_class=HTMLResponse)
 def capacity_page(request: Request) -> HTMLResponse:
     import json as _json
@@ -1053,6 +1078,8 @@ def capacity_page(request: Request) -> HTMLResponse:
             "now_local": _now_local_iso(),
             "team_colors":  _json.dumps(db.TEAM_COLORS),
             "phase_colors": _json.dumps(db.PHASE_COLORS),
+            "valid_phases": db.VALID_PHASES,
+            "team_members": db.TEAM_MEMBERS,
         },
     )
 

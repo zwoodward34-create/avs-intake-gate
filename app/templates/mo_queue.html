@@ -77,17 +77,80 @@
       </div>
 
       <form method="post" action="/intakes/{{ intake.id }}/mo-review" id="form-{{ intake.id }}">
-        <input type="hidden" name="redirect_after" value="/mo-queue" />
+        <input type="hidden" name="redirect_after" id="redirect-{{ intake.id }}" value="/mo-queue" />
+        <input type="hidden" name="mo_fee_decision" id="fee-decision-{{ intake.id }}" value="" />
+        <input type="hidden" name="mo_fee_override" id="fee-override-{{ intake.id }}" value="" />
 
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
-          <button class="btn btn-proceed" type="submit" name="mo_decision" value="PROCEED">Proceed</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px" id="action-btns-{{ intake.id }}">
+          <button class="btn btn-proceed" type="button" onclick="openProceedSection({{ intake.id }})">Proceed</button>
           <button class="btn btn-decline" type="submit" name="mo_decision" value="DECLINE">Decline</button>
           <button class="btn btn-moreinfo" type="submit" name="mo_decision" value="REQUEST_CLARIFICATION">Need More Info</button>
         </div>
 
-        <div>
-          <button type="button" class="mo-notes-toggle" onclick="toggleNotes('notes-{{ intake.id }}', this)">+ Add notes or conditions</button>
-          <div class="mo-notes-area" id="notes-{{ intake.id }}" style="display:none">
+        <!-- Proceed fee section (hidden until Proceed is clicked) -->
+        <div id="proceed-section-{{ intake.id }}" style="display:none; margin-bottom:12px">
+          <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:16px; margin-bottom:12px">
+            <div style="font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#16a34a; margin-bottom:12px">Fee Estimation</div>
+
+            <div id="fee-estimate-{{ intake.id }}" style="margin-bottom:12px">
+              <div style="color:var(--muted); font-size:12px">Loading fee estimate…</div>
+            </div>
+
+            <div class="field" style="margin-bottom:0">
+              <label for="approved-fee-{{ intake.id }}" style="font-weight:700">Approved Fee ($)</label>
+              <input type="number" id="approved-fee-{{ intake.id }}" min="500" step="500"
+                     placeholder="Enter approved fee amount"
+                     style="max-width:220px; font-size:16px; font-weight:700" />
+              <div class="subtle" style="margin-top:4px; font-size:11px">This amount will appear in Reports → Approved Pipeline</div>
+            </div>
+          </div>
+
+          <!-- Proposal Prep checklist -->
+          <div style="background:#f8fafc; border:1px solid var(--border); border-radius:6px; padding:14px; margin-bottom:12px">
+            <div style="font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:10px">Proposal Prep Checklist</div>
+            <div style="display:flex; flex-direction:column; gap:7px; font-size:13px">
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer"><input type="checkbox" style="width:15px; height:15px"> RFP data extracted (name, location, SF, type)</label>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer"><input type="checkbox" style="width:15px; height:15px"> Project classified (new construction or BTS)</label>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer"><input type="checkbox" style="width:15px; height:15px"> Complexity assessed (low / medium / high)</label>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer"><input type="checkbox" style="width:15px; height:15px"> Fee estimated using tier matrix</label>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer"><input type="checkbox" style="width:15px; height:15px"> Scope items determined (A–G or A–H)</label>
+            </div>
+          </div>
+
+          <!-- Generate Proposal Letter note -->
+          <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:12px 14px; margin-bottom:12px; font-size:13px">
+            <div style="font-weight:700; color:#1d4ed8; margin-bottom:4px">Generate Proposal Letter</div>
+            <div style="color:var(--muted)">After confirming, you'll be taken to the intake where you can generate the full proposal letter using the approved fee above.</div>
+          </div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
+            <button class="btn btn-proceed" type="button"
+                    onclick="confirmProceed({{ intake.id }})">✓ Confirm Proceed &amp; Go to Proposal</button>
+            <button class="btn" type="button"
+                    onclick="cancelProceed({{ intake.id }})">Cancel</button>
+          </div>
+
+          <div>
+            <button type="button" class="mo-notes-toggle" onclick="toggleNotes('notes-{{ intake.id }}', this)" style="margin-top:10px">+ Add notes or conditions</button>
+            <div class="mo-notes-area" id="notes-{{ intake.id }}" style="display:none">
+              <div class="row row-2" style="margin-top:8px">
+                <div class="field">
+                  <label>Notes</label>
+                  <textarea name="mo_notes" rows="3"></textarea>
+                </div>
+                <div class="field">
+                  <label>Conditions</label>
+                  <input type="text" name="mo_conditions" placeholder="Optional" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Notes toggle for Decline/More Info path -->
+        <div id="other-notes-{{ intake.id }}">
+          <button type="button" class="mo-notes-toggle" onclick="toggleNotes('other-notes-area-{{ intake.id }}', this)">+ Add notes or conditions</button>
+          <div class="mo-notes-area" id="other-notes-area-{{ intake.id }}" style="display:none">
             <div class="row row-2" style="margin-top:8px">
               <div class="field">
                 <label>Notes</label>
@@ -111,6 +174,73 @@
     var hidden = el.style.display === 'none';
     el.style.display = hidden ? 'block' : 'none';
     btn.textContent = hidden ? '− Hide notes' : '+ Add notes or conditions';
+  }
+
+  function openProceedSection(intakeId) {
+    document.getElementById('action-btns-' + intakeId).style.display = 'none';
+    document.getElementById('other-notes-' + intakeId).style.display = 'none';
+    document.getElementById('proceed-section-' + intakeId).style.display = 'block';
+    loadFeeEstimate(intakeId);
+  }
+
+  function cancelProceed(intakeId) {
+    document.getElementById('proceed-section-' + intakeId).style.display = 'none';
+    document.getElementById('action-btns-' + intakeId).style.display = 'flex';
+    document.getElementById('other-notes-' + intakeId).style.display = 'block';
+  }
+
+  function confirmProceed(intakeId) {
+    var feeInput = document.getElementById('approved-fee-' + intakeId);
+    var fee = parseFloat(feeInput ? feeInput.value : '');
+    if (!fee || fee < 500) {
+      feeInput.style.borderColor = '#dc2626';
+      feeInput.focus();
+      return;
+    }
+    document.getElementById('fee-decision-' + intakeId).value = 'OVERRIDE';
+    document.getElementById('fee-override-' + intakeId).value = fee;
+    document.getElementById('redirect-' + intakeId).value = '/intakes/' + intakeId + '#proposal-section';
+    // Add mo_decision as hidden field before submit
+    var hdec = document.createElement('input');
+    hdec.type = 'hidden';
+    hdec.name = 'mo_decision';
+    hdec.value = 'PROCEED';
+    document.getElementById('form-' + intakeId).appendChild(hdec);
+    document.getElementById('form-' + intakeId).submit();
+  }
+
+  function loadFeeEstimate(intakeId) {
+    var container = document.getElementById('fee-estimate-' + intakeId);
+    if (!container) return;
+    fetch('/api/intakes/' + intakeId + '/fee-estimate')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var html = '';
+        var c = d.cognasync;
+        if (c && !c.needs_manual_review && c.suggested_fee_range) {
+          var lo = c.suggested_fee_range.low;
+          var hi = c.suggested_fee_range.high;
+          var mid = d.suggested_midpoint;
+          html += '<div style="background:#fff;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;margin-bottom:10px">'
+                + '<div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Suggested Fee Range</div>'
+                + '<div style="font-size:1.4rem;font-weight:900">$' + lo.toLocaleString() + ' – $' + hi.toLocaleString() + '</div>'
+                + (mid ? '<div style="font-size:12px;color:var(--muted);margin-top:2px">Midpoint: <strong>$' + mid.toLocaleString() + '</strong></div>' : '')
+                + '</div>';
+          var feeInput = document.getElementById('approved-fee-' + intakeId);
+          if (feeInput && !feeInput.value && mid) feeInput.value = mid;
+        } else if (d.fee_range) {
+          html += '<div style="font-size:13px;color:var(--muted)">Estimated range: <strong>' + d.fee_range + '</strong> — enter approved fee below.</div>';
+        } else {
+          html += '<div style="font-size:13px;color:var(--muted)">No automated estimate available — enter approved fee manually.</div>';
+        }
+        if (c && c.fee_requires_review) {
+          html += '<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;padding:7px 10px;font-size:12px;font-weight:600;color:#92400e;margin-top:6px">⚠ ' + (c.review_reason || 'Fee requires manual review') + '</div>';
+        }
+        container.innerHTML = html;
+      })
+      .catch(function() {
+        container.innerHTML = '<div style="font-size:12px;color:var(--muted)">Could not load estimate — enter fee manually.</div>';
+      });
   }
   </script>
 {% endblock %}
