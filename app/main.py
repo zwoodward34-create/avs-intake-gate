@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi import UploadFile, File
 
 from . import calendar_sync
+from . import weu as weu_engine
 from . import db
 from . import document_extractor
 from . import project_search
@@ -985,6 +986,8 @@ async def api_calendar_events_create(request: Request) -> dict:
                 break
             d += timedelta(days=1)
 
+    tier_raw = body.get("tier")
+    tier = int(tier_raw) if tier_raw and str(tier_raw).isdigit() and 1 <= int(tier_raw) <= 5 else None
     event_id = db.create_calendar_event(
         project_number=body.get("project_number") or "",
         client=body.get("client") or "",
@@ -995,6 +998,8 @@ async def api_calendar_events_create(request: Request) -> dict:
         start_date=body["start_date"],
         end_date=body["end_date"],
         is_ooo=bool(body.get("is_ooo", False)),
+        tier=tier,
+        phase_jump=bool(body.get("phase_jump", False)),
         metadata=body.get("metadata"),
     )
     event = db.get_calendar_event(event_id)
@@ -1008,6 +1013,8 @@ async def api_calendar_events_update(request: Request, event_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Not found.")
     body = await request.json()
     _validate_calendar_payload(body)
+    tier_raw = body.get("tier")
+    tier = int(tier_raw) if tier_raw and str(tier_raw).isdigit() and 1 <= int(tier_raw) <= 5 else None
     db.update_calendar_event(
         event_id,
         project_number=body.get("project_number") or "",
@@ -1019,6 +1026,8 @@ async def api_calendar_events_update(request: Request, event_id: str) -> dict:
         start_date=body["start_date"],
         end_date=body["end_date"],
         is_ooo=bool(body.get("is_ooo", False)),
+        tier=tier,
+        phase_jump=bool(body.get("phase_jump", False)),
         metadata=body.get("metadata"),
     )
     updated = db.get_calendar_event(event_id)
@@ -1032,6 +1041,30 @@ def api_calendar_events_delete(event_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Not found.")
     db.delete_calendar_event(event_id)
     return {"deleted": event_id}
+
+
+@app.get("/capacity", response_class=HTMLResponse)
+def capacity_page(request: Request) -> HTMLResponse:
+    import json as _json
+    return templates.TemplateResponse(
+        "capacity.html",
+        {
+            "request": request,
+            "now_local": _now_local_iso(),
+            "team_colors":  _json.dumps(db.TEAM_COLORS),
+            "phase_colors": _json.dumps(db.PHASE_COLORS),
+        },
+    )
+
+
+@app.get("/api/capacity")
+def api_capacity() -> dict:
+    import json as _json
+    from datetime import date
+    today = date.today().isoformat()
+    events = db.list_calendar_events(start=today + "T00:00:00Z")
+    snapshot = weu_engine.get_capacity_snapshot([e.to_dict() for e in events])
+    return snapshot
 
 
 @app.get("/health")

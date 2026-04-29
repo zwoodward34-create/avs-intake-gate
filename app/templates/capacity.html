@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+/* ── Page header ───────────────────────────────────────────── */
+.cap-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.cap-header h2 { margin: 0; font-size: 20px; font-weight: 800; }
+.cap-refresh-info {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+.cap-warning-banner {
+  display: none;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #92400e;
+  margin-bottom: 16px;
+}
+.cap-warning-banner.visible { display: block; }
+
+/* ── Pool sections ─────────────────────────────────────────── */
+.pool-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin: 24px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pool-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Person cards ──────────────────────────────────────────── */
+.person-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+.person-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  border-left: 4px solid var(--border);
+  transition: border-color .2s;
+}
+.person-card.status-best          { border-left-color: #16a34a; }
+.person-card.status-approaching   { border-left-color: #d97706; }
+.person-card.status-at_capacity   { border-left-color: #dc2626; }
+.person-card.status-over_allocated{ border-left-color: #7f1d1d; background: #fff5f5; }
+
+.person-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.person-initials {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+}
+.person-info { flex: 1; margin-left: 10px; }
+.person-name { font-size: 15px; font-weight: 800; }
+.person-role { font-size: 11px; color: var(--muted); font-weight: 600; }
+.person-status-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  color: #fff;
+}
+
+/* ── WEU bar ───────────────────────────────────────────────── */
+.weu-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.weu-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--card-bg-deeper);
+  border-radius: 4px;
+  overflow: visible;
+  position: relative;
+}
+.weu-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width .4s ease;
+  max-width: 100%;
+}
+.weu-bar-fill.overflow {
+  background: repeating-linear-gradient(
+    45deg,
+    #7f1d1d 0, #7f1d1d 4px,
+    #dc2626 4px, #dc2626 8px
+  );
+  max-width: 100%;
+}
+.weu-numbers {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--text);
+  white-space: nowrap;
+  min-width: 100px;
+  text-align: right;
+}
+.weu-pct {
+  font-size: 18px;
+  font-weight: 900;
+  font-family: var(--mono);
+  text-align: right;
+  margin-bottom: 2px;
+}
+.weu-detail-row {
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.weu-detail-row span { white-space: nowrap; }
+
+/* ── Project list ──────────────────────────────────────────── */
+.project-list { margin: 0; padding: 0; list-style: none; }
+.project-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.project-item:first-child { border-top: none; }
+.project-phase-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.project-title { flex: 1; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-tier  { font-family: var(--mono); color: var(--muted); font-size: 10px; }
+.project-weu   { font-family: var(--mono); font-weight: 700; color: var(--text); font-size: 11px; }
+.project-jump-tag {
+  font-size: 9px; font-weight: 800;
+  background: #fef3c7; color: #92400e;
+  border: 1px solid #f59e0b;
+  border-radius: 3px; padding: 1px 4px;
+}
+.shadow-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+}
+.no-projects {
+  font-size: 12px;
+  color: var(--subtle);
+  padding: 6px 0;
+  text-align: center;
+}
+
+/* ── Legend ────────────────────────────────────────────────── */
+.cap-legend {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+  padding: 12px 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 600;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+}
+.legend-dot {
+  width: 12px; height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+</style>
+
+<div class="cap-header">
+  <h2>Capacity &amp; WEU Heatmap</h2>
+  <div class="cap-refresh-info" id="refresh-info">Refreshing in <span id="countdown">60</span>s</div>
+</div>
+
+<div class="cap-warning-banner" id="no-tier-banner">
+  ⚠ Some active events have no Tier set and are excluded from WEU calculations.
+  Edit those events on the <a href="/calendar">Calendar</a> to set a tier.
+</div>
+
+<div id="cap-content">
+  <div style="padding:40px;text-align:center;color:var(--muted)">Loading capacity data…</div>
+</div>
+
+<div class="cap-legend">
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);align-self:center">Thresholds:</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div>&lt; 70% — Best Candidate</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#d97706"></div>70–85% — Approaching</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div>85–100% — At Capacity</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#7f1d1d"></div>&gt; 100% — Over-Allocated</div>
+</div>
+
+<script>
+(function () {
+  const TEAM_COLORS  = {{ team_colors | safe }};
+  const PHASE_COLORS = {{ phase_colors | safe }};
+
+  const STATUS_COLORS = {
+    best:           '#16a34a',
+    approaching:    '#d97706',
+    at_capacity:    '#dc2626',
+    over_allocated: '#7f1d1d',
+  };
+  const STATUS_EMOJI = {
+    best:           '🟢',
+    approaching:    '🟡',
+    at_capacity:    '🔴',
+    over_allocated: '⛔',
+  };
+
+  let countdown = 60;
+  let countdownEl = document.getElementById('countdown');
+
+  function tick() {
+    countdown--;
+    if (countdown <= 0) { countdown = 60; fetchCapacity(); }
+    countdownEl.textContent = countdown;
+  }
+  setInterval(tick, 1000);
+
+  async function fetchCapacity() {
+    try {
+      const res = await fetch('/api/capacity');
+      if (!res.ok) return;
+      const data = await res.json();
+      renderCapacity(data);
+    } catch (e) { console.error('Capacity fetch error', e); }
+  }
+
+  function statusColor(status) { return STATUS_COLORS[status] || '#9ca3af'; }
+
+  function barColor(pct, status) {
+    if (status === 'over_allocated') return null; // handled by 'overflow' class
+    return statusColor(status);
+  }
+
+  function renderPerson(p) {
+    const card = document.createElement('div');
+    card.className = `person-card status-${p.status}`;
+
+    const color = TEAM_COLORS[p.initials] || '#9ca3af';
+    const sc = statusColor(p.status);
+    const pct = Math.min(p.load_pct, 100);
+    const isOverflow = p.status === 'over_allocated';
+
+    card.innerHTML = `
+      <div class="person-head">
+        <div class="person-initials" style="background:${color}">${p.initials}</div>
+        <div class="person-info">
+          <div class="person-name">${p.initials}</div>
+          <div class="person-role">${p.role}</div>
+        </div>
+        <div class="person-status-badge" style="background:${sc}">
+          ${STATUS_EMOJI[p.status]} ${p.status_label}
+        </div>
+      </div>
+
+      <div class="weu-pct" style="color:${sc}">${p.load_pct.toFixed(1)}%</div>
+
+      <div class="weu-bar-row">
+        <div class="weu-bar-track">
+          <div class="weu-bar-fill ${isOverflow ? 'overflow' : ''}"
+               style="width:${pct}%;${!isOverflow ? 'background:' + sc : ''}"></div>
+        </div>
+      </div>
+
+      <div class="weu-detail-row">
+        <span>WEU: <strong>${p.context_taxed_load.toFixed(2)}</strong> / ${p.capacity.toFixed(1)}</span>
+        <span>Raw: ${p.raw_load.toFixed(2)}</span>
+        ${p.shadow_load > 0 ? `<span>Shadow: +${p.shadow_load.toFixed(2)}</span>` : ''}
+        <span>Projects: ${p.active_project_count}</span>
+        <span>${(p.multiplier * 100).toFixed(0)}× mult.</span>
+      </div>
+
+      <ul class="project-list" id="proj-${p.initials}"></ul>
+    `;
+
+    const list = card.querySelector(`#proj-${p.initials}`);
+
+    if (p.projects.length === 0 && p.shadow_load === 0) {
+      const li = document.createElement('li');
+      li.className = 'no-projects';
+      li.textContent = 'No active projects';
+      list.appendChild(li);
+    }
+
+    p.projects.forEach(proj => {
+      const li = document.createElement('li');
+      li.className = 'project-item';
+      const phaseColor = PHASE_COLORS[proj.phase] || '#9ca3af';
+      li.innerHTML = `
+        <div class="project-phase-dot" style="background:${phaseColor}" title="${proj.phase}"></div>
+        <span class="project-title" title="${proj.title}">${proj.title}</span>
+        <span class="project-tier">T${proj.tier} · ${proj.phase}</span>
+        ${proj.phase_jump ? '<span class="project-jump-tag">+QA</span>' : ''}
+        <span class="project-weu">${proj.effective_load.toFixed(2)} WEU</span>
+      `;
+      list.appendChild(li);
+    });
+
+    if (p.shadow_load > 0) {
+      const li = document.createElement('li');
+      li.className = 'shadow-item';
+      li.innerHTML = `
+        <span style="width:8px;height:8px;background:#9ca3af;border-radius:50%;flex-shrink:0;display:inline-block"></span>
+        EIT mentee shadow load
+        <span style="margin-left:auto;font-family:var(--mono);font-weight:700;font-style:normal">+${p.shadow_load.toFixed(2)} WEU</span>
+      `;
+      list.appendChild(li);
+    }
+
+    return card;
+  }
+
+  function renderPool(people, label, container) {
+    const heading = document.createElement('div');
+    heading.className = 'pool-label';
+    heading.textContent = `── ${label}`;
+    container.appendChild(heading);
+
+    const grid = document.createElement('div');
+    grid.className = 'person-grid';
+    people.forEach(p => grid.appendChild(renderPerson(p)));
+    container.appendChild(grid);
+  }
+
+  function renderCapacity(data) {
+    const banner = document.getElementById('no-tier-banner');
+    banner.classList.toggle('visible', data.summary.events_without_tier > 0);
+
+    const content = document.getElementById('cap-content');
+    content.innerHTML = '';
+    renderPool(data.engineering, 'Engineering Pool', content);
+    renderPool(data.drafting,    'Drafting Pool',    content);
+  }
+
+  fetchCapacity();
+})();
+</script>
+{% endblock %}

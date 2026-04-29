@@ -444,8 +444,27 @@
           </select>
         </div>
         <div class="field">
+          <label for="f-tier">Tier (1–5)</label>
+          <select id="f-tier">
+            <option value="">— No tier —</option>
+            <option value="1">1 — Minor</option>
+            <option value="2">2 — Small</option>
+            <option value="3">3 — Standard</option>
+            <option value="4">4 — Large</option>
+            <option value="5">5 — Major</option>
+          </select>
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="field">
           <label for="f-type">Type</label>
           <input type="text" id="f-type" placeholder="e.g. BTS">
+        </div>
+        <div class="field" style="align-self:end;padding-bottom:2px">
+          <label style="display:flex;align-items:center;gap:7px;text-transform:none;font-size:13px;font-weight:600;letter-spacing:0">
+            <input type="checkbox" id="f-phase-jump" style="width:auto">
+            Phase jump (skipped 75%)
+          </label>
         </div>
       </div>
     </div>
@@ -833,7 +852,9 @@
     document.getElementById('f-client').value = '';
     document.getElementById('f-location').value = '';
     document.getElementById('f-phase').value = 'IFP';
+    document.getElementById('f-tier').value = '';
     document.getElementById('f-type').value = '';
+    document.getElementById('f-phase-jump').checked = false;
     document.getElementById('f-start').value = '';
     document.getElementById('f-end').value = '';
     document.getElementById('is-ooo').checked = false;
@@ -860,7 +881,9 @@
     document.getElementById('f-client').value = ev.client || '';
     document.getElementById('f-location').value = ev.location || '';
     document.getElementById('f-phase').value = ev.phase || 'IFP';
+    document.getElementById('f-tier').value = ev.tier || '';
     document.getElementById('f-type').value = ev.project_type || '';
+    document.getElementById('f-phase-jump').checked = !!ev.phase_jump;
     document.getElementById('f-start').value = ev.start_date.slice(0, 10);
     document.getElementById('f-end').value = ev.end_date.slice(0, 10);
     document.getElementById('is-ooo').checked = ev.is_ooo;
@@ -898,6 +921,8 @@
       client:         isOOO ? '' : document.getElementById('f-client').value.trim(),
       location:       isOOO ? '' : document.getElementById('f-location').value.trim(),
       phase:          isOOO ? 'SD' : document.getElementById('f-phase').value,
+      tier:           isOOO ? null : (document.getElementById('f-tier').value || null),
+      phase_jump:     isOOO ? false : document.getElementById('f-phase-jump').checked,
       team,
       project_type:   isOOO ? '' : document.getElementById('f-type').value.trim(),
       start_date:     startDate + 'T00:00:00Z',

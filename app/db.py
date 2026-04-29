@@ -431,6 +431,8 @@ class CalendarEventRow:
     metadata: Optional[dict]
     created_at: str
     updated_at: str
+    tier: Optional[int] = None
+    phase_jump: bool = False
 
     @property
     def title(self) -> str:
@@ -460,6 +462,8 @@ class CalendarEventRow:
             "start_date": self.start_date,
             "end_date": self.end_date,
             "is_ooo": self.is_ooo,
+            "tier": self.tier,
+            "phase_jump": self.phase_jump,
             "metadata": self.metadata,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -480,6 +484,8 @@ class CalendarEventRow:
             start_date=d.get("start_date") or "",
             end_date=d.get("end_date") or "",
             is_ooo=bool(d.get("is_ooo", False)),
+            tier=d.get("tier"),
+            phase_jump=bool(d.get("phase_jump", False)),
             metadata=d.get("metadata"),
             created_at=d.get("created_at") or "",
             updated_at=d.get("updated_at") or "",
@@ -528,6 +534,8 @@ def create_calendar_event(
     start_date: str,
     end_date: str,
     is_ooo: bool = False,
+    tier: Optional[int] = None,
+    phase_jump: bool = False,
     metadata: Optional[dict] = None,
 ) -> str:
     now = _utc_now_iso()
@@ -544,6 +552,8 @@ def create_calendar_event(
             "start_date":     start_date,
             "end_date":       end_date,
             "is_ooo":         is_ooo,
+            "tier":           tier,
+            "phase_jump":     phase_jump,
             "metadata":       metadata,
             "created_at":     now,
             "updated_at":     now,
@@ -565,6 +575,8 @@ def update_calendar_event(
     start_date: str,
     end_date: str,
     is_ooo: bool = False,
+    tier: Optional[int] = None,
+    phase_jump: bool = False,
     metadata: Optional[dict] = None,
 ) -> None:
     (
@@ -580,6 +592,8 @@ def update_calendar_event(
             "start_date":     start_date,
             "end_date":       end_date,
             "is_ooo":         is_ooo,
+            "tier":           tier,
+            "phase_jump":     phase_jump,
             "metadata":       metadata,
             "updated_at":     _utc_now_iso(),
         })
