@@ -935,6 +935,8 @@ def calendar_page(request: Request) -> HTMLResponse:
             "now_local": _now_local_iso(),
             "phase_colors": _json.dumps(db.PHASE_COLORS),
             "valid_phases": db.VALID_PHASES,
+            "team_colors": _json.dumps(db.TEAM_COLORS),
+            "team_members": db.TEAM_MEMBERS,
         },
     )
 

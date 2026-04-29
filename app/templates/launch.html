@@ -9,14 +9,19 @@
 
 <div class="launch-grid">
 
-  <a class="launch-btn launch-btn-primary" href="/intakes/new">
+  <a class="launch-btn launch-btn-primary launch-btn-span" href="/intakes/new">
     <div class="launch-btn-title">New Project Proposal</div>
     <div class="launch-btn-desc">Submit a new intake for screening and fee estimation</div>
   </a>
 
   <a class="launch-btn" href="/intake/upload">
     <div class="launch-btn-title">Upload RFP</div>
-    <div class="launch-btn-desc">Upload a document or email and let AI pre-fill the intake form</div>
+    <div class="launch-btn-desc">Upload a document and let AI pre-fill the intake form</div>
+  </a>
+
+  <a class="launch-btn" href="/dashboard">
+    <div class="launch-btn-title">View All Intakes</div>
+    <div class="launch-btn-desc">Browse and search the full intake pipeline</div>
   </a>
 
   <a class="launch-btn" href="/past-projects">
@@ -29,6 +34,11 @@
     <div class="launch-btn-desc">Pipeline metrics, intake trends, and turnaround stats</div>
   </a>
 
+  <a class="launch-btn" href="/calendar">
+    <div class="launch-btn-title">Project Calendar</div>
+    <div class="launch-btn-desc">Shared phase schedule with IFP conflict tracking</div>
+  </a>
+
   <a class="launch-btn" href="/mo-queue">
     <div class="launch-btn-title">
       Mo's Queue
@@ -36,11 +46,6 @@
       {% if _mc > 0 %}<span class="mo-badge" style="margin-left:8px">{{ _mc }}</span>{% endif %}
     </div>
     <div class="launch-btn-desc">Review intakes pending Mo's decision and sign-off</div>
-  </a>
-
-  <a class="launch-btn" href="/dashboard">
-    <div class="launch-btn-title">View All Intakes</div>
-    <div class="launch-btn-desc">Browse and search the full intake pipeline</div>
   </a>
 
 </div>

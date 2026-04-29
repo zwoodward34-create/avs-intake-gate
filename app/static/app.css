@@ -551,10 +551,14 @@ input[type="checkbox"]{
   margin:0 auto; line-height:1.6;
 }
 .launch-grid{
-  display:flex; flex-direction:column; align-items:center;
+  display:grid;
+  grid-template-columns:1fr 1fr;
   gap:10px;
-  max-width:420px;
+  max-width:640px;
   margin:0 auto;
+}
+.launch-btn-span{
+  grid-column: 1 / -1;
 }
 .launch-btn{
   display:flex; flex-direction:column; align-items:center; justify-content:center;

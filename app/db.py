@@ -381,10 +381,24 @@ PHASE_COLORS = {
     "90%": "#4f46e5",   # indigo-600
     "DD":  "#34d399",   # emerald-400
     "CA":  "#fb923c",   # orange-400
-    "CD":  "#f43f5e",   # rose-500
-    "IFP": "#f59e0b",   # amber-500
+    "CD":  "#be123c",   # rose-700  (darkened to distinguish from CA orange)
+    "IFP": "#dc2626",   # red-600   (swapped to clear red)
     "REV": "#a855f7",   # purple-500
     "SD":  "#06b6d4",   # cyan-500
+}
+
+TEAM_MEMBERS = ["MK", "NK", "RS", "RO", "SW", "JP", "JW", "JR", "RK"]
+
+TEAM_COLORS = {
+    "JW": "#2563eb",  # blue-600
+    "SW": "#7c3aed",  # violet-600
+    "JP": "#db2777",  # pink-600
+    "JR": "#16a34a",  # green-600
+    "MK": "#0891b2",  # cyan-700
+    "NK": "#d97706",  # amber-600
+    "RS": "#ea580c",  # orange-600
+    "RO": "#9333ea",  # purple-600
+    "RK": "#0d9488",  # teal-600
 }
 
 VALID_PHASES = list(PHASE_COLORS.keys())

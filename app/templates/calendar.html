@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
+/* ── Layout ────────────────────────────────────────────────── */
 .cal-header {
   display: flex;
   align-items: center;
@@ -13,6 +14,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 .cal-month-label {
   font-size: 18px;
@@ -35,6 +37,7 @@
 }
 .cal-nav-btn:hover { background: var(--card-bg-deeper); }
 
+/* ── Phase filter chips ────────────────────────────────────── */
 .cal-phase-filters {
   display: flex;
   flex-wrap: wrap;
@@ -47,7 +50,7 @@
   align-items: center;
   gap: 4px;
   padding: 3px 9px;
-  border-radius: 20px;
+  border-radius: 4px;
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
@@ -57,8 +60,9 @@
   user-select: none;
   letter-spacing: .2px;
 }
-.phase-chip.inactive { opacity: .3; }
+.phase-chip.inactive { opacity: .28; }
 
+/* ── Calendar grid ─────────────────────────────────────────── */
 .cal-grid-wrapper {
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -81,16 +85,12 @@
   letter-spacing: .5px;
   text-align: center;
 }
-.cal-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-}
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
 .cal-day {
-  min-height: 108px;
+  min-height: 110px;
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   padding: 5px;
-  position: relative;
   cursor: pointer;
   transition: background .1s;
 }
@@ -109,7 +109,7 @@
   justify-content: center;
   font-weight: 800;
 }
-.cal-day.ifp-bloat { background: #fffbeb; }
+.cal-day.ifp-bloat { background: #fff1f2; }
 .cal-day-num {
   font-size: 12px;
   font-weight: 600;
@@ -122,11 +122,13 @@
 .ifp-bloat-badge {
   font-size: 9px;
   font-weight: 800;
-  background: #f59e0b;
+  background: #dc2626;
   color: #fff;
   border-radius: 3px;
   padding: 1px 4px;
 }
+
+/* ── Event chips ───────────────────────────────────────────── */
 .cal-event-chip {
   display: block;
   width: 100%;
@@ -135,26 +137,41 @@
   font-size: 11px;
   font-weight: 600;
   color: #fff;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  text-overflow: ellipsis;
   cursor: pointer;
   transition: opacity .12s;
   border: none;
   text-align: left;
 }
-.cal-event-chip:hover { opacity: .8; }
+.cal-event-chip:hover { opacity: .82; }
 .cal-event-chip.ooo-chip {
-  background: repeating-linear-gradient(
-    45deg,
-    rgba(0,0,0,.12) 0,
-    rgba(0,0,0,.12) 2px,
-    transparent 2px,
-    transparent 6px
-  );
-  color: var(--text);
-  border: 1px solid var(--border);
+  background: #e7e5e4 !important;
+  color: var(--muted);
+  border: 1px dashed var(--border-hover);
+  font-style: italic;
+}
+/* Team avatar row below the chip title */
+.chip-team-row {
+  display: flex;
+  gap: 2px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+.team-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 8px;
+  font-weight: 800;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid rgba(255,255,255,.7);
+  flex-shrink: 0;
 }
 .cal-more {
   font-size: 10px;
@@ -163,7 +180,7 @@
   padding: 1px 3px;
 }
 
-/* ── Modal ───────────────────────────────────────── */
+/* ── Modal ─────────────────────────────────────────────────── */
 .modal-overlay {
   display: none;
   position: fixed;
@@ -179,7 +196,7 @@
   border-radius: 6px;
   padding: 24px;
   width: 100%;
-  max-width: 480px;
+  max-width: 500px;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0,0,0,.25);
@@ -200,6 +217,9 @@
   justify-content: flex-end;
   margin-top: 20px;
 }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ── Warning banners ───────────────────────────────────────── */
 .conflict-banner {
   display: none;
   background: #fef3c7;
@@ -209,10 +229,128 @@
   font-size: 12px;
   font-weight: 600;
   color: #92400e;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 .conflict-banner.visible { display: block; }
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* Large red IFP team warning */
+.team-ifp-warning {
+  display: none;
+  background: #fef2f2;
+  border: 2px solid #dc2626;
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.team-ifp-warning.visible { display: block; }
+.team-ifp-warning-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #991b1b;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.team-ifp-warning-icon {
+  font-size: 18px;
+}
+.team-ifp-warning-list {
+  margin: 0;
+  padding: 0 0 0 4px;
+  list-style: none;
+}
+.team-ifp-warning-list li {
+  font-size: 12px;
+  font-weight: 600;
+  color: #7f1d1d;
+  padding: 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Team multi-select dropdown ────────────────────────────── */
+.team-select-wrapper {
+  position: relative;
+}
+.team-select-trigger {
+  width: 100%;
+  padding: 9px 32px 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-height: 40px;
+  transition: border-color .15s;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(107,101,96,.70)' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+.team-select-trigger:focus,
+.team-select-trigger.open { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(30,58,95,.10); }
+.selected-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 800;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.team-select-placeholder { color: var(--subtle); }
+.team-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0; right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  z-index: 200;
+  padding: 4px 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.team-dropdown.open { display: block; }
+.team-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background .1s;
+  user-select: none;
+}
+.team-option:hover { background: var(--card-bg-deeper); }
+.team-option.selected { background: #eff6ff; }
+.team-option-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+}
+.team-option-label { font-size: 13px; font-weight: 600; }
+.team-option-check { margin-left: auto; color: var(--accent); font-size: 14px; }
+
 .btn-danger {
   background: var(--bad);
   border-color: var(--bad);
@@ -228,7 +366,7 @@
     <button class="cal-nav-btn" id="next-month">&#8594;</button>
   </div>
   <div class="cal-phase-filters" id="phase-filters"></div>
-  <button class="btn btn-primary" id="add-event-btn">+ Add Event</button>
+  <button class="btn btn-primary" id="add-event-btn" style="flex-shrink:0">+ Add Event</button>
 </div>
 
 <div class="cal-grid-wrapper">
@@ -242,12 +380,36 @@
   </div>
 </div>
 
-<!-- Modal -->
+<!-- Legend -->
+<div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius)">
+  <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;align-self:center">Legend:</div>
+  <div style="display:flex;gap:6px;align-items:center;font-size:12px;font-weight:600;color:var(--muted)">
+    <span style="width:22px;height:14px;border-radius:3px;background:#dc2626;display:inline-block"></span> Phase color
+  </div>
+  <div style="display:flex;gap:6px;align-items:center;font-size:12px;font-weight:600;color:var(--muted)">
+    <span style="width:14px;height:14px;border-radius:50%;background:#2563eb;display:inline-block;border:1.5px solid rgba(255,255,255,.7)"></span> Team member
+  </div>
+  <div style="display:flex;gap:6px;align-items:center;font-size:12px;font-weight:600;color:var(--muted)">
+    <span style="width:22px;height:14px;border-radius:3px;background:#fff1f2;border:1px dashed #dc2626;display:inline-block"></span> IFP Bloat day
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
 <div class="modal-overlay" id="event-modal">
   <div class="modal">
     <button class="modal-close" id="modal-close">✕</button>
     <h3 id="modal-title">Add Event</h3>
 
+    <!-- Large IFP team conflict warning -->
+    <div class="team-ifp-warning" id="team-ifp-warning">
+      <div class="team-ifp-warning-title">
+        <span class="team-ifp-warning-icon">🚨</span>
+        IFP Scheduling Conflict
+      </div>
+      <ul class="team-ifp-warning-list" id="team-ifp-warning-list"></ul>
+    </div>
+
+    <!-- IFP bloat warning -->
     <div class="conflict-banner" id="conflict-banner">
       ⚠ IFP Bloat — 2 or more IFP events already overlap on one or more days in this range.
     </div>
@@ -288,9 +450,23 @@
       </div>
     </div>
 
+    <!-- Team multi-select -->
     <div class="field">
-      <label for="f-team">Team initials (comma-separated)</label>
-      <input type="text" id="f-team" placeholder="e.g. JW, SW">
+      <label>Team</label>
+      <div class="team-select-wrapper" id="team-select-wrapper">
+        <button type="button" class="team-select-trigger" id="team-trigger">
+          <span class="team-select-placeholder" id="team-placeholder">Select team members…</span>
+        </button>
+        <div class="team-dropdown" id="team-dropdown">
+          {% for m in team_members %}
+          <div class="team-option" data-member="{{ m }}">
+            <span class="team-option-dot" data-member="{{ m }}">{{ m }}</span>
+            <span class="team-option-label">{{ m }}</span>
+            <span class="team-option-check" style="display:none">✓</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
     </div>
 
     <div class="two-col">
@@ -314,16 +490,17 @@
 
 <script>
 (function () {
-  const PHASE_COLORS = {{ phase_colors | safe }};
-  const OOO_COLOR = '#78716c';
-  const PHASES = {{ valid_phases | tojson }};
+  const PHASE_COLORS  = {{ phase_colors | safe }};
+  const TEAM_COLORS   = {{ team_colors | safe }};
+  const PHASES        = {{ valid_phases | tojson }};
+  const TEAM_MEMBERS  = {{ team_members | tojson }};
 
   let year = new Date().getFullYear();
   let month = new Date().getMonth();
   let events = [];
   let activePhases = new Set(PHASES);
   let editingId = null;
-  let pollTimer = null;
+  let selectedTeam = new Set();
 
   // ── Phase filter chips ──────────────────────────────────────
   const filtersEl = document.getElementById('phase-filters');
@@ -341,6 +518,12 @@
     filtersEl.appendChild(btn);
   });
 
+  // Set team option dot colors
+  document.querySelectorAll('.team-option-dot[data-member]').forEach(dot => {
+    const m = dot.dataset.member;
+    dot.style.background = TEAM_COLORS[m] || '#9ca3af';
+  });
+
   // ── Helpers ─────────────────────────────────────────────────
   function pad(n) { return String(n).padStart(2, '0'); }
   function isoDate(y, m, d) { return `${y}-${pad(m + 1)}-${pad(d)}`; }
@@ -355,12 +538,12 @@
 
   function eventsOnDay(dateStr) {
     return events.filter(ev => {
-      if (ev.is_ooo) return true; // always show OOO
-      if (!activePhases.has(ev.phase)) return false;
-      return ev.start_date.slice(0, 10) <= dateStr && ev.end_date.slice(0, 10) >= dateStr;
-    }).filter(ev =>
-      ev.start_date.slice(0, 10) <= dateStr && ev.end_date.slice(0, 10) >= dateStr
-    );
+      const start = ev.start_date.slice(0, 10);
+      const end   = ev.end_date.slice(0, 10);
+      if (start > dateStr || end < dateStr) return false;
+      if (ev.is_ooo) return true;
+      return activePhases.has(ev.phase);
+    });
   }
 
   function ifpCountOnDay(dateStr) {
@@ -381,7 +564,7 @@
     const dim = daysInMonth(year, month);
     const [py, pm] = addMonths(year, month, -1);
     const [ny, nm] = addMonths(year, month, 1);
-    const prevDim = daysInMonth(py, pm);
+    const prevDim  = daysInMonth(py, pm);
     const totalCells = Math.ceil((firstDow + dim) / 7) * 7;
 
     const grid = document.getElementById('cal-grid');
@@ -411,34 +594,55 @@
       const ifpCount = ifpCountOnDay(dateStr);
       if (ifpCount >= 2 && isCurrentMonth) cell.classList.add('ifp-bloat');
 
-      // Day number row
       const numRow = document.createElement('div');
       numRow.className = 'cal-day-num';
-      const numInner = document.createElement('span');
-      numInner.className = 'cal-day-num-inner';
-      numInner.textContent = dayNum;
-      numRow.appendChild(numInner);
+      const inner = document.createElement('span');
+      inner.className = 'cal-day-num-inner';
+      inner.textContent = dayNum;
+      numRow.appendChild(inner);
       if (ifpCount >= 2 && isCurrentMonth) {
         const badge = document.createElement('span');
         badge.className = 'ifp-bloat-badge';
-        badge.title = `${ifpCount} IFP events`;
-        badge.textContent = 'IFP×' + ifpCount;
+        badge.title = `${ifpCount} IFP events on this day`;
+        badge.textContent = `IFP×${ifpCount}`;
         numRow.appendChild(badge);
       }
       cell.appendChild(numRow);
 
-      // Event chips
       const dayEvs = eventsOnDay(dateStr);
       const MAX = 3;
       dayEvs.slice(0, MAX).forEach(ev => {
+        // Chip wrapper (clickable)
+        const wrap = document.createElement('div');
+        wrap.style.marginBottom = '3px';
+
         const chip = document.createElement('button');
         chip.className = 'cal-event-chip' + (ev.is_ooo ? ' ooo-chip' : '');
         if (!ev.is_ooo) chip.style.background = PHASE_COLORS[ev.phase] || '#9ca3af';
         chip.textContent = ev.title;
         chip.title = ev.title;
         chip.addEventListener('click', e => { e.stopPropagation(); openEdit(ev); });
-        cell.appendChild(chip);
+        wrap.appendChild(chip);
+
+        // Team avatar row (only for non-OOO events)
+        if (!ev.is_ooo && ev.team && ev.team.length) {
+          const row = document.createElement('div');
+          row.className = 'chip-team-row';
+          row.style.paddingLeft = '3px';
+          ev.team.forEach(m => {
+            const av = document.createElement('div');
+            av.className = 'team-avatar';
+            av.style.background = TEAM_COLORS[m] || '#9ca3af';
+            av.title = m;
+            av.textContent = m;
+            row.appendChild(av);
+          });
+          wrap.appendChild(row);
+        }
+
+        cell.appendChild(wrap);
       });
+
       if (dayEvs.length > MAX) {
         const more = document.createElement('div');
         more.className = 'cal-more';
@@ -470,33 +674,175 @@
     [year, month] = addMonths(year, month, 1); fetchEvents();
   });
 
-  // ── Modal helpers ────────────────────────────────────────────
-  const modal       = document.getElementById('event-modal');
-  const conflictBanner = document.getElementById('conflict-banner');
-  const deleteBtn   = document.getElementById('delete-btn');
-  const projectSect = document.getElementById('project-section');
-  const isOOOCheck  = document.getElementById('is-ooo');
+  // ── Team multi-select ────────────────────────────────────────
+  const teamTrigger  = document.getElementById('team-trigger');
+  const teamDropdown = document.getElementById('team-dropdown');
+  const teamPlaceholder = document.getElementById('team-placeholder');
+
+  function renderTeamTrigger() {
+    teamTrigger.innerHTML = '';
+    if (selectedTeam.size === 0) {
+      const ph = document.createElement('span');
+      ph.className = 'team-select-placeholder';
+      ph.textContent = 'Select team members…';
+      teamTrigger.appendChild(ph);
+    } else {
+      [...selectedTeam].forEach(m => {
+        const av = document.createElement('div');
+        av.className = 'selected-avatar';
+        av.style.background = TEAM_COLORS[m] || '#9ca3af';
+        av.title = m;
+        av.textContent = m;
+        teamTrigger.appendChild(av);
+      });
+    }
+    // Keep arrow background-image functional via inline append:
+    teamTrigger.style.backgroundImage = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(107,101,96,.70)' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`;
+    teamTrigger.style.backgroundRepeat = 'no-repeat';
+    teamTrigger.style.backgroundPosition = 'right 10px center';
+    teamTrigger.style.paddingRight = '32px';
+  }
+
+  function syncDropdownChecks() {
+    document.querySelectorAll('.team-option').forEach(opt => {
+      const m = opt.dataset.member;
+      const check = opt.querySelector('.team-option-check');
+      if (selectedTeam.has(m)) { opt.classList.add('selected'); check.style.display = ''; }
+      else { opt.classList.remove('selected'); check.style.display = 'none'; }
+    });
+  }
+
+  teamTrigger.addEventListener('click', e => {
+    e.stopPropagation();
+    teamDropdown.classList.toggle('open');
+    teamTrigger.classList.toggle('open', teamDropdown.classList.contains('open'));
+  });
+
+  document.querySelectorAll('.team-option').forEach(opt => {
+    opt.addEventListener('click', e => {
+      e.stopPropagation();
+      const m = opt.dataset.member;
+      if (selectedTeam.has(m)) selectedTeam.delete(m);
+      else selectedTeam.add(m);
+      syncDropdownChecks();
+      renderTeamTrigger();
+      checkAllConflicts();
+    });
+  });
+
+  document.addEventListener('click', () => {
+    teamDropdown.classList.remove('open');
+    teamTrigger.classList.remove('open');
+  });
+
+  // ── Conflict checks ─────────────────────────────────────────
+  const conflictBanner   = document.getElementById('conflict-banner');
+  const teamWarning      = document.getElementById('team-ifp-warning');
+  const teamWarningList  = document.getElementById('team-ifp-warning-list');
+
+  async function checkBloatConflict() {
+    const phase     = document.getElementById('f-phase').value;
+    const startDate = document.getElementById('f-start').value;
+    const isOOO     = document.getElementById('is-ooo').checked;
+    if (phase !== 'IFP' || !startDate || isOOO) {
+      conflictBanner.classList.remove('visible'); return;
+    }
+    try {
+      const r = await fetch(`/api/calendar/events/check-conflict?date=${startDate}&phase=${phase}`);
+      const d = await r.json();
+      conflictBanner.classList.toggle('visible', d.conflict);
+    } catch (e) { /* silent */ }
+  }
+
+  function checkTeamIFPConflict() {
+    const phase     = document.getElementById('f-phase').value;
+    const startDate = document.getElementById('f-start').value;
+    const endDate   = document.getElementById('f-end').value;
+    const isOOO     = document.getElementById('is-ooo').checked;
+
+    if (phase !== 'IFP' || !startDate || !endDate || isOOO || selectedTeam.size === 0) {
+      teamWarning.classList.remove('visible');
+      return;
+    }
+
+    const conflicts = [];
+    selectedTeam.forEach(member => {
+      const clashing = events.filter(ev =>
+        ev.phase === 'IFP' &&
+        !ev.is_ooo &&
+        ev.id !== editingId &&
+        (ev.team || []).includes(member) &&
+        ev.start_date.slice(0, 10) <= endDate &&
+        ev.end_date.slice(0, 10) >= startDate
+      );
+      if (clashing.length > 0) {
+        const dates = clashing.map(ev => {
+          const s = ev.start_date.slice(0, 10);
+          const e = ev.end_date.slice(0, 10);
+          return s === e ? s : `${s} – ${e}`;
+        }).join(', ');
+        conflicts.push({ member, details: clashing[0].title, dates });
+      }
+    });
+
+    if (conflicts.length === 0) {
+      teamWarning.classList.remove('visible'); return;
+    }
+
+    teamWarningList.innerHTML = '';
+    conflicts.forEach(({ member, details, dates }) => {
+      const li = document.createElement('li');
+      const dot = document.createElement('span');
+      dot.style.cssText = `width:18px;height:18px;border-radius:50%;background:${TEAM_COLORS[member]||'#9ca3af'};display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0`;
+      dot.textContent = member;
+      li.appendChild(dot);
+      const txt = document.createElement('span');
+      txt.textContent = `${member} already has an IFP event on ${dates}: "${details}"`;
+      li.appendChild(txt);
+      teamWarningList.appendChild(li);
+    });
+    teamWarning.classList.add('visible');
+  }
+
+  function checkAllConflicts() {
+    checkBloatConflict();
+    checkTeamIFPConflict();
+  }
+
+  document.getElementById('f-phase').addEventListener('change', checkAllConflicts);
+  document.getElementById('f-start').addEventListener('change', checkAllConflicts);
+  document.getElementById('f-end').addEventListener('change', checkAllConflicts);
+
+  // ── Modal open/close ─────────────────────────────────────────
+  const modal = document.getElementById('event-modal');
+  const deleteBtn = document.getElementById('delete-btn');
 
   function toggleOOO(on) {
-    projectSect.style.display = on ? 'none' : 'block';
+    document.getElementById('project-section').style.display = on ? 'none' : 'block';
   }
-  isOOOCheck.addEventListener('change', () => toggleOOO(isOOOCheck.checked));
+  document.getElementById('is-ooo').addEventListener('change', function () {
+    toggleOOO(this.checked);
+    checkAllConflicts();
+  });
 
   function resetModal() {
     editingId = null;
+    selectedTeam.clear();
     document.getElementById('modal-title').textContent = 'Add Event';
     document.getElementById('f-project-number').value = '';
     document.getElementById('f-client').value = '';
     document.getElementById('f-location').value = '';
     document.getElementById('f-phase').value = 'IFP';
     document.getElementById('f-type').value = '';
-    document.getElementById('f-team').value = '';
     document.getElementById('f-start').value = '';
     document.getElementById('f-end').value = '';
-    isOOOCheck.checked = false;
+    document.getElementById('is-ooo').checked = false;
     toggleOOO(false);
     conflictBanner.classList.remove('visible');
+    teamWarning.classList.remove('visible');
     deleteBtn.style.display = 'none';
+    syncDropdownChecks();
+    renderTeamTrigger();
   }
 
   function openAdd(dateStr) {
@@ -515,13 +861,16 @@
     document.getElementById('f-location').value = ev.location || '';
     document.getElementById('f-phase').value = ev.phase || 'IFP';
     document.getElementById('f-type').value = ev.project_type || '';
-    document.getElementById('f-team').value = (ev.team || []).join(', ');
     document.getElementById('f-start').value = ev.start_date.slice(0, 10);
     document.getElementById('f-end').value = ev.end_date.slice(0, 10);
-    isOOOCheck.checked = ev.is_ooo;
+    document.getElementById('is-ooo').checked = ev.is_ooo;
     toggleOOO(ev.is_ooo);
+    (ev.team || []).forEach(m => selectedTeam.add(m));
+    syncDropdownChecks();
+    renderTeamTrigger();
     deleteBtn.style.display = '';
     modal.classList.add('open');
+    checkAllConflicts();
   }
 
   function closeModal() { modal.classList.remove('open'); }
@@ -533,40 +882,22 @@
     openAdd(isoDate(t.getFullYear(), t.getMonth(), t.getDate()));
   });
 
-  // Conflict check on phase/date change
-  async function checkConflict() {
-    const phase = document.getElementById('f-phase').value;
-    const startDate = document.getElementById('f-start').value;
-    if (phase !== 'IFP' || !startDate || isOOOCheck.checked) {
-      conflictBanner.classList.remove('visible'); return;
-    }
-    try {
-      const r = await fetch(`/api/calendar/events/check-conflict?date=${startDate}&phase=${phase}`);
-      const d = await r.json();
-      conflictBanner.classList.toggle('visible', d.conflict);
-    } catch (e) { /* silent */ }
-  }
-  document.getElementById('f-phase').addEventListener('change', checkConflict);
-  document.getElementById('f-start').addEventListener('change', checkConflict);
-
   // ── Save ─────────────────────────────────────────────────────
   document.getElementById('save-btn').addEventListener('click', async () => {
-    const isOOO = isOOOCheck.checked;
-    const team = document.getElementById('f-team').value
-      .split(',').map(s => s.trim()).filter(Boolean);
+    const isOOO    = document.getElementById('is-ooo').checked;
+    const team     = [...selectedTeam];
     const startDate = document.getElementById('f-start').value;
     const endDate   = document.getElementById('f-end').value;
 
-    if (!team.length)         { alert('Team initials are required.'); return; }
-    if (!startDate || !endDate) { alert('Start and end dates are required.'); return; }
-    if (endDate < startDate)  { alert('End date must be on or after start date.'); return; }
+    if (!team.length)            { alert('Please select at least one team member.'); return; }
+    if (!startDate || !endDate)  { alert('Start and end dates are required.'); return; }
+    if (endDate < startDate)     { alert('End date must be on or after start date.'); return; }
 
-    const phase = isOOO ? 'SD' : document.getElementById('f-phase').value;
     const payload = {
       project_number: isOOO ? '' : document.getElementById('f-project-number').value.trim(),
       client:         isOOO ? '' : document.getElementById('f-client').value.trim(),
       location:       isOOO ? '' : document.getElementById('f-location').value.trim(),
-      phase,
+      phase:          isOOO ? 'SD' : document.getElementById('f-phase').value,
       team,
       project_type:   isOOO ? '' : document.getElementById('f-type').value.trim(),
       start_date:     startDate + 'T00:00:00Z',
@@ -605,8 +936,9 @@
   });
 
   // ── Init ─────────────────────────────────────────────────────
+  renderTeamTrigger();
   fetchEvents();
-  pollTimer = setInterval(fetchEvents, 30000);
+  setInterval(fetchEvents, 30000);
 })();
 </script>
 {% endblock %}
