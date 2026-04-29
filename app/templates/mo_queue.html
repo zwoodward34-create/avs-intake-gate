@@ -6,7 +6,7 @@
       <div class="subtle">Pending review — oldest first</div>
     </div>
     {% if intakes %}
-      <span class="mo-badge" style="font-size:14px; padding:4px 12px; height:auto">{{ intakes|length }} pending</span>
+      <span class="mo-badge" id="queue-badge" style="font-size:14px; padding:4px 12px; height:auto">{{ intakes|length }} pending</span>
     {% endif %}
   </div>
 
@@ -21,17 +21,14 @@
   {% for intake in intakes %}
     {% set days = intake.inquiry_date | days_ago %}
     {% if days is not none %}
-      {% if days > 10 %}
-        {% set aging_border = "border-left: 4px solid #ef4444;" %}
-      {% elif days > 5 %}
-        {% set aging_border = "border-left: 4px solid #f59e0b;" %}
-      {% else %}
-        {% set aging_border = "" %}
-      {% endif %}
-    {% else %}
-      {% set aging_border = "" %}
-    {% endif %}
-    <div class="card mo-queue-card" style="{{ aging_border }}">
+      {% if days > 10 %}{% set aging_border = "border-left: 4px solid #ef4444;" %}
+      {% elif days > 5 %}{% set aging_border = "border-left: 4px solid #f59e0b;" %}
+      {% else %}{% set aging_border = "" %}{% endif %}
+    {% else %}{% set aging_border = "" %}{% endif %}
+
+    <div class="card mo-queue-card" id="card-{{ intake.id }}" style="{{ aging_border }}">
+
+      <!-- Header row -->
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap">
         <div>
           <span style="display:flex; align-items:center; gap:6px">
@@ -40,18 +37,12 @@
               <span style="font-size:10px; font-weight:700; padding:1px 6px; border-radius:3px; background:#fca5a5; color:#7f1d1d; text-transform:uppercase; letter-spacing:.5px">Aging</span>
             {% endif %}
           </span>
-          <div class="mo-queue-meta">
-            {{ intake.client_name or "—" }}{% if intake.architect_name %} · {{ intake.architect_name }}{% endif %}
-          </div>
-          {% if intake.location_region %}
-            <div class="mo-queue-meta">{{ intake.location_region }}</div>
-          {% endif %}
+          <div class="mo-queue-meta">{{ intake.client_name or "—" }}{% if intake.architect_name %} · {{ intake.architect_name }}{% endif %}</div>
+          {% if intake.location_region %}<div class="mo-queue-meta">{{ intake.location_region }}</div>{% endif %}
           <div class="mo-queue-meta">
             Inquiry: {{ intake.inquiry_date or "—" }}
             {% if days is not none %}
-              <span style="color:{% if days > 14 %}#fca5a5{% elif days > 7 %}#fde68a{% else %}var(--muted){% endif %}">
-                ({{ days }}d ago)
-              </span>
+              <span style="color:{% if days > 14 %}#fca5a5{% elif days > 7 %}#fde68a{% else %}var(--muted){% endif %}">({{ days }}d ago)</span>
             {% endif %}
           </div>
         </div>
@@ -76,171 +67,552 @@
         {% endif %}
       </div>
 
+      <!-- Action buttons (Decline / NMI use standard form; Proceed is AJAX) -->
       <form method="post" action="/intakes/{{ intake.id }}/mo-review" id="form-{{ intake.id }}">
-        <input type="hidden" name="redirect_after" id="redirect-{{ intake.id }}" value="/mo-queue" />
-        <input type="hidden" name="mo_fee_decision" id="fee-decision-{{ intake.id }}" value="" />
-        <input type="hidden" name="mo_fee_override" id="fee-override-{{ intake.id }}" value="" />
-
+        <input type="hidden" name="redirect_after" value="/mo-queue" />
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px" id="action-btns-{{ intake.id }}">
           <button class="btn btn-proceed" type="button" onclick="openProceedSection({{ intake.id }})">Proceed</button>
           <button class="btn btn-decline" type="submit" name="mo_decision" value="DECLINE">Decline</button>
           <button class="btn btn-moreinfo" type="submit" name="mo_decision" value="REQUEST_CLARIFICATION">Need More Info</button>
         </div>
-
-        <!-- Proceed fee section (hidden until Proceed is clicked) -->
-        <div id="proceed-section-{{ intake.id }}" style="display:none; margin-bottom:12px">
-          <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:16px; margin-bottom:12px">
-            <div style="font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#16a34a; margin-bottom:12px">Fee Estimation</div>
-
-            <div id="fee-estimate-{{ intake.id }}" style="margin-bottom:12px">
-              <div style="color:var(--muted); font-size:12px">Loading fee estimate…</div>
-            </div>
-
-            <div class="field" style="margin-bottom:0">
-              <label for="approved-fee-{{ intake.id }}" style="font-weight:700">Approved Fee ($)</label>
-              <input type="number" id="approved-fee-{{ intake.id }}" min="500" step="500"
-                     placeholder="Enter approved fee amount"
-                     style="max-width:220px; font-size:16px; font-weight:700" />
-              <div class="subtle" style="margin-top:4px; font-size:11px">This amount will appear in Reports → Approved Pipeline</div>
-            </div>
-          </div>
-
-          <!-- Proposal Prep checklist -->
-          <div style="background:#f8fafc; border:1px solid var(--border); border-radius:6px; padding:14px; margin-bottom:12px">
-            <div style="font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:10px">Proposal Prep Checklist</div>
-            <div style="display:flex; flex-direction:column; gap:7px; font-size:13px">
-              <label style="display:flex; align-items:center; gap:8px; cursor:pointer"><input type="checkbox" style="width:15px; height:15px"> RFP data extracted (name, location, SF, type)</label>
-              <label style="display:flex; align-items:center; gap:8px; cursor:pointer"><input type="checkbox" style="width:15px; height:15px"> Project classified (new construction or BTS)</label>
-              <label style="display:flex; align-items:center; gap:8px; cursor:pointer"><input type="checkbox" style="width:15px; height:15px"> Complexity assessed (low / medium / high)</label>
-              <label style="display:flex; align-items:center; gap:8px; cursor:pointer"><input type="checkbox" style="width:15px; height:15px"> Fee estimated using tier matrix</label>
-              <label style="display:flex; align-items:center; gap:8px; cursor:pointer"><input type="checkbox" style="width:15px; height:15px"> Scope items determined (A–G or A–H)</label>
-            </div>
-          </div>
-
-          <!-- Generate Proposal Letter note -->
-          <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:12px 14px; margin-bottom:12px; font-size:13px">
-            <div style="font-weight:700; color:#1d4ed8; margin-bottom:4px">Generate Proposal Letter</div>
-            <div style="color:var(--muted)">After confirming, you'll be taken to the intake where you can generate the full proposal letter using the approved fee above.</div>
-          </div>
-
-          <div style="display:flex; gap:8px; flex-wrap:wrap">
-            <button class="btn btn-proceed" type="button"
-                    onclick="confirmProceed({{ intake.id }})">✓ Confirm Proceed &amp; Go to Proposal</button>
-            <button class="btn" type="button"
-                    onclick="cancelProceed({{ intake.id }})">Cancel</button>
-          </div>
-
-          <div>
-            <button type="button" class="mo-notes-toggle" onclick="toggleNotes('notes-{{ intake.id }}', this)" style="margin-top:10px">+ Add notes or conditions</button>
-            <div class="mo-notes-area" id="notes-{{ intake.id }}" style="display:none">
-              <div class="row row-2" style="margin-top:8px">
-                <div class="field">
-                  <label>Notes</label>
-                  <textarea name="mo_notes" rows="3"></textarea>
-                </div>
-                <div class="field">
-                  <label>Conditions</label>
-                  <input type="text" name="mo_conditions" placeholder="Optional" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Notes toggle for Decline/More Info path -->
-        <div id="other-notes-{{ intake.id }}">
-          <button type="button" class="mo-notes-toggle" onclick="toggleNotes('other-notes-area-{{ intake.id }}', this)">+ Add notes or conditions</button>
-          <div class="mo-notes-area" id="other-notes-area-{{ intake.id }}" style="display:none">
+        <div id="other-actions-{{ intake.id }}">
+          <button type="button" class="mo-notes-toggle" onclick="toggleNotes('other-notes-{{ intake.id }}', this)">+ Add notes or conditions</button>
+          <div id="other-notes-{{ intake.id }}" style="display:none">
             <div class="row row-2" style="margin-top:8px">
-              <div class="field">
-                <label>Notes</label>
-                <textarea name="mo_notes" rows="3"></textarea>
-              </div>
-              <div class="field">
-                <label>Conditions</label>
-                <input type="text" name="mo_conditions" placeholder="Optional" />
-              </div>
+              <div class="field"><label>Notes</label><textarea name="mo_notes" rows="3"></textarea></div>
+              <div class="field"><label>Conditions</label><input type="text" name="mo_conditions" placeholder="Optional" /></div>
             </div>
           </div>
         </div>
       </form>
-    </div>
+
+      <!-- ═══ PROCEED SECTION (fully AJAX, outside form) ═══ -->
+      <div id="proceed-section-{{ intake.id }}" style="display:none"
+           data-intake-id="{{ intake.id }}"
+           data-client="{{ intake.client_name | default('') }}"
+           data-location="{{ intake.location_region | default('') }}"
+           data-project-name="{{ intake.project_name | default('') }}"
+           data-project-type="{{ intake.answers.get('project_type', '') }}"
+           data-building-type="{{ intake.answers.get('building_type', '') }}"
+           data-approx-sf="{{ intake.answers.get('approx_sf', '') }}"
+           data-architect="{{ intake.architect_name | default('') }}">
+
+        <!-- ① Project Intelligence -->
+        <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:6px; padding:16px; margin-bottom:12px">
+          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:#0369a1; margin-bottom:12px">Project Intelligence</div>
+          <div id="pi-{{ intake.id }}"><div style="color:var(--muted); font-size:12px">Loading intelligence…</div></div>
+        </div>
+
+        <!-- ② Approved Fee -->
+        <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:14px 16px; margin-bottom:12px">
+          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:#16a34a; margin-bottom:10px">Approved Fee</div>
+          <div style="display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap">
+            <div class="field" style="margin:0">
+              <label for="approved-fee-{{ intake.id }}" style="font-size:11px">Amount ($) *</label>
+              <input type="number" id="approved-fee-{{ intake.id }}" min="500" step="500"
+                     placeholder="e.g. 12500" style="font-size:18px; font-weight:800; max-width:190px" />
+            </div>
+            <div class="subtle" style="font-size:11px; padding-bottom:3px">Flows into Reports → Approved Pipeline</div>
+          </div>
+        </div>
+
+        <!-- ③ Proposal Prep checklist -->
+        <div style="background:#f8fafc; border:1px solid var(--border); border-radius:6px; padding:14px 16px; margin-bottom:12px">
+          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--muted); margin-bottom:10px">Proposal Prep</div>
+          <div style="display:flex; flex-direction:column; gap:7px; font-size:13px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" style="width:15px;height:15px"> RFP data extracted (name, location, SF, type)</label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" style="width:15px;height:15px"> Project classified (new construction or BTS)</label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" style="width:15px;height:15px"> Complexity assessed (low / medium / high)</label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" style="width:15px;height:15px"> Fee estimated and approved</label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" style="width:15px;height:15px"> Scope items determined (A–G or A–H)</label>
+          </div>
+        </div>
+
+        <!-- ④ Generate Proposal Letter -->
+        <div style="border:1px solid #dbeafe; border-left:3px solid #3b82f6; border-radius:6px; padding:14px 16px; margin-bottom:12px">
+          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:#2563eb; margin-bottom:10px">Generate Proposal Letter</div>
+          <div class="field" style="margin-bottom:12px">
+            <label for="structural-{{ intake.id }}" style="font-size:11px">Structural system / scope notes (optional)</label>
+            <input type="text" id="structural-{{ intake.id }}" placeholder="e.g. tilt-up panels, metal deck on steel joists, slab on grade" />
+          </div>
+          <!-- Notes for this proceed decision -->
+          <div style="margin-bottom:12px">
+            <button type="button" class="mo-notes-toggle" onclick="toggleNotes('proceed-notes-{{ intake.id }}', this)">+ Add notes or conditions for Mo</button>
+            <div id="proceed-notes-{{ intake.id }}" style="display:none">
+              <div class="row row-2" style="margin-top:8px">
+                <div class="field"><label for="pnotes-{{ intake.id }}">Notes</label><textarea id="pnotes-{{ intake.id }}" rows="3"></textarea></div>
+                <div class="field"><label for="pconds-{{ intake.id }}">Conditions</label><input type="text" id="pconds-{{ intake.id }}" placeholder="Optional" /></div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+            <button class="btn btn-primary" type="button" id="gen-btn-{{ intake.id }}"
+                    onclick="confirmAndGenerate({{ intake.id }})">
+              ✓ Confirm Proceed &amp; Generate Proposal
+            </button>
+            <button class="btn" type="button" onclick="cancelProceed({{ intake.id }})">Cancel</button>
+          </div>
+          <div id="gen-status-{{ intake.id }}" style="display:none; margin-top:8px; font-size:12px; color:var(--muted)">Saving decision and generating proposal — ~15 seconds…</div>
+          <div id="gen-error-{{ intake.id }}"  style="display:none; margin-top:8px; font-size:12px; color:#dc2626; font-weight:600"></div>
+        </div>
+
+        <!-- ⑤ Proposal output (revealed after generation) -->
+        <div id="proposal-output-{{ intake.id }}" style="display:none; margin-bottom:12px">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:8px">
+            <div style="font-size:13px; font-weight:800; color:#16a34a">✓ Proposal Generated</div>
+            <button class="btn" type="button" onclick="copyProposalMQ({{ intake.id }}, event)">Copy to Clipboard</button>
+          </div>
+          <pre id="proposal-text-{{ intake.id }}"
+               style="white-space:pre-wrap; font-family:var(--mono); font-size:12px; line-height:1.6;
+                      background:#f8fafc; border:1px solid var(--border); border-radius:6px;
+                      padding:14px; overflow-x:auto; max-height:340px; overflow-y:auto"></pre>
+        </div>
+
+        <!-- ⑥ Create Calendar Event (revealed after Proceed confirmed) -->
+        <div id="cal-event-btn-{{ intake.id }}" style="display:none; margin-bottom:12px">
+          <button class="btn" type="button" onclick="toggleCalendarSection({{ intake.id }})"
+                  style="background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; font-weight:700">
+            + Create Calendar Event for This Project
+          </button>
+        </div>
+
+        <div id="cal-section-{{ intake.id }}" style="display:none; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:16px; margin-bottom:12px">
+          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:#1d4ed8; margin-bottom:14px">Create Calendar Event</div>
+          <div class="row row-2" style="margin-bottom:10px">
+            <div class="field">
+              <label for="cal-proj-{{ intake.id }}" style="font-size:11px">Project # (enter manually)</label>
+              <input type="text" id="cal-proj-{{ intake.id }}" placeholder="e.g. 9771" />
+            </div>
+            <div class="field">
+              <label for="cal-client-{{ intake.id }}" style="font-size:11px">Client</label>
+              <input type="text" id="cal-client-{{ intake.id }}" />
+            </div>
+          </div>
+          <div class="row row-2" style="margin-bottom:10px">
+            <div class="field">
+              <label for="cal-location-{{ intake.id }}" style="font-size:11px">Location</label>
+              <input type="text" id="cal-location-{{ intake.id }}" />
+            </div>
+            <div class="field">
+              <label for="cal-type-{{ intake.id }}" style="font-size:11px">Project Type</label>
+              <input type="text" id="cal-type-{{ intake.id }}" />
+            </div>
+          </div>
+          <div class="row row-2" style="margin-bottom:10px">
+            <div class="field">
+              <label for="cal-phase-{{ intake.id }}" style="font-size:11px">Phase</label>
+              <select id="cal-phase-{{ intake.id }}">
+                {% for p in valid_phases %}<option value="{{ p }}"{% if p == 'IFP' %} selected{% endif %}>{{ p }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label for="cal-tier-{{ intake.id }}" style="font-size:11px">Tier (1–5)</label>
+              <select id="cal-tier-{{ intake.id }}">
+                <option value="">— No tier —</option>
+                <option value="1">1 — Minor</option>
+                <option value="2">2 — Small</option>
+                <option value="3">3 — Standard</option>
+                <option value="4">4 — Large</option>
+                <option value="5">5 — Major</option>
+              </select>
+            </div>
+          </div>
+          <div class="row row-2" style="margin-bottom:14px">
+            <div class="field">
+              <label for="cal-start-{{ intake.id }}" style="font-size:11px">Start Date</label>
+              <input type="date" id="cal-start-{{ intake.id }}" />
+            </div>
+            <div class="field">
+              <label for="cal-end-{{ intake.id }}" style="font-size:11px">End Date</label>
+              <input type="date" id="cal-end-{{ intake.id }}" />
+            </div>
+          </div>
+
+          <!-- Capacity-based team picker -->
+          <div style="margin-bottom:12px">
+            <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; color:#1d4ed8; margin-bottom:10px">
+              Assign Team — Live Capacity
+            </div>
+            <div id="cap-picker-{{ intake.id }}">
+              <div style="color:var(--muted); font-size:12px">Loading capacity…</div>
+            </div>
+            <div id="sel-team-{{ intake.id }}" style="margin-top:8px; min-height:24px; display:flex; gap:4px; flex-wrap:wrap; align-items:center">
+              <span style="font-size:12px; color:var(--muted)">No team members selected</span>
+            </div>
+          </div>
+
+          <div id="cal-save-error-{{ intake.id }}" style="display:none; color:#dc2626; font-size:12px; font-weight:600; margin-bottom:8px"></div>
+          <div id="cal-save-ok-{{ intake.id }}"    style="display:none; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:4px; padding:8px 12px; font-size:13px; font-weight:700; color:#16a34a; margin-bottom:8px">✓ Calendar event saved!</div>
+
+          <button class="btn" type="button" onclick="saveCalEvent({{ intake.id }})"
+                  style="background:#1d4ed8; border-color:#1d4ed8; color:#fff; font-weight:700">
+            Save to Calendar
+          </button>
+        </div>
+
+      </div><!-- /proceed-section -->
+
+    </div><!-- /card -->
   {% endfor %}
 
-  <script>
-  function toggleNotes(id, btn) {
-    var el = document.getElementById(id);
+<script>
+(function () {
+  const MQ_TEAM_COLORS  = {{ team_colors_json | safe }};
+  const MQ_PHASE_COLORS = {{ phase_colors_json | safe }};
+
+  // Per-intake selected teams
+  const selectedTeams = {};
+
+  // ── Helpers ────────────────────────────────────────────────
+  window.toggleNotes = function (id, btn) {
+    const el = document.getElementById(id);
     if (!el) return;
-    var hidden = el.style.display === 'none';
+    const hidden = el.style.display === 'none';
     el.style.display = hidden ? 'block' : 'none';
     btn.textContent = hidden ? '− Hide notes' : '+ Add notes or conditions';
-  }
+  };
 
-  function openProceedSection(intakeId) {
-    document.getElementById('action-btns-' + intakeId).style.display = 'none';
-    document.getElementById('other-notes-' + intakeId).style.display = 'none';
-    document.getElementById('proceed-section-' + intakeId).style.display = 'block';
-    loadFeeEstimate(intakeId);
-  }
+  // ── Open / Close Proceed ───────────────────────────────────
+  window.openProceedSection = function (id) {
+    document.getElementById('action-btns-' + id).style.display = 'none';
+    document.getElementById('other-actions-' + id).style.display = 'none';
+    document.getElementById('proceed-section-' + id).style.display = 'block';
+    selectedTeams[id] = new Set();
+    loadFeeEstimate(id);
+  };
 
-  function cancelProceed(intakeId) {
-    document.getElementById('proceed-section-' + intakeId).style.display = 'none';
-    document.getElementById('action-btns-' + intakeId).style.display = 'flex';
-    document.getElementById('other-notes-' + intakeId).style.display = 'block';
-  }
+  window.cancelProceed = function (id) {
+    document.getElementById('proceed-section-' + id).style.display = 'none';
+    document.getElementById('action-btns-' + id).style.display = 'flex';
+    document.getElementById('other-actions-' + id).style.display = 'block';
+  };
 
-  function confirmProceed(intakeId) {
-    var feeInput = document.getElementById('approved-fee-' + intakeId);
-    var fee = parseFloat(feeInput ? feeInput.value : '');
-    if (!fee || fee < 500) {
-      feeInput.style.borderColor = '#dc2626';
-      feeInput.focus();
-      return;
-    }
-    document.getElementById('fee-decision-' + intakeId).value = 'OVERRIDE';
-    document.getElementById('fee-override-' + intakeId).value = fee;
-    document.getElementById('redirect-' + intakeId).value = '/intakes/' + intakeId + '#proposal-section';
-    // Add mo_decision as hidden field before submit
-    var hdec = document.createElement('input');
-    hdec.type = 'hidden';
-    hdec.name = 'mo_decision';
-    hdec.value = 'PROCEED';
-    document.getElementById('form-' + intakeId).appendChild(hdec);
-    document.getElementById('form-' + intakeId).submit();
-  }
-
-  function loadFeeEstimate(intakeId) {
-    var container = document.getElementById('fee-estimate-' + intakeId);
-    if (!container) return;
-    fetch('/api/intakes/' + intakeId + '/fee-estimate')
-      .then(function(r) { return r.json(); })
-      .then(function(d) {
-        var html = '';
-        var c = d.cognasync;
-        if (c && !c.needs_manual_review && c.suggested_fee_range) {
-          var lo = c.suggested_fee_range.low;
-          var hi = c.suggested_fee_range.high;
-          var mid = d.suggested_midpoint;
-          html += '<div style="background:#fff;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;margin-bottom:10px">'
-                + '<div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Suggested Fee Range</div>'
-                + '<div style="font-size:1.4rem;font-weight:900">$' + lo.toLocaleString() + ' – $' + hi.toLocaleString() + '</div>'
-                + (mid ? '<div style="font-size:12px;color:var(--muted);margin-top:2px">Midpoint: <strong>$' + mid.toLocaleString() + '</strong></div>' : '')
-                + '</div>';
-          var feeInput = document.getElementById('approved-fee-' + intakeId);
-          if (feeInput && !feeInput.value && mid) feeInput.value = mid;
-        } else if (d.fee_range) {
-          html += '<div style="font-size:13px;color:var(--muted)">Estimated range: <strong>' + d.fee_range + '</strong> — enter approved fee below.</div>';
-        } else {
-          html += '<div style="font-size:13px;color:var(--muted)">No automated estimate available — enter approved fee manually.</div>';
-        }
-        if (c && c.fee_requires_review) {
-          html += '<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;padding:7px 10px;font-size:12px;font-weight:600;color:#92400e;margin-top:6px">⚠ ' + (c.review_reason || 'Fee requires manual review') + '</div>';
-        }
-        container.innerHTML = html;
+  // ── Load full Project Intelligence ─────────────────────────
+  function loadFeeEstimate(id) {
+    fetch('/api/intakes/' + id + '/fee-estimate')
+      .then(r => r.json())
+      .then(d => {
+        renderProjectIntelligence(id, d);
+        autoFillCalEvent(id, d);
       })
-      .catch(function() {
-        container.innerHTML = '<div style="font-size:12px;color:var(--muted)">Could not load estimate — enter fee manually.</div>';
+      .catch(() => {
+        const el = document.getElementById('pi-' + id);
+        if (el) el.innerHTML = '<div style="font-size:12px;color:var(--muted)">Could not load estimate — enter fee manually.</div>';
       });
   }
-  </script>
+
+  function renderProjectIntelligence(id, d) {
+    const c = d.cognasync;
+    let html = '';
+
+    // Complexity + historical range row
+    if (d.complexity && d.complexity !== 'unknown') {
+      const cx = {low:'#16a34a', medium:'#d97706', high:'#dc2626'};
+      const cc = cx[d.complexity] || '#9ca3af';
+      html += `<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px">Complexity</div>
+          <span style="display:inline-block;padding:3px 10px;border-radius:4px;background:${cc};color:#fff;font-size:12px;font-weight:800">${d.complexity.toUpperCase()}</span>
+        </div>
+        ${d.fee_range ? `<div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px">Historical Range</div>
+          <div style="font-size:13px;font-weight:700">${d.fee_range}</div>
+        </div>` : ''}
+        ${d.approx_sf ? `<div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px">Approx SF</div>
+          <div style="font-size:13px;font-weight:700">${parseInt(d.approx_sf).toLocaleString()} SF</div>
+        </div>` : ''}
+      </div>`;
+    }
+
+    if (c && !c.needs_manual_review && c.suggested_fee_range) {
+      // Header: building type, delivery, rates
+      html += `<div style="border:1px solid #bfdbfe;background:#fff;border-radius:6px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#2563eb;margin-bottom:10px">
+          Risk-Adjusted Estimator
+          <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--muted);margin-left:6px">
+            ${(c.building_type||'').replace(/_/g,' ')} · ${(c.delivery_bucket||'').toUpperCase()} · $${(c.effective_rate_low||0).toFixed(2)}–$${(c.effective_rate_high||0).toFixed(2)}/SF
+          </span>
+        </div>`;
+
+      if (c.fee_requires_review) {
+        html += `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;padding:6px 10px;font-size:11px;font-weight:700;color:#92400e;margin-bottom:10px">⚠ ${c.review_reason||'Fee requires manual review'} — estimate is directional only.</div>`;
+      }
+
+      // Suggested fee range — large display
+      html += `<div style="font-size:1.5rem;font-weight:900;margin-bottom:4px">
+        $${(c.suggested_fee_range.low||0).toLocaleString()} – $${(c.suggested_fee_range.high||0).toLocaleString()}
+      </div>`;
+      if (c.floor_applied) {
+        html += `<div style="font-size:11px;color:#d97706;margin-bottom:8px">▲ Floor of $${(c.floor_fee||0).toLocaleString()} applied</div>`;
+      }
+
+      // Step-by-step breakdown
+      html += `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;padding-top:8px;border-top:1px solid #e2e8f0">`;
+      if (c.base_fee_range) {
+        html += `<div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">① Base</div><div style="font-weight:700">$${(c.base_fee_range.low||0).toLocaleString()} – $${(c.base_fee_range.high||0).toLocaleString()}</div></div>`;
+      }
+      if (c.complexity_adjusted_range) {
+        html += `<div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">② Complexity (${c.complexity_multiplier||1}×)</div><div style="font-weight:700">$${(c.complexity_adjusted_range.low||0).toLocaleString()} – $${(c.complexity_adjusted_range.high||0).toLocaleString()}</div></div>`;
+      }
+      if (c.risk_adjusted_range) {
+        const rc = (c.risk_multiplier||1) >= 1.35 ? '#dc2626' : (c.risk_multiplier||1) >= 1.15 ? '#d97706' : '#16a34a';
+        html += `<div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">③ Risk (${c.risk_multiplier||1}× · ${c.flag_count||0} flags)</div><div style="font-weight:700;color:${rc}">$${(c.risk_adjusted_range.low||0).toLocaleString()} – $${(c.risk_adjusted_range.high||0).toLocaleString()}</div></div>`;
+      }
+      html += `</div>`;
+
+      if (c.warnings && c.warnings.length) {
+        html += `<div style="margin-top:10px;padding:7px 10px;background:rgba(220,38,38,.07);border-left:3px solid #dc2626;border-radius:3px">
+          <div style="font-size:10px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">Risk flags (${c.flag_count||0})</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px">${(c.warnings||[]).map(w=>`<span style="background:rgba(245,158,11,.15);color:#92400e;border:1px solid #f59e0b;border-radius:3px;padding:1px 6px;font-size:10px;font-weight:700">${w.replace(/_/g,' ')}</span>`).join('')}</div>
+        </div>`;
+      }
+
+      html += `</div>`;
+
+      // Pre-fill approved fee
+      if (d.suggested_midpoint) {
+        const fi = document.getElementById('approved-fee-' + id);
+        if (fi && !fi.value) fi.value = d.suggested_midpoint;
+      }
+
+    } else if (c && c.needs_manual_review) {
+      html += `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:5px;padding:10px 12px;font-size:12px;font-weight:700;color:#92400e">⚠ ${c.review_reason||'Complex project'} — enter approved fee manually.</div>`;
+    } else {
+      html += `<div style="font-size:12px;color:var(--muted)">No automated estimate available — enter fee manually.</div>`;
+    }
+
+    const el = document.getElementById('pi-' + id);
+    if (el) el.innerHTML = html;
+  }
+
+  function autoFillCalEvent(id, d) {
+    const sec = document.getElementById('proceed-section-' + id);
+    const client   = (sec && sec.dataset.client)   || d.client_name   || '';
+    const location = (sec && sec.dataset.location) || d.location_region || '';
+    const ptype    = (sec && sec.dataset.projectType) || d.project_type || '';
+
+    const set = (eid, val) => { const el = document.getElementById(eid + '-' + id); if (el && val) el.value = val; };
+    set('cal-client',   client);
+    set('cal-location', location);
+    set('cal-type',     ptype);
+
+    // Auto-pick tier from complexity
+    if (d.complexity) {
+      const tm = {low:'2', medium:'3', high:'4'};
+      const tel = document.getElementById('cal-tier-' + id);
+      if (tel && !tel.value && tm[d.complexity]) tel.value = tm[d.complexity];
+    }
+  }
+
+  // ── Confirm Proceed + Generate Proposal ───────────────────
+  window.confirmAndGenerate = async function (id) {
+    const fi = document.getElementById('approved-fee-' + id);
+    const fee = parseFloat(fi.value);
+    if (!fee || fee < 500) { fi.style.borderColor = '#dc2626'; fi.focus(); return; }
+    fi.style.borderColor = '';
+
+    const structural = (document.getElementById('structural-' + id) || {}).value || '';
+    const notes      = (document.getElementById('pnotes-' + id) || {}).value || '';
+    const conditions = (document.getElementById('pconds-' + id)  || {}).value || '';
+
+    const genBtn    = document.getElementById('gen-btn-' + id);
+    const genStatus = document.getElementById('gen-status-' + id);
+    const genError  = document.getElementById('gen-error-' + id);
+    genBtn.disabled = true;
+    genBtn.textContent = 'Saving decision…';
+    genStatus.style.display = 'block';
+    genError.style.display  = 'none';
+
+    // Step 1: Save mo decision
+    try {
+      const r = await fetch('/api/intakes/' + id + '/mo-review', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          mo_decision:   'PROCEED',
+          mo_fee_decision: 'OVERRIDE',
+          mo_fee_override: fee,
+          mo_notes:      notes,
+          mo_conditions: conditions,
+        }),
+      });
+      if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.detail || 'Save failed'); }
+    } catch (e) {
+      genBtn.disabled = false; genBtn.textContent = '✓ Confirm Proceed & Generate Proposal';
+      genStatus.style.display = 'none';
+      genError.textContent = 'Error saving decision: ' + e.message; genError.style.display = 'block';
+      return;
+    }
+
+    // Step 2: Generate proposal
+    genBtn.textContent = 'Generating proposal…';
+    try {
+      const r = await fetch('/api/intakes/' + id + '/generate-proposal', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({fee_amount: fee, structural_system: structural}),
+      });
+      if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.detail || 'Generation failed'); }
+      const data = await r.json();
+
+      document.getElementById('proposal-text-' + id).textContent = data.proposal_text;
+      document.getElementById('proposal-output-' + id).style.display = 'block';
+      document.getElementById('cal-event-btn-' + id).style.display = 'block';
+
+      genBtn.textContent = '✓ Proceed Confirmed — Proposal Generated';
+      genBtn.style.cssText += ';background:#16a34a;border-color:#16a34a';
+      genStatus.style.display = 'none';
+
+      // Decrement queue badge
+      const badge = document.getElementById('queue-badge');
+      if (badge) {
+        const n = parseInt(badge.textContent) - 1;
+        badge.textContent = n + ' pending';
+        if (n <= 0) badge.style.display = 'none';
+      }
+    } catch (e) {
+      genBtn.disabled = false; genBtn.textContent = '✓ Confirm Proceed & Generate Proposal';
+      genStatus.style.display = 'none';
+      genError.textContent = 'Error generating proposal: ' + e.message; genError.style.display = 'block';
+    }
+  };
+
+  window.copyProposalMQ = function (id, evt) {
+    const text = document.getElementById('proposal-text-' + id).textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = evt.target;
+      btn.textContent = '✓ Copied!';
+      setTimeout(() => { btn.textContent = 'Copy to Clipboard'; }, 2000);
+    });
+  };
+
+  // ── Calendar Event section ─────────────────────────────────
+  window.toggleCalendarSection = function (id) {
+    const sec = document.getElementById('cal-section-' + id);
+    const opening = sec.style.display === 'none';
+    sec.style.display = opening ? 'block' : 'none';
+    if (opening && !sec.dataset.loaded) {
+      sec.dataset.loaded = '1';
+      loadCapacityPicker(id);
+    }
+  };
+
+  function loadCapacityPicker(id) {
+    const container = document.getElementById('cap-picker-' + id);
+    if (!container) return;
+    if (!selectedTeams[id]) selectedTeams[id] = new Set();
+
+    fetch('/api/capacity')
+      .then(r => r.json())
+      .then(data => {
+        const STATUS_COLORS = {best:'#16a34a', approaching:'#d97706', at_capacity:'#dc2626', over_allocated:'#7f1d1d'};
+
+        function renderPool(people, label) {
+          let h = `<div>
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#1d4ed8;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #bfdbfe">${label}</div>`;
+          people.forEach(p => {
+            const sc = STATUS_COLORS[p.status] || '#9ca3af';
+            const tc = MQ_TEAM_COLORS[p.initials] || '#9ca3af';
+            const pct = Math.min(p.load_pct, 100).toFixed(0);
+            h += `<div id="pr-${id}-${p.initials}" data-member="${p.initials}"
+                      onclick="window.toggleTeamMember(${id}, '${p.initials}')"
+                      style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:5px;cursor:pointer;border:1.5px solid #dbeafe;margin-bottom:5px;background:#fff;transition:border-color .15s,background .15s">
+              <div style="width:28px;height:28px;border-radius:50%;background:${tc};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0">${p.initials}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:11px;font-weight:800">${p.initials} <span style="font-weight:500;color:var(--muted);font-size:10px">${p.role}</span></div>
+                <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
+                  <div style="flex:1;height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden">
+                    <div style="height:100%;width:${pct}%;background:${sc};border-radius:2px"></div>
+                  </div>
+                  <span style="font-size:10px;font-weight:800;font-family:var(--mono);color:${sc};flex-shrink:0;min-width:32px;text-align:right">${p.load_pct.toFixed(0)}%</span>
+                </div>
+              </div>
+              <div class="pcheck-${id}" data-member="${p.initials}"
+                   style="width:20px;height:20px;border-radius:50%;border:2px solid #cbd5e1;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0;transition:all .15s"></div>
+            </div>`;
+          });
+          h += '</div>';
+          return h;
+        }
+
+        container.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          ${renderPool(data.engineering, 'Engineering Pool')}
+          ${renderPool(data.drafting,    'Drafting Pool')}
+        </div>`;
+      })
+      .catch(() => {
+        container.innerHTML = '<div style="font-size:12px;color:var(--muted)">Could not load capacity data.</div>';
+      });
+  }
+
+  window.toggleTeamMember = function (id, member) {
+    if (!selectedTeams[id]) selectedTeams[id] = new Set();
+    const row   = document.getElementById('pr-' + id + '-' + member);
+    const check = row && row.querySelector('.pcheck-' + id + '[data-member="' + member + '"]');
+    const tc    = MQ_TEAM_COLORS[member] || '#9ca3af';
+
+    if (selectedTeams[id].has(member)) {
+      selectedTeams[id].delete(member);
+      if (row)   { row.style.borderColor = '#dbeafe'; row.style.background = '#fff'; }
+      if (check) { check.textContent = ''; check.style.borderColor = '#cbd5e1'; check.style.background = ''; check.style.color = ''; }
+    } else {
+      selectedTeams[id].add(member);
+      if (row)   { row.style.borderColor = tc; row.style.background = tc + '18'; }
+      if (check) { check.textContent = '✓'; check.style.borderColor = tc; check.style.background = tc; check.style.color = '#fff'; }
+    }
+
+    const disp = document.getElementById('sel-team-' + id);
+    if (disp) {
+      const sel = [...selectedTeams[id]];
+      if (sel.length === 0) {
+        disp.innerHTML = '<span style="font-size:12px;color:var(--muted)">No team members selected</span>';
+      } else {
+        disp.innerHTML = sel.map(m => {
+          const c = MQ_TEAM_COLORS[m] || '#9ca3af';
+          return `<span title="${m}" style="width:28px;height:28px;border-radius:50%;background:${c};display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff">${m}</span>`;
+        }).join('');
+      }
+    }
+  };
+
+  window.saveCalEvent = async function (id) {
+    const team = selectedTeams[id] ? [...selectedTeams[id]] : [];
+    const start = document.getElementById('cal-start-' + id).value;
+    const end   = document.getElementById('cal-end-'   + id).value;
+    const errEl = document.getElementById('cal-save-error-' + id);
+    const okEl  = document.getElementById('cal-save-ok-'   + id);
+    errEl.style.display = 'none'; okEl.style.display = 'none';
+
+    if (!start || !end) { errEl.textContent = 'Start and end dates are required.'; errEl.style.display = 'block'; return; }
+    if (end < start)   { errEl.textContent = 'End date must be on or after start date.'; errEl.style.display = 'block'; return; }
+    if (!team.length)  { errEl.textContent = 'Select at least one team member.'; errEl.style.display = 'block'; return; }
+
+    const tier = document.getElementById('cal-tier-' + id).value;
+    const payload = {
+      project_number: document.getElementById('cal-proj-'     + id).value.trim(),
+      client:         document.getElementById('cal-client-'   + id).value.trim(),
+      location:       document.getElementById('cal-location-' + id).value.trim(),
+      phase:          document.getElementById('cal-phase-'    + id).value,
+      tier:           tier ? parseInt(tier) : null,
+      phase_jump:     false,
+      team,
+      project_type:   document.getElementById('cal-type-' + id).value.trim(),
+      start_date:     start + 'T00:00:00Z',
+      end_date:       end   + 'T23:59:59Z',
+      is_ooo:         false,
+    };
+
+    try {
+      const r = await fetch('/api/calendar/events', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
+      });
+      if (!r.ok) { const e = await r.json().catch(()=>({})); errEl.textContent = e.detail || 'Save failed.'; errEl.style.display = 'block'; }
+      else { okEl.style.display = 'block'; }
+    } catch (e) {
+      errEl.textContent = 'Network error — try again.'; errEl.style.display = 'block';
+    }
+  };
+})();
+</script>
 {% endblock %}

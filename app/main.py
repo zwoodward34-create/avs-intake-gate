@@ -493,6 +493,7 @@ def _require_mo_passcode_if_configured(passcode: Optional[str]) -> None:
 
 @app.get("/mo-queue", response_class=HTMLResponse)
 def mo_queue(request: Request) -> HTMLResponse:
+    import json as _json
     intakes = db.list_pending_mo()
     return templates.TemplateResponse(
         "mo_queue.html",
@@ -500,8 +501,75 @@ def mo_queue(request: Request) -> HTMLResponse:
             "request": request,
             "intakes": intakes,
             "now_local": _now_local_iso(),
+            "valid_phases":    db.VALID_PHASES,
+            "team_colors_json":  _json.dumps(db.TEAM_COLORS),
+            "phase_colors_json": _json.dumps(db.PHASE_COLORS),
         },
     )
+
+
+@app.post("/api/intakes/{intake_id}/mo-review")
+async def api_mo_review_json(request: Request, intake_id: int) -> dict:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    body = await request.json()
+    mo_decision = (body.get("mo_decision") or "").strip().upper()
+    status = {
+        "PROCEED":                 "PROCEED_TO_PROPOSAL",
+        "PROCEED_WITH_CONDITIONS": "PROCEED_WITH_CONDITIONS",
+        "REQUEST_CLARIFICATION":   "NEEDS_INFO",
+        "DECLINE":                 "DECLINED",
+    }.get(mo_decision)
+    if not status:
+        raise HTTPException(status_code=400, detail="Invalid decision.")
+    mo_fee_decision = (body.get("mo_fee_decision") or "").strip().upper() or None
+    fee_override = _as_str(str(body.get("mo_fee_override") or "")) if mo_fee_decision == "OVERRIDE" else None
+    db.set_mo_review(
+        intake_id,
+        mo_decision=mo_decision,
+        mo_notes=_as_str(str(body.get("mo_notes") or "")),
+        mo_conditions=_as_str(str(body.get("mo_conditions") or "")),
+        mo_fee_decision=mo_fee_decision,
+        mo_fee_override=fee_override,
+        status=status,
+    )
+    return {"success": True, "status": status, "intake_id": intake_id}
+
+
+@app.post("/api/intakes/{intake_id}/generate-proposal")
+async def api_generate_proposal_json(request: Request, intake_id: int) -> dict:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    body = await request.json()
+    fee_amount = float(body.get("fee_amount") or 0)
+    structural_system = str(body.get("structural_system") or "")
+    decision = compute_decision(intake.answers)
+    enriched = {**intake.answers, "_complexity": decision["complexity_estimate"]}
+    if structural_system:
+        enriched["structural_system"] = structural_system
+    try:
+        text = proposal_generator.generate_proposal(
+            project_name=intake.project_name or "Project",
+            project_type=intake.answers.get("project_type") or "new_construction",
+            location=intake.location_region or "",
+            building_type=intake.answers.get("building_type") or "retail",
+            approx_sf=int(intake.answers["approx_sf"]) if intake.answers.get("approx_sf") else None,
+            structural_system=enriched.get("structural_system") or "",
+            scope_description=enriched.get("scope_description") or "",
+            architect_name=intake.architect_name or "",
+            architect_firm=enriched.get("architect_firm") or "",
+            architect_email=intake.lead_contact or "",
+            fee_amount=fee_amount,
+            complexity=decision["complexity_estimate"],
+            mo_conditions=intake.mo_conditions or "",
+            mo_notes=intake.mo_notes or "",
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    db.save_proposal(intake_id, text)
+    return {"proposal_text": text, "intake_id": intake_id}
 
 
 @app.get("/intakes/{intake_id}/mo-review", response_class=HTMLResponse)
@@ -1065,6 +1133,12 @@ def api_intake_fee_estimate(intake_id: int) -> dict:
         "fee_range":        decision.get("fee_range_estimate"),
         "cognasync":        est,
         "suggested_midpoint": midpoint,
+        "client_name":      intake.client_name or "",
+        "location_region":  intake.location_region or "",
+        "project_type":     intake.answers.get("project_type") or "",
+        "building_type":    intake.answers.get("building_type") or "",
+        "approx_sf":        intake.answers.get("approx_sf") or "",
+        "architect_name":   intake.architect_name or "",
     }
 
 
