@@ -101,14 +101,14 @@
            data-architect="{{ intake.architect_name | default('') }}">
 
         <!-- ① Project Intelligence -->
-        <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:6px; padding:16px; margin-bottom:12px">
-          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:#0369a1; margin-bottom:12px">Project Intelligence</div>
+        <div style="background:rgba(0,229,255,.05); border:1px solid rgba(0,229,255,.20); border-radius:12px; padding:16px; margin-bottom:12px">
+          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--accent); margin-bottom:12px">Project Intelligence</div>
           <div id="pi-{{ intake.id }}"><div style="color:var(--muted); font-size:12px">Loading intelligence…</div></div>
         </div>
 
         <!-- ② Approved Fee -->
-        <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:14px 16px; margin-bottom:12px">
-          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:#16a34a; margin-bottom:10px">Approved Fee</div>
+        <div style="background:rgba(0,230,118,.05); border:1px solid rgba(0,230,118,.20); border-radius:12px; padding:14px 16px; margin-bottom:12px">
+          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--good); margin-bottom:10px">Approved Fee</div>
           <div style="display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap">
             <div class="field" style="margin:0">
               <label for="approved-fee-{{ intake.id }}" style="font-size:11px">Amount ($) *</label>
@@ -120,7 +120,7 @@
         </div>
 
         <!-- ③ Proposal Prep checklist -->
-        <div style="background:#f8fafc; border:1px solid var(--border); border-radius:6px; padding:14px 16px; margin-bottom:12px">
+        <div style="background:var(--card-bg-deeper); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:12px">
           <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--muted); margin-bottom:10px">Proposal Prep</div>
           <div style="display:flex; flex-direction:column; gap:7px; font-size:13px">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" style="width:15px;height:15px"> RFP data extracted (name, location, SF, type)</label>
@@ -132,8 +132,8 @@
         </div>
 
         <!-- ④ Generate Proposal Letter -->
-        <div style="border:1px solid #dbeafe; border-left:3px solid #3b82f6; border-radius:6px; padding:14px 16px; margin-bottom:12px">
-          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:#2563eb; margin-bottom:10px">Generate Proposal Letter</div>
+        <div style="border:1px solid rgba(0,229,255,.25); border-left:3px solid var(--accent); border-radius:12px; padding:14px 16px; margin-bottom:12px">
+          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--accent); margin-bottom:10px">Generate Proposal Letter</div>
           <div class="field" style="margin-bottom:12px">
             <label for="structural-{{ intake.id }}" style="font-size:11px">Structural system / scope notes (optional)</label>
             <input type="text" id="structural-{{ intake.id }}" placeholder="e.g. tilt-up panels, metal deck on steel joists, slab on grade" />
@@ -150,7 +150,7 @@
           </div>
           <div id="sticky-action-bar-{{ intake.id }}"
                style="position:sticky;bottom:0;z-index:10;margin:0 -20px -20px;padding:12px 20px;
-                      background:rgba(255,255,255,0.95);backdrop-filter:blur(8px);
+                      background:rgba(15,33,19,0.95);backdrop-filter:blur(12px);
                       border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
             <button class="btn btn-primary" type="button" id="gen-btn-{{ intake.id }}"
                     onclick="confirmAndGenerate({{ intake.id }})">
@@ -165,25 +165,31 @@
         <!-- ⑤ Proposal output (revealed after generation) -->
         <div id="proposal-output-{{ intake.id }}" style="display:none; margin-bottom:12px">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:8px">
-            <div style="font-size:13px; font-weight:800; color:#16a34a">✓ Proposal Generated</div>
-            <button class="btn" type="button" onclick="copyProposalMQ({{ intake.id }}, event)">Copy to Clipboard</button>
+            <div style="font-size:13px; font-weight:800; color:var(--good)">✓ Proposal Generated</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap">
+              <button class="btn" type="button" onclick="copyProposalMQ({{ intake.id }}, event)">Copy to Clipboard</button>
+              <button class="btn" type="button" onclick="moveToAllIntakes({{ intake.id }})"
+                      style="border-color:rgba(0,229,255,.40);background:rgba(0,229,255,.10);color:var(--text)">
+                Move to All Intakes →
+              </button>
+            </div>
           </div>
           <pre id="proposal-text-{{ intake.id }}"
                style="white-space:pre-wrap; font-family:var(--mono); font-size:12px; line-height:1.6;
-                      background:#f8fafc; border:1px solid var(--border); border-radius:6px;
-                      padding:14px; overflow-x:auto; max-height:340px; overflow-y:auto"></pre>
+                      background:rgba(0,0,0,.3); border:1px solid var(--border); border-radius:12px;
+                      padding:14px; overflow-x:auto; max-height:340px; overflow-y:auto; color:var(--text)"></pre>
         </div>
 
         <!-- ⑥ Create Calendar Event (revealed after Proceed confirmed) -->
         <div id="cal-event-btn-{{ intake.id }}" style="display:none; margin-bottom:12px">
           <button class="btn" type="button" onclick="toggleCalendarSection({{ intake.id }})"
-                  style="background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; font-weight:700">
+                  style="border-color:rgba(0,229,255,.35); color:var(--accent); font-weight:700">
             + Create Calendar Event for This Project
           </button>
         </div>
 
-        <div id="cal-section-{{ intake.id }}" style="display:none; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:16px; margin-bottom:12px">
-          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:#1d4ed8; margin-bottom:14px">Create Calendar Event</div>
+        <div id="cal-section-{{ intake.id }}" style="display:none; background:rgba(0,229,255,.04); border:1px solid rgba(0,229,255,.20); border-radius:12px; padding:16px; margin-bottom:12px">
+          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--accent); margin-bottom:14px">Create Calendar Event</div>
           <div class="row row-2" style="margin-bottom:10px">
             <div class="field">
               <label for="cal-proj-{{ intake.id }}" style="font-size:11px">Project #</label>
@@ -237,7 +243,7 @@
 
           <!-- Capacity-based team picker -->
           <div style="margin-bottom:12px">
-            <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; color:#1d4ed8; margin-bottom:10px">
+            <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; color:var(--accent); margin-bottom:10px">
               Assign Team — Live Capacity
             </div>
             <div id="cap-picker-{{ intake.id }}">
@@ -248,11 +254,10 @@
             </div>
           </div>
 
-          <div id="cal-save-error-{{ intake.id }}" style="display:none; color:#dc2626; font-size:12px; font-weight:600; margin-bottom:8px"></div>
-          <div id="cal-save-ok-{{ intake.id }}"    style="display:none; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:4px; padding:8px 12px; font-size:13px; font-weight:700; color:#16a34a; margin-bottom:8px">✓ Calendar event saved!</div>
+          <div id="cal-save-error-{{ intake.id }}" style="display:none; color:var(--bad); font-size:12px; font-weight:600; margin-bottom:8px"></div>
+          <div id="cal-save-ok-{{ intake.id }}"    style="display:none; background:rgba(0,230,118,.08); border:1px solid rgba(0,230,118,.30); border-radius:8px; padding:8px 12px; font-size:13px; font-weight:700; color:var(--good); margin-bottom:8px">✓ Calendar event saved!</div>
 
-          <button class="btn" type="button" onclick="saveCalEvent({{ intake.id }})"
-                  style="background:#1d4ed8; border-color:#1d4ed8; color:#fff; font-weight:700">
+          <button class="btn btn-primary" type="button" onclick="saveCalEvent({{ intake.id }})">
             Save to Calendar
           </button>
         </div>
@@ -334,44 +339,44 @@
 
     if (c && !c.needs_manual_review && c.suggested_fee_range) {
       // Header: building type, delivery, rates
-      html += `<div style="border:1px solid #bfdbfe;background:#fff;border-radius:6px;padding:14px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#2563eb;margin-bottom:10px">
+      html += `<div style="border:1px solid rgba(0,229,255,.20);background:rgba(0,229,255,.04);border-radius:10px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--accent);margin-bottom:10px">
           Risk-Adjusted Estimator
-          <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--muted);margin-left:6px">
+          <span style="font-weight:500;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.5);margin-left:6px">
             ${(c.building_type||'').replace(/_/g,' ')} · ${(c.delivery_bucket||'').toUpperCase()} · $${(c.effective_rate_low||0).toFixed(2)}–$${(c.effective_rate_high||0).toFixed(2)}/SF
           </span>
         </div>`;
 
       if (c.fee_requires_review) {
-        html += `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;padding:6px 10px;font-size:11px;font-weight:700;color:#92400e;margin-bottom:10px">⚠ ${c.review_reason||'Fee requires manual review'} — estimate is directional only.</div>`;
+        html += `<div style="background:rgba(255,215,64,.08);border:1px solid rgba(255,215,64,.35);border-radius:6px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--warn);margin-bottom:10px">⚠ ${c.review_reason||'Fee requires manual review'} — estimate is directional only.</div>`;
       }
 
       // Suggested fee range — large display
-      html += `<div style="font-size:1.5rem;font-weight:900;margin-bottom:4px">
+      html += `<div style="font-size:1.5rem;font-weight:900;margin-bottom:4px;color:#fff">
         $${(c.suggested_fee_range.low||0).toLocaleString()} – $${(c.suggested_fee_range.high||0).toLocaleString()}
       </div>`;
       if (c.floor_applied) {
-        html += `<div style="font-size:11px;color:#d97706;margin-bottom:8px">▲ Floor of $${(c.floor_fee||0).toLocaleString()} applied</div>`;
+        html += `<div style="font-size:11px;color:var(--warn);margin-bottom:8px">▲ Floor of $${(c.floor_fee||0).toLocaleString()} applied</div>`;
       }
 
       // Step-by-step breakdown
-      html += `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;padding-top:8px;border-top:1px solid #e2e8f0">`;
+      html += `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;padding-top:8px;border-top:1px solid rgba(255,255,255,.10)">`;
       if (c.base_fee_range) {
-        html += `<div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">① Base</div><div style="font-weight:700">$${(c.base_fee_range.low||0).toLocaleString()} – $${(c.base_fee_range.high||0).toLocaleString()}</div></div>`;
+        html += `<div><div style="color:rgba(255,255,255,.5);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">① Base</div><div style="font-weight:700;color:#fff">$${(c.base_fee_range.low||0).toLocaleString()} – $${(c.base_fee_range.high||0).toLocaleString()}</div></div>`;
       }
       if (c.complexity_adjusted_range) {
-        html += `<div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">② Complexity (${c.complexity_multiplier||1}×)</div><div style="font-weight:700">$${(c.complexity_adjusted_range.low||0).toLocaleString()} – $${(c.complexity_adjusted_range.high||0).toLocaleString()}</div></div>`;
+        html += `<div><div style="color:rgba(255,255,255,.5);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">② Complexity (${c.complexity_multiplier||1}×)</div><div style="font-weight:700;color:#fff">$${(c.complexity_adjusted_range.low||0).toLocaleString()} – $${(c.complexity_adjusted_range.high||0).toLocaleString()}</div></div>`;
       }
       if (c.risk_adjusted_range) {
-        const rc = (c.risk_multiplier||1) >= 1.35 ? '#dc2626' : (c.risk_multiplier||1) >= 1.15 ? '#d97706' : '#16a34a';
-        html += `<div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">③ Risk (${c.risk_multiplier||1}× · ${c.flag_count||0} flags)</div><div style="font-weight:700;color:${rc}">$${(c.risk_adjusted_range.low||0).toLocaleString()} – $${(c.risk_adjusted_range.high||0).toLocaleString()}</div></div>`;
+        const rc = (c.risk_multiplier||1) >= 1.35 ? 'var(--bad)' : (c.risk_multiplier||1) >= 1.15 ? 'var(--warn)' : 'var(--good)';
+        html += `<div><div style="color:rgba(255,255,255,.5);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">③ Risk (${c.risk_multiplier||1}× · ${c.flag_count||0} flags)</div><div style="font-weight:700;color:${rc}">$${(c.risk_adjusted_range.low||0).toLocaleString()} – $${(c.risk_adjusted_range.high||0).toLocaleString()}</div></div>`;
       }
       html += `</div>`;
 
       if (c.warnings && c.warnings.length) {
-        html += `<div style="margin-top:10px;padding:7px 10px;background:rgba(220,38,38,.07);border-left:3px solid #dc2626;border-radius:3px">
-          <div style="font-size:10px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">Risk flags (${c.flag_count||0})</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px">${(c.warnings||[]).map(w=>`<span style="background:rgba(245,158,11,.15);color:#92400e;border:1px solid #f59e0b;border-radius:3px;padding:1px 6px;font-size:10px;font-weight:700">${w.replace(/_/g,' ')}</span>`).join('')}</div>
+        html += `<div style="margin-top:10px;padding:7px 10px;background:rgba(255,82,82,.07);border-left:3px solid var(--bad);border-radius:6px">
+          <div style="font-size:10px;font-weight:700;color:var(--bad);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">Risk flags (${c.flag_count||0})</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px">${(c.warnings||[]).map(w=>`<span style="background:rgba(255,215,64,.10);color:var(--warn);border:1px solid rgba(255,215,64,.35);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">${w.replace(/_/g,' ')}</span>`).join('')}</div>
         </div>`;
       }
 
@@ -384,7 +389,7 @@
       }
 
     } else if (c && c.needs_manual_review) {
-      html += `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:5px;padding:10px 12px;font-size:12px;font-weight:700;color:#92400e">⚠ ${c.review_reason||'Complex project'} — enter approved fee manually.</div>`;
+      html += `<div style="background:rgba(255,215,64,.08);border:1px solid rgba(255,215,64,.35);border-radius:8px;padding:10px 12px;font-size:12px;font-weight:700;color:var(--warn)">⚠ ${c.review_reason||'Complex project'} — enter approved fee manually.</div>`;
     } else {
       html += `<div style="font-size:12px;color:var(--muted)">No automated estimate available — enter fee manually.</div>`;
     }
@@ -512,6 +517,16 @@
     });
   };
 
+  window.moveToAllIntakes = function (id) {
+    const card = document.getElementById('card-' + id);
+    if (card) {
+      card.style.transition = 'opacity .3s ease, transform .3s ease';
+      card.style.opacity = '0';
+      card.style.transform = 'translateX(30px)';
+      setTimeout(() => { card.remove(); }, 310);
+    }
+  };
+
   // ── Calendar Event section ─────────────────────────────────
   window.toggleCalendarSection = function (id) {
     const sec = document.getElementById('cal-section-' + id);
@@ -531,30 +546,30 @@
     fetch('/api/capacity')
       .then(r => r.json())
       .then(data => {
-        const STATUS_COLORS = {best:'#16a34a', approaching:'#d97706', at_capacity:'#dc2626', over_allocated:'#7f1d1d'};
+        const STATUS_COLORS = {best:'#00E676', approaching:'#FFD740', at_capacity:'#FF5252', over_allocated:'#FF1744'};
 
         function renderPool(people, label) {
           let h = `<div>
-            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#1d4ed8;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #bfdbfe">${label}</div>`;
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--accent);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(0,229,255,.20)">${label}</div>`;
           people.forEach(p => {
-            const sc = STATUS_COLORS[p.status] || '#9ca3af';
-            const tc = MQ_TEAM_COLORS[p.initials] || '#9ca3af';
+            const sc = STATUS_COLORS[p.status] || 'rgba(255,255,255,.4)';
+            const tc = MQ_TEAM_COLORS[p.initials] || 'rgba(255,255,255,.3)';
             const pct = Math.min(p.load_pct, 100).toFixed(0);
             h += `<div id="pr-${id}-${p.initials}" data-member="${p.initials}"
                       onclick="window.toggleTeamMember(${id}, '${p.initials}')"
-                      style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:5px;cursor:pointer;border:1.5px solid #dbeafe;margin-bottom:5px;background:#fff;transition:border-color .15s,background .15s">
+                      style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;border:1.5px solid rgba(255,255,255,.10);margin-bottom:5px;background:rgba(255,255,255,.04);transition:border-color .15s,background .15s">
               <div style="width:28px;height:28px;border-radius:50%;background:${tc};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0">${p.initials}</div>
               <div style="flex:1;min-width:0">
-                <div style="font-size:11px;font-weight:800">${p.initials} <span style="font-weight:500;color:var(--muted);font-size:10px">${p.role}</span></div>
+                <div style="font-size:11px;font-weight:800;color:#fff">${p.initials} <span style="font-weight:500;color:rgba(255,255,255,.5);font-size:10px">${p.role}</span></div>
                 <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
-                  <div style="flex:1;height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden">
+                  <div style="flex:1;height:4px;background:rgba(255,255,255,.15);border-radius:2px;overflow:hidden">
                     <div style="height:100%;width:${pct}%;background:${sc};border-radius:2px"></div>
                   </div>
                   <span style="font-size:10px;font-weight:800;font-family:var(--mono);color:${sc};flex-shrink:0;min-width:32px;text-align:right">${p.load_pct.toFixed(0)}%</span>
                 </div>
               </div>
               <div class="pcheck-${id}" data-member="${p.initials}"
-                   style="width:20px;height:20px;border-radius:50%;border:2px solid #cbd5e1;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0;transition:all .15s"></div>
+                   style="width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0;transition:all .15s"></div>
             </div>`;
           });
           h += '</div>';
@@ -579,11 +594,11 @@
 
     if (selectedTeams[id].has(member)) {
       selectedTeams[id].delete(member);
-      if (row)   { row.style.borderColor = '#dbeafe'; row.style.background = '#fff'; }
-      if (check) { check.textContent = ''; check.style.borderColor = '#cbd5e1'; check.style.background = ''; check.style.color = ''; }
+      if (row)   { row.style.borderColor = 'rgba(255,255,255,.10)'; row.style.background = 'rgba(255,255,255,.04)'; }
+      if (check) { check.textContent = ''; check.style.borderColor = 'rgba(255,255,255,.25)'; check.style.background = ''; check.style.color = ''; }
     } else {
       selectedTeams[id].add(member);
-      if (row)   { row.style.borderColor = tc; row.style.background = tc + '18'; }
+      if (row)   { row.style.borderColor = tc; row.style.background = tc + '22'; }
       if (check) { check.textContent = '✓'; check.style.borderColor = tc; check.style.background = tc; check.style.color = '#fff'; }
     }
 

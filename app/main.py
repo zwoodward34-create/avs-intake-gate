@@ -1457,6 +1457,14 @@ def api_payroll_export_csv(start: Optional[str] = None, end: Optional[str] = Non
     )
 
 
+@app.get("/api/intakes/{intake_id}/proposal")
+def api_get_proposal_text(intake_id: int) -> dict:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"proposal_text": intake.proposal_text or "", "intake_id": intake_id}
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}

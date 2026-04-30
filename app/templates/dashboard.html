@@ -2,17 +2,47 @@
 {% block content %}
 
 <!-- Delete confirmation modal -->
-<dialog id="delete-modal" style="border:none; border-radius:10px; padding:0; background:#1a1f2e; color:#e2e8f0; box-shadow:0 20px 60px rgba(0,0,0,.6); max-width:420px; width:90%">
+<dialog id="delete-modal" style="border:none; border-radius:20px; padding:0; background:rgba(15,33,19,.98); backdrop-filter:blur(20px); color:var(--text); box-shadow:0 20px 60px rgba(0,0,0,.7); max-width:420px; width:90%; border:1px solid rgba(255,255,255,.12)">
   <div style="padding:28px 28px 20px">
-    <div style="font-size:17px; font-weight:700; margin-bottom:10px; color:#f1f5f9">Delete Intake?</div>
-    <div style="font-size:14px; color:#94a3b8; line-height:1.5">
-      You are about to permanently delete <strong id="delete-modal-name" style="color:#f1f5f9"></strong>.
+    <div style="font-size:17px; font-weight:700; margin-bottom:10px">Delete Intake?</div>
+    <div style="font-size:14px; color:var(--muted); line-height:1.5">
+      You are about to permanently delete <strong id="delete-modal-name" style="color:var(--text)"></strong>.
       This cannot be undone and the project will be removed from all reports.
     </div>
     <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:22px">
       <button id="delete-modal-cancel" class="btn" style="font-size:13px">Cancel</button>
-      <button id="delete-modal-confirm" class="btn" style="font-size:13px; background:#ef4444; color:#fff; border-color:#ef4444">Delete</button>
+      <button id="delete-modal-confirm" class="btn" style="font-size:13px; background:rgba(255,82,82,.15); color:var(--bad); border-color:rgba(255,82,82,.45)">Delete</button>
     </div>
+  </div>
+</dialog>
+
+<!-- Proposal view modal -->
+<dialog id="proposal-modal" style="border:none; border-radius:20px; padding:0; background:rgba(15,33,19,.98); backdrop-filter:blur(20px); color:var(--text); box-shadow:0 20px 60px rgba(0,0,0,.7); max-width:700px; width:95%; border:1px solid rgba(255,255,255,.12)">
+  <div style="padding:24px 28px 20px">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; gap:12px">
+      <div style="font-size:17px; font-weight:700">Proposal Letter</div>
+      <div style="display:flex; gap:8px">
+        <button class="btn" id="proposal-copy-btn" type="button" style="font-size:12px; padding:5px 12px">Copy</button>
+        <button class="btn" id="proposal-modal-close" type="button" style="font-size:12px; padding:5px 12px">✕ Close</button>
+      </div>
+    </div>
+    <div id="proposal-modal-loading" style="text-align:center; padding:32px; color:var(--muted); font-size:13px">Loading proposal…</div>
+    <div id="proposal-modal-empty"  style="display:none; text-align:center; padding:32px; color:var(--muted); font-size:13px">No proposal letter has been generated for this project yet.</div>
+    <pre id="proposal-modal-text"
+         style="display:none; white-space:pre-wrap; font-family:var(--mono); font-size:12px; line-height:1.7;
+                background:rgba(0,0,0,.30); border:1px solid rgba(255,255,255,.10); border-radius:12px;
+                padding:16px; overflow-x:auto; max-height:60vh; overflow-y:auto; margin:0; color:var(--text)"></pre>
+  </div>
+</dialog>
+
+<!-- Red flag detail modal -->
+<dialog id="flag-modal" style="border:none; border-radius:20px; padding:0; background:rgba(15,33,19,.98); backdrop-filter:blur(20px); color:var(--text); box-shadow:0 20px 60px rgba(0,0,0,.7); max-width:520px; width:95%; border:1px solid rgba(255,255,255,.12)">
+  <div style="padding:24px 28px 20px">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px">
+      <div style="font-size:17px; font-weight:700">Red Flags</div>
+      <button class="btn" id="flag-modal-close" type="button" style="font-size:12px; padding:5px 12px">✕ Close</button>
+    </div>
+    <div id="flag-modal-body"></div>
   </div>
 </dialog>
 
@@ -55,6 +85,95 @@
   modal.addEventListener('click', function (e) {
     if (e.target === modal) { modal.close(); pendingId = null; }
   });
+})();
+
+// ── Proposal viewer ───────────────────────────────────────────────────────
+(function () {
+  const pModal  = document.getElementById('proposal-modal');
+  const pText   = document.getElementById('proposal-modal-text');
+  const pEmpty  = document.getElementById('proposal-modal-empty');
+  const pLoad   = document.getElementById('proposal-modal-loading');
+  const pCopy   = document.getElementById('proposal-copy-btn');
+  const pClose  = document.getElementById('proposal-modal-close');
+
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.view-proposal-btn');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    pText.style.display  = 'none';
+    pEmpty.style.display = 'none';
+    pLoad.style.display  = 'block';
+    pModal.showModal();
+
+    fetch('/api/intakes/' + id + '/proposal')
+      .then(r => r.json())
+      .then(d => {
+        pLoad.style.display = 'none';
+        if (d.proposal_text) {
+          pText.textContent   = d.proposal_text;
+          pText.style.display = 'block';
+        } else {
+          pEmpty.style.display = 'block';
+        }
+      })
+      .catch(() => {
+        pLoad.style.display = 'none';
+        pEmpty.textContent  = 'Error loading proposal.';
+        pEmpty.style.display = 'block';
+      });
+  });
+
+  pCopy.addEventListener('click', function () {
+    const txt = pText.textContent;
+    if (!txt) return;
+    navigator.clipboard.writeText(txt).then(() => {
+      pCopy.textContent = '✓ Copied!';
+      setTimeout(() => { pCopy.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  pClose.addEventListener('click', () => pModal.close());
+  pModal.addEventListener('click', e => { if (e.target === pModal) pModal.close(); });
+})();
+
+// ── Red flag popup ────────────────────────────────────────────────────────
+(function () {
+  const fModal = document.getElementById('flag-modal');
+  const fBody  = document.getElementById('flag-modal-body');
+  const fClose = document.getElementById('flag-modal-close');
+
+  const SEV_COLOR = {
+    critical: { border:'rgba(255,82,82,.40)',  bg:'rgba(255,82,82,.08)',  text:'#FF8A80' },
+    high:     { border:'rgba(255,215,64,.40)', bg:'rgba(255,215,64,.08)', text:'#FFE57F' },
+    medium:   { border:'rgba(0,229,255,.35)',  bg:'rgba(0,229,255,.06)',  text:'#80EEFF' },
+    low:      { border:'rgba(0,230,118,.40)',  bg:'rgba(0,230,118,.07)',  text:'#69F0AE' },
+  };
+
+  document.addEventListener('click', function (e) {
+    const group = e.target.closest('.flag-badge-group');
+    if (!group) return;
+    let flags = [];
+    try { flags = JSON.parse(group.dataset.flags || '[]'); } catch {}
+    if (!flags.length) return;
+
+    fBody.innerHTML = flags.map(f => {
+      const s = f.severity ? f.severity.toLowerCase() : 'medium';
+      const c = SEV_COLOR[s] || SEV_COLOR.medium;
+      return `<div style="border:1px solid ${c.border}; background:${c.bg}; border-radius:10px; padding:12px 14px; margin-bottom:8px">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:5px">
+          <span style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:${c.text}; border:1px solid ${c.border}; border-radius:4px; padding:2px 8px">${s}</span>
+          <span style="font-size:13px; font-weight:700; color:#fff">${f.title || ''}</span>
+        </div>
+        ${f.category ? `<div style="font-size:11px; color:rgba(255,255,255,.45); margin-bottom:4px; text-transform:uppercase; letter-spacing:.4px">${f.category.replace(/_/g,' ')}</div>` : ''}
+        ${f.detail   ? `<div style="font-size:12px; color:rgba(255,255,255,.70); line-height:1.5">${f.detail}</div>` : ''}
+      </div>`;
+    }).join('');
+
+    fModal.showModal();
+  });
+
+  fClose.addEventListener('click', () => fModal.close());
+  fModal.addEventListener('click', e => { if (e.target === fModal) fModal.close(); });
 })();
 </script>
   <div class="stat-row">
@@ -103,7 +222,7 @@
           <th>Recommendation</th>
           <th>Red flags</th>
           <th>Updated</th>
-          <th></th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -146,29 +265,43 @@
             </td>
             <td>
               {% set c = i.red_flag_counts %}
-              {% if c.get("critical", 0) > 0 %}<span class="badge badge-critical">C {{ c.get("critical", 0) }}</span>{% endif %}
-              {% if c.get("high", 0) > 0 %}<span class="badge badge-high">H {{ c.get("high", 0) }}</span>{% endif %}
-              {% if c.get("medium", 0) > 0 %}<span class="badge badge-medium">M {{ c.get("medium", 0) }}</span>{% endif %}
-              {% if c.get("low", 0) > 0 %}<span class="badge badge-low">L {{ c.get("low", 0) }}</span>{% endif %}
-              {% if c.get("critical", 0) == 0 and c.get("high", 0) == 0 and c.get("medium", 0) == 0 and c.get("low", 0) == 0 %}
+              {% set has_flags = c.get("critical", 0) > 0 or c.get("high", 0) > 0 or c.get("medium", 0) > 0 or c.get("low", 0) > 0 %}
+              {% if has_flags %}
+                <div class="flag-badge-group" data-flags="{{ i.red_flags | tojson | e }}" style="cursor:pointer; display:flex; flex-wrap:wrap; gap:4px" title="Click to view flag details">
+                  {% if c.get("critical", 0) > 0 %}<span class="badge badge-critical">C {{ c.get("critical", 0) }}</span>{% endif %}
+                  {% if c.get("high", 0) > 0 %}<span class="badge badge-high">H {{ c.get("high", 0) }}</span>{% endif %}
+                  {% if c.get("medium", 0) > 0 %}<span class="badge badge-medium">M {{ c.get("medium", 0) }}</span>{% endif %}
+                  {% if c.get("low", 0) > 0 %}<span class="badge badge-low">L {{ c.get("low", 0) }}</span>{% endif %}
+                </div>
+              {% else %}
                 <span class="subtle">—</span>
               {% endif %}
             </td>
             <td class="subtle">{{ i.updated_at }}</td>
-            <td>
-              <button
-                class="btn delete-intake-btn"
-                data-id="{{ i.id }}"
-                data-name="{{ i.project_name | e }}"
-                style="font-size:12px; padding:3px 10px; color:#ef4444; border-color:#ef4444; background:transparent"
-                title="Delete intake"
-              >Delete</button>
+            <td style="white-space:nowrap">
+              <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap">
+                {% if i.proposal_text %}
+                <button
+                  class="btn view-proposal-btn"
+                  data-id="{{ i.id }}"
+                  style="font-size:11px; padding:3px 10px; border-color:rgba(0,229,255,.35); color:var(--accent)"
+                  title="View proposal letter"
+                >Proposal</button>
+                {% endif %}
+                <button
+                  class="btn delete-intake-btn"
+                  data-id="{{ i.id }}"
+                  data-name="{{ i.project_name | e }}"
+                  style="font-size:11px; padding:3px 10px; color:var(--bad); border-color:rgba(255,82,82,.40)"
+                  title="Delete intake"
+                >Delete</button>
+              </div>
             </td>
           </tr>
         {% endfor %}
         {% if not intakes %}
           <tr>
-            <td colspan="8">
+            <td colspan="9">
               <div class="empty-state">
                 <div class="empty-title">No project intakes yet</div>
                 <div class="empty-sub">Submit your first intake to start screening projects</div>
