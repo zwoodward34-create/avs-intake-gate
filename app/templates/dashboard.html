@@ -96,6 +96,7 @@
       <thead>
         <tr>
           <th>ID</th>
+          <th>Project #</th>
           <th>Project</th>
           <th>Client / Architect</th>
           <th>Status</th>
@@ -121,6 +122,9 @@
           {% endif %}
           <tr class="table-row" data-intake-id="{{ i.id }}" style="{{ aging_border }}">
             <td><a href="/intakes/{{ i.id }}">#{{ i.id }}</a></td>
+            <td style="font-family:var(--mono);font-size:13px;font-weight:700">
+              {% if i.project_number %}{{ i.project_number }}{% else %}<span class="subtle">—</span>{% endif %}
+            </td>
             <td>
               <div class="project-name" style="display:flex; align-items:center; gap:6px">
                 {{ i.project_name }}

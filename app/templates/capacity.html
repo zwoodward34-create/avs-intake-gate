@@ -510,8 +510,9 @@ body {
 
 <script>
 (function () {
-  const TEAM_COLORS  = {{ team_colors | safe }};
-  const PHASE_COLORS = {{ phase_colors | safe }};
+  const TEAM_COLORS     = {{ team_colors | safe }};
+  const PHASE_COLORS    = {{ phase_colors | safe }};
+  const TEAM_FULL_NAMES = {{ team_full_names | safe }};
 
   const STATUS_COLORS = {
     best:           '#10b981',
@@ -561,7 +562,7 @@ body {
     card.innerHTML = `
       ${statusIndicator}
       <div class="person-head">
-        <div class="person-initials" style="background:${color}">${p.initials}</div>
+        <div class="person-initials" style="background:${color}" title="${TEAM_FULL_NAMES[p.initials] || p.initials}">${p.initials}</div>
         <div class="person-info">
           <div class="person-name">${p.initials}</div>
           <div class="person-role">${p.role}</div>

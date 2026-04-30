@@ -32,6 +32,9 @@
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap">
         <div>
           <span style="display:flex; align-items:center; gap:6px">
+            {% if intake.project_number %}
+              <span style="font-size:13px;font-weight:700;font-family:var(--mono);color:var(--muted)">#{{ intake.project_number }}</span>
+            {% endif %}
             <a class="mo-queue-title" href="/intakes/{{ intake.id }}" style="color:var(--text)">{{ intake.project_name }}</a>
             {% if days is not none and days > 10 %}
               <span style="font-size:10px; font-weight:700; padding:1px 6px; border-radius:3px; background:#fca5a5; color:#7f1d1d; text-transform:uppercase; letter-spacing:.5px">Aging</span>
@@ -145,15 +148,18 @@
               </div>
             </div>
           </div>
-          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+          <div id="sticky-action-bar-{{ intake.id }}"
+               style="position:sticky;bottom:0;z-index:10;margin:0 -20px -20px;padding:12px 20px;
+                      background:rgba(255,255,255,0.95);backdrop-filter:blur(8px);
+                      border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
             <button class="btn btn-primary" type="button" id="gen-btn-{{ intake.id }}"
                     onclick="confirmAndGenerate({{ intake.id }})">
               ✓ Confirm Proceed &amp; Generate Proposal
             </button>
             <button class="btn" type="button" onclick="cancelProceed({{ intake.id }})">Cancel</button>
+            <div id="gen-status-{{ intake.id }}" style="display:none; font-size:12px; color:var(--muted)">Saving decision and generating proposal — ~15 seconds…</div>
+            <div id="gen-error-{{ intake.id }}"  style="display:none; font-size:12px; color:#dc2626; font-weight:600"></div>
           </div>
-          <div id="gen-status-{{ intake.id }}" style="display:none; margin-top:8px; font-size:12px; color:var(--muted)">Saving decision and generating proposal — ~15 seconds…</div>
-          <div id="gen-error-{{ intake.id }}"  style="display:none; margin-top:8px; font-size:12px; color:#dc2626; font-weight:600"></div>
         </div>
 
         <!-- ⑤ Proposal output (revealed after generation) -->
@@ -180,8 +186,9 @@
           <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:#1d4ed8; margin-bottom:14px">Create Calendar Event</div>
           <div class="row row-2" style="margin-bottom:10px">
             <div class="field">
-              <label for="cal-proj-{{ intake.id }}" style="font-size:11px">Project # (enter manually)</label>
-              <input type="text" id="cal-proj-{{ intake.id }}" placeholder="e.g. 9771" />
+              <label for="cal-proj-{{ intake.id }}" style="font-size:11px">Project #</label>
+              <input type="text" id="cal-proj-{{ intake.id }}" placeholder="e.g. 9771"
+                     value="{{ intake.project_number or '' }}" />
             </div>
             <div class="field">
               <label for="cal-client-{{ intake.id }}" style="font-size:11px">Client</label>
@@ -438,6 +445,24 @@
         }),
       });
       if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.detail || 'Save failed'); }
+      const moData = await r.json().catch(() => ({}));
+      // Auto-fill project number into calendar section
+      if (moData.project_number) {
+        const projInput = document.getElementById('cal-proj-' + id);
+        if (projInput && !projInput.value) projInput.value = moData.project_number;
+        // Also update the card header badge
+        const hdr = document.querySelector('#card-' + id + ' .mo-queue-title');
+        if (hdr && hdr.parentElement) {
+          const existing = hdr.parentElement.querySelector('.pn-badge');
+          if (!existing) {
+            const badge = document.createElement('span');
+            badge.className = 'pn-badge';
+            badge.style.cssText = 'font-size:13px;font-weight:700;font-family:var(--mono);color:var(--muted)';
+            badge.textContent = '#' + moData.project_number;
+            hdr.parentElement.insertBefore(badge, hdr);
+          }
+        }
+      }
     } catch (e) {
       genBtn.disabled = false; genBtn.textContent = '✓ Confirm Proceed & Generate Proposal';
       genStatus.style.display = 'none';

@@ -2,7 +2,12 @@
 {% block content %}
 
   {# ── Page Title ── #}
-  <div class="page-project-title">{{ intake.project_name }}</div>
+  <div class="page-project-title">
+    {% if intake.project_number %}
+      <span style="color:var(--muted);font-size:20px;font-weight:700;font-family:var(--mono);margin-right:8px">#{{ intake.project_number }}</span>
+    {% endif %}
+    {{ intake.project_name }}
+  </div>
 
   <div class="grid grid-2">
     <div class="card">
@@ -433,5 +438,121 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
     });
   });
   </script>
+
+  {# ── Phase Budget Panel ── #}
+  {% if intake.mo_decision in ('PROCEED', 'PROCEED_WITH_CONDITIONS') and intake.project_number %}
+  <div class="card" id="phase-budget-panel" style="margin-top:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div>
+        <h2 style="margin:0">Phase Hour Budgets</h2>
+        <div class="subtle small" style="margin-top:2px">Project #{{ intake.project_number }} — click any Budgeted Hours cell to edit</div>
+      </div>
+      <div id="pb-save-status" style="font-size:12px;color:var(--good);display:none">✓ Saved</div>
+    </div>
+    <div id="phase-budget-table-wrap">
+      <div class="subtle small">Loading…</div>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    var intakeId = {{ intake.id }};
+
+    function pctColor(pct) {
+      if (pct === null || pct === undefined) return 'var(--muted)';
+      if (pct > 100) return 'var(--bad)';
+      if (pct >= 80)  return 'var(--warn)';
+      return 'var(--good)';
+    }
+
+    function loadBudgets() {
+      fetch('/api/intakes/' + intakeId + '/phase-budgets')
+        .then(r => r.json())
+        .then(rows => renderBudgetTable(rows))
+        .catch(() => {
+          document.getElementById('phase-budget-table-wrap').innerHTML =
+            '<div class="subtle small">Could not load phase budgets.</div>';
+        });
+    }
+
+    function renderBudgetTable(rows) {
+      if (!rows.length) {
+        document.getElementById('phase-budget-table-wrap').innerHTML =
+          '<div class="subtle small">No phase budgets generated yet. Approve with a fee to auto-generate.</div>';
+        return;
+      }
+      var totalBudget = 0, totalUsed = 0;
+      rows.forEach(r => { totalBudget += r.budgeted_hours; totalUsed += r.hours_used; });
+      var totalRemaining = totalBudget - totalUsed;
+      var totalPct = totalBudget > 0 ? (totalUsed / totalBudget * 100) : 0;
+
+      var html = '<table class="table"><thead><tr>' +
+        '<th>Phase</th><th>Budgeted Hours</th><th>Hours Used</th><th>Remaining</th><th>% Used</th>' +
+        '</tr></thead><tbody>';
+
+      rows.forEach(r => {
+        var pc = pctColor(r.pct_used);
+        html += '<tr class="table-row">' +
+          '<td style="font-family:var(--mono);font-weight:700">' + r.phase_code + '</td>' +
+          '<td class="budget-edit-cell" data-phase="' + r.phase_code + '" data-value="' + r.budgeted_hours + '" ' +
+              'style="font-family:var(--mono);cursor:pointer;text-decoration:underline dotted" ' +
+              'title="Click to edit" onclick="editBudgetCell(this)">' +
+            r.budgeted_hours.toFixed(1) + ' h</td>' +
+          '<td style="font-family:var(--mono)">' + r.hours_used.toFixed(1) + ' h</td>' +
+          '<td style="font-family:var(--mono);color:' + (r.remaining < 0 ? 'var(--bad)' : 'inherit') + '">' +
+            r.remaining.toFixed(1) + ' h</td>' +
+          '<td style="font-family:var(--mono);font-weight:700;color:' + pc + '">' +
+            (r.pct_used !== null ? r.pct_used.toFixed(0) + '%' : '—') + '</td>' +
+          '</tr>';
+      });
+
+      html += '</tbody><tfoot><tr style="border-top:2px solid var(--border)">' +
+        '<td style="font-weight:800">Total</td>' +
+        '<td style="font-family:var(--mono);font-weight:700">' + totalBudget.toFixed(1) + ' h</td>' +
+        '<td style="font-family:var(--mono);font-weight:700">' + totalUsed.toFixed(1) + ' h</td>' +
+        '<td style="font-family:var(--mono);font-weight:700;color:' + (totalRemaining < 0 ? 'var(--bad)' : 'inherit') + '">' +
+          totalRemaining.toFixed(1) + ' h</td>' +
+        '<td style="font-family:var(--mono);font-weight:700;color:' + pctColor(totalPct) + '">' +
+          totalPct.toFixed(0) + '%</td>' +
+        '</tr></tfoot></table>';
+
+      document.getElementById('phase-budget-table-wrap').innerHTML = html;
+    }
+
+    window.editBudgetCell = function(cell) {
+      if (cell.querySelector('input')) return;
+      var phase = cell.dataset.phase;
+      var current = parseFloat(cell.dataset.value);
+      var orig = cell.innerHTML;
+      cell.innerHTML = '<input type="number" min="0" step="0.5" value="' + current + '" ' +
+        'style="width:80px;font-family:var(--mono);font-size:13px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px" />';
+      var inp = cell.querySelector('input');
+      inp.focus(); inp.select();
+
+      function save() {
+        var val = parseFloat(inp.value);
+        if (isNaN(val) || val < 0) { cell.innerHTML = orig; return; }
+        fetch('/api/intakes/' + intakeId + '/phase-budgets/' + encodeURIComponent(phase), {
+          method: 'PATCH',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({budgeted_hours: val}),
+        }).then(r => r.json()).then(() => {
+          var st = document.getElementById('pb-save-status');
+          if (st) { st.style.display = 'inline'; setTimeout(() => st.style.display = 'none', 1800); }
+          loadBudgets();
+        }).catch(() => { cell.innerHTML = orig; });
+      }
+
+      inp.addEventListener('blur', save);
+      inp.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { inp.blur(); }
+        if (e.key === 'Escape') { cell.innerHTML = orig; }
+      });
+    };
+
+    loadBudgets();
+  })();
+  </script>
+  {% endif %}
 
 {% endblock %}

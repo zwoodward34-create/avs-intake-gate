@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  body {
+    --bg: #0F2113;
+    --card-bg: rgba(255,255,255,0.07);
+    --card-bg-deeper: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.10);
+    --border-hover: rgba(255,255,255,0.18);
+    --blur: blur(20px);
+    --radius: 20px;
+    --radius-sm: 12px;
+    --text: #FFFFFF;
+    --muted: rgba(255,255,255,0.55);
+    --subtle: rgba(255,255,255,0.35);
+    --accent: #00E5FF;
+    --good: #00E676;
+    --warn: #FFD740;
+    --bad: #FF5252;
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(ellipse 90% 55% at 15% 0%, rgba(0,230,118,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 85% 90%, rgba(0,229,255,0.06) 0%, transparent 60%);
+    color: var(--text);
+  }
+  .topbar { border-bottom:none; padding-bottom:0; margin-bottom:20px }
+  .title a { color:var(--text) }
+  .card {
+    background:var(--card-bg); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
+    border:1px solid var(--border); border-radius:var(--radius); box-shadow:none;
+    position:relative; overflow:hidden;
+  }
+  .card::before {
+    content:''; position:absolute; inset:0; border-radius:inherit;
+    background:linear-gradient(135deg,rgba(255,255,255,0.06) 0%,transparent 55%);
+    pointer-events:none;
+  }
+  .btn { background:var(--card-bg); backdrop-filter:var(--blur); border:1px solid var(--border); color:var(--text); border-radius:var(--radius-sm) }
+  .btn:hover { border-color:var(--border-hover); background:rgba(255,255,255,0.11) }
+  .btn-primary { border-color:rgba(0,229,255,.40); background:rgba(0,229,255,.10); color:var(--text) }
+  .btn-primary:hover { border-color:rgba(0,229,255,.65); background:rgba(0,229,255,.17) }
+
+  .pr-header { font-size:22px; font-weight:900; letter-spacing:-.3px; margin-bottom:6px }
+  .pr-sub { font-size:13px; color:var(--muted); margin-bottom:20px }
+
+  /* Controls */
+  .pr-controls {
+    display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;
+    padding:16px 18px; margin-bottom:16px;
+  }
+  .pr-controls .field { margin:0; flex:1; min-width:140px; max-width:200px }
+  .pr-controls label { color:var(--muted); font-size:10px }
+  .pr-controls input {
+    background:rgba(0,0,0,.25); border-color:rgba(255,255,255,.12); color:var(--text); font-size:13px
+  }
+  .pr-controls input:focus { border-color:rgba(0,229,255,.5) }
+
+  /* KPI chips */
+  .kpi-strip { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px }
+  .kpi-chip {
+    flex:1; min-width:120px;
+    background:var(--card-bg); border:1px solid var(--border); border-radius:14px;
+    padding:16px 20px; position:relative; overflow:hidden;
+  }
+  .kpi-chip::before {
+    content:''; position:absolute; inset:0; border-radius:inherit;
+    background:linear-gradient(135deg,rgba(255,255,255,0.06) 0%,transparent 55%);
+    pointer-events:none;
+  }
+  .kpi-num   { font-size:28px; font-weight:900; line-height:1; font-family:'JetBrains Mono',monospace }
+  .kpi-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin-top:4px }
+  .chip-blue { border-color:rgba(0,229,255,.3) }
+  .chip-blue .kpi-num { color:rgba(0,229,255,1) }
+  .chip-green { border-color:rgba(0,230,118,.3) }
+  .chip-green .kpi-num { color:rgba(0,230,118,1) }
+  .chip-amber { border-color:rgba(255,215,64,.3) }
+  .chip-amber .kpi-num { color:rgba(255,215,64,1) }
+
+  /* Summary table */
+  .pr-table { width:100%; border-collapse:collapse; font-size:13px }
+  .pr-table th {
+    padding:10px 12px; text-align:left; font-size:10px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.6px; color:var(--muted);
+    background:rgba(0,0,0,.2); border-bottom:1px solid var(--border);
+  }
+  .pr-table td { padding:9px 12px; border-bottom:1px solid rgba(255,255,255,.04) }
+  .pr-subtotal td {
+    background:rgba(0,0,0,.18); font-weight:800; font-size:13px;
+    color:var(--text); border-top:1px solid rgba(255,255,255,.08);
+  }
+  .pr-total td {
+    background:rgba(0,0,0,.28); font-weight:900; font-size:14px;
+    border-top:2px solid rgba(255,255,255,.15); color:var(--text);
+  }
+  .pr-detail td { color:rgba(255,255,255,.7) }
+  .pr-detail td:first-child { padding-left:28px; color:var(--muted) }
+
+  .pct-good { color:#00E676 }
+  .pct-warn { color:#FFD740 }
+  .pct-bad  { color:#FF5252; font-weight:800 }
+</style>
+
+<div class="pr-header">Payroll Export</div>
+<div class="pr-sub">Preview time entries by period, then download CSV for accounting import</div>
+
+<!-- Control card -->
+<div class="card pr-controls">
+  <div class="field">
+    <label>Period Start</label>
+    <input type="date" id="pr-start" value="{{ default_start }}" />
+  </div>
+  <div class="field">
+    <label>Period End</label>
+    <input type="date" id="pr-end" value="{{ default_end }}" />
+  </div>
+  <button class="btn btn-primary" type="button" onclick="loadPreview()" style="flex:0 0 auto; white-space:nowrap">
+    Preview
+  </button>
+  <button class="btn" type="button" onclick="downloadCsv()" style="flex:0 0 auto; white-space:nowrap">
+    Export CSV
+  </button>
+</div>
+
+<!-- Preview area -->
+<div id="pr-preview" style="display:none">
+
+  <!-- KPI strip -->
+  <div class="kpi-strip" id="pr-kpis"></div>
+
+  <!-- Summary table -->
+  <div class="card" style="overflow:auto; margin-bottom:12px">
+    <div id="pr-table-wrap"></div>
+  </div>
+
+  <div id="pr-entry-count" class="subtle small" style="text-align:right; margin-bottom:8px"></div>
+</div>
+
+<div id="pr-loading" style="display:none; text-align:center; padding:40px; color:var(--muted); font-size:13px">
+  Loading payroll data…
+</div>
+<div id="pr-empty" style="display:none; text-align:center; padding:40px; color:var(--muted); font-size:13px">
+  No time entries found for this period.
+</div>
+
+<script>
+(function() {
+  window.loadPreview = function() {
+    var start = document.getElementById('pr-start').value;
+    var end   = document.getElementById('pr-end').value;
+    if (!start || !end) { alert('Select a date range.'); return; }
+
+    document.getElementById('pr-preview').style.display = 'none';
+    document.getElementById('pr-empty').style.display   = 'none';
+    document.getElementById('pr-loading').style.display = 'block';
+
+    fetch('/api/payroll-export?start=' + start + '&end=' + end)
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('pr-loading').style.display = 'none';
+        if (!data.kpis || data.kpis.total_hours === 0) {
+          document.getElementById('pr-empty').style.display = 'block';
+          return;
+        }
+        renderKpis(data.kpis);
+        renderTable(data.summary_rows);
+        var cnt = (data.entries || []).length;
+        document.getElementById('pr-entry-count').textContent =
+          'This export contains ' + cnt + ' entr' + (cnt === 1 ? 'y' : 'ies') +
+          '. Download the CSV to import into your accounting software.';
+        document.getElementById('pr-preview').style.display = 'block';
+      })
+      .catch(() => {
+        document.getElementById('pr-loading').style.display = 'none';
+        document.getElementById('pr-empty').textContent = 'Error loading data.';
+        document.getElementById('pr-empty').style.display = 'block';
+      });
+  };
+
+  function renderKpis(kpis) {
+    document.getElementById('pr-kpis').innerHTML =
+      `<div class="kpi-chip chip-blue">
+         <div class="kpi-num">${kpis.total_hours.toFixed(1)}</div>
+         <div class="kpi-label">Total Hours</div>
+       </div>
+       <div class="kpi-chip chip-green">
+         <div class="kpi-num">${kpis.engineers_active}</div>
+         <div class="kpi-label">Engineers Active</div>
+       </div>
+       <div class="kpi-chip chip-amber">
+         <div class="kpi-num">${kpis.projects_billed}</div>
+         <div class="kpi-label">Projects Billed</div>
+       </div>`;
+  }
+
+  function pctClass(pct) {
+    if (pct === null || pct === undefined) return '';
+    if (pct > 100) return 'pct-bad';
+    if (pct >= 80)  return 'pct-warn';
+    return 'pct-good';
+  }
+
+  function renderTable(rows) {
+    if (!rows.length) { document.getElementById('pr-table-wrap').innerHTML = ''; return; }
+
+    var html = `<table class="pr-table"><thead><tr>
+      <th>Engineer</th><th>Project #</th><th>Client</th>
+      <th>Phase</th><th>Hours (period)</th><th>Budget (total)</th><th>% of Budget</th>
+    </tr></thead><tbody>`;
+
+    var periodTotal = 0;
+    rows.forEach(r => {
+      if (r.is_subtotal) {
+        html += `<tr class="pr-subtotal">
+          <td>${r.engineer}</td><td colspan="3" style="color:var(--muted)">Engineer total</td>
+          <td style="font-family:'JetBrains Mono',monospace">${r.hours.toFixed(1)} h</td>
+          <td colspan="2"></td></tr>`;
+        periodTotal += r.hours;
+      } else {
+        var pct = r.pct_budget;
+        var pctStr = pct !== null ? pct.toFixed(0) + '%' : '—';
+        var pctCls = pctClass(pct);
+        var budget = r.budget ? r.budget.toFixed(1) + ' h' : '—';
+        html += `<tr class="pr-detail">
+          <td></td>
+          <td style="font-family:'JetBrains Mono',monospace;font-weight:700">${r.project_number || '—'}</td>
+          <td>${r.client || '—'}</td>
+          <td style="font-family:'JetBrains Mono',monospace">${r.phase || '—'}</td>
+          <td style="font-family:'JetBrains Mono',monospace">${r.hours.toFixed(1)} h</td>
+          <td style="font-family:'JetBrains Mono',monospace;color:var(--muted)">${budget}</td>
+          <td class="${pctCls}" style="font-family:'JetBrains Mono',monospace;font-weight:700">${pctStr}</td>
+        </tr>`;
+      }
+    });
+
+    html += `</tbody><tfoot><tr class="pr-total">
+      <td colspan="4" style="font-family:'JetBrains Mono',monospace">PERIOD TOTAL</td>
+      <td style="font-family:'JetBrains Mono',monospace">${periodTotal.toFixed(1)} h</td>
+      <td colspan="2"></td></tr></tfoot></table>`;
+
+    document.getElementById('pr-table-wrap').innerHTML = html;
+  }
+
+  window.downloadCsv = function() {
+    var start = document.getElementById('pr-start').value;
+    var end   = document.getElementById('pr-end').value;
+    if (!start || !end) { alert('Select a date range.'); return; }
+    window.location.href = '/api/payroll-export/csv?start=' + start + '&end=' + end;
+  };
+})();
+</script>
+
+{% endblock %}

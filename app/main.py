@@ -6,8 +6,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+import csv
+import io
+from datetime import date, timedelta
+
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -124,9 +128,32 @@ def _days_ago(date_str: Optional[str]) -> Optional[int]:
         return None
 
 
+def _current_pay_period() -> tuple[str, str]:
+    """Return (start, end) ISO strings for the current 2-week pay period."""
+    today = date.today()
+    days_since_monday = today.weekday()
+    monday = today - timedelta(days=days_since_monday)
+    reference = date(2020, 1, 6)  # known Monday
+    weeks_elapsed = (monday - reference).days // 7
+    period_start = reference + timedelta(weeks=(weeks_elapsed // 2) * 2)
+    period_end = period_start + timedelta(days=13)
+    return period_start.isoformat(), period_end.isoformat()
+
+
 templates.env.filters["badge_class"] = _badge_class
 templates.env.filters["days_ago"] = _days_ago
 templates.env.globals["pending_mo_count"] = lambda: len(db.list_pending_mo())
+
+
+def _timesheet_period_count() -> int:
+    try:
+        start, end = _current_pay_period()
+        return db.count_timesheet_period_entries(start, end)
+    except Exception:
+        return 0
+
+
+templates.env.globals["timesheet_period_count"] = _timesheet_period_count
 
 
 app = FastAPI(title="AVS Intake Gate")
@@ -548,7 +575,25 @@ async def api_mo_review_json(request: Request, intake_id: int) -> dict:
         mo_fee_override=fee_override,
         status=status,
     )
-    return {"success": True, "status": status, "intake_id": intake_id}
+
+    project_number: Optional[str] = intake.project_number
+    if mo_decision == "PROCEED" and not project_number:
+        project_number = db.assign_next_project_number()
+        db.set_intake_project_number(intake_id, project_number)
+        # Auto-generate phase budgets from approved fee
+        approved_fee: Optional[float] = None
+        if mo_fee_decision == "OVERRIDE" and fee_override:
+            try:
+                approved_fee = float(fee_override)
+            except (ValueError, TypeError):
+                pass
+        if approved_fee and approved_fee > 0:
+            try:
+                db.generate_phase_budgets(intake_id, project_number, approved_fee)
+            except Exception:
+                pass  # non-fatal: budgets can be generated later
+
+    return {"success": True, "status": status, "intake_id": intake_id, "project_number": project_number}
 
 
 @app.post("/api/intakes/{intake_id}/generate-proposal")
@@ -1164,10 +1209,11 @@ def capacity_page(request: Request) -> HTMLResponse:
         {
             "request": request,
             "now_local": _now_local_iso(),
-            "team_colors":  _json.dumps(db.TEAM_COLORS),
-            "phase_colors": _json.dumps(db.PHASE_COLORS),
-            "valid_phases": db.VALID_PHASES,
-            "team_members": db.TEAM_MEMBERS,
+            "team_colors":      _json.dumps(db.TEAM_COLORS),
+            "phase_colors":     _json.dumps(db.PHASE_COLORS),
+            "valid_phases":     db.VALID_PHASES,
+            "team_members":     db.TEAM_MEMBERS,
+            "team_full_names":  _json.dumps(db.TEAM_FULL_NAMES),
         },
     )
 
@@ -1180,6 +1226,235 @@ def api_capacity() -> dict:
     events = db.list_calendar_events(start=today + "T00:00:00Z")
     snapshot = weu_engine.get_capacity_snapshot([e.to_dict() for e in events])
     return snapshot
+
+
+# ── Settings ─────────────────────────────────────────────────────────────────
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request) -> HTMLResponse:
+    seed_row = db.get_project_number_seed()
+    return templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "now_local": _now_local_iso(),
+            "last_number": seed_row.get("last_number", 9000),
+            "updated_at": seed_row.get("updated_at"),
+        },
+    )
+
+
+@app.post("/api/settings/project-number-seed")
+async def api_set_project_number_seed(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    try:
+        seed = int(body.get("seed", 0))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="seed must be an integer.")
+    if seed < 1000 or seed > 99999:
+        raise HTTPException(status_code=400, detail="Seed must be between 1000 and 99999.")
+    db.set_project_number_seed(seed)
+    return {"success": True, "seed": seed, "next_number": seed + 1}
+
+
+# ── Phase Budgets ─────────────────────────────────────────────────────────────
+
+@app.get("/api/intakes/{intake_id}/phase-budgets")
+def api_get_phase_budgets(intake_id: int) -> list[dict[str, Any]]:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return db.list_phase_budgets(intake_id)
+
+
+@app.patch("/api/intakes/{intake_id}/phase-budgets/{phase_code}")
+async def api_update_phase_budget(
+    request: Request, intake_id: int, phase_code: str
+) -> dict[str, Any]:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    body = await request.json()
+    try:
+        budgeted_hours = float(body.get("budgeted_hours", 0))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="budgeted_hours must be a number.")
+    if budgeted_hours < 0:
+        raise HTTPException(status_code=400, detail="budgeted_hours must be non-negative.")
+    db.update_phase_budget(intake_id, phase_code, budgeted_hours)
+    return {"success": True, "intake_id": intake_id, "phase_code": phase_code, "budgeted_hours": budgeted_hours}
+
+
+# ── Time Entries ──────────────────────────────────────────────────────────────
+
+@app.get("/api/time-entries")
+def api_list_time_entries(
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    engineer: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    return db.list_time_entries(start=start, end=end, engineer=engineer)
+
+
+@app.post("/api/time-entries")
+async def api_create_time_entry(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    engineer = (body.get("engineer_initials") or "").strip().upper()
+    project_number = (body.get("project_number") or "").strip()
+    phase_code = (body.get("phase_code") or "").strip()
+    entry_date = (body.get("entry_date") or "").strip()
+    notes = _as_str(str(body.get("notes") or ""))
+    if not engineer:
+        raise HTTPException(status_code=400, detail="engineer_initials is required.")
+    if not project_number:
+        raise HTTPException(status_code=400, detail="project_number is required.")
+    if not phase_code:
+        raise HTTPException(status_code=400, detail="phase_code is required.")
+    if not entry_date:
+        raise HTTPException(status_code=400, detail="entry_date is required.")
+    try:
+        hours = float(body.get("hours", 0))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="hours must be a number.")
+    if hours <= 0 or hours > 24:
+        raise HTTPException(status_code=400, detail="hours must be between 0 and 24.")
+    intake_id_raw = body.get("intake_id")
+    intake_id: Optional[int] = int(intake_id_raw) if intake_id_raw else None
+    entry_id = db.create_time_entry(
+        engineer_initials=engineer,
+        project_number=project_number,
+        intake_id=intake_id,
+        phase_code=phase_code,
+        entry_date=entry_date,
+        hours=hours,
+        notes=notes,
+    )
+    return {"id": entry_id, "success": True}
+
+
+@app.patch("/api/time-entries/{entry_id}")
+async def api_update_time_entry(request: Request, entry_id: int) -> dict[str, Any]:
+    entry = db.get_time_entry(entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Not found.")
+    body = await request.json()
+    try:
+        hours = float(body.get("hours", entry["hours"]))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="hours must be a number.")
+    if hours <= 0 or hours > 24:
+        raise HTTPException(status_code=400, detail="hours must be between 0 and 24.")
+    notes = _as_str(str(body.get("notes") or ""))
+    db.update_time_entry(entry_id, hours=hours, notes=notes)
+    return {"success": True, "id": entry_id}
+
+
+@app.delete("/api/time-entries/{entry_id}")
+def api_delete_time_entry(entry_id: int) -> dict[str, Any]:
+    entry = db.get_time_entry(entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Not found.")
+    db.delete_time_entry(entry_id)
+    return {"deleted": entry_id}
+
+
+@app.get("/api/active-projects")
+def api_active_projects(engineer: Optional[str] = None) -> list[dict[str, Any]]:
+    return db.list_active_projects(engineer=engineer)
+
+
+# ── Timesheet page ────────────────────────────────────────────────────────────
+
+@app.get("/timesheet", response_class=HTMLResponse)
+def timesheet_page(request: Request) -> HTMLResponse:
+    import json as _json
+    start, end = _current_pay_period()
+    return templates.TemplateResponse(
+        "timesheet.html",
+        {
+            "request": request,
+            "now_local": _now_local_iso(),
+            "team_members": db.TEAM_MEMBERS,
+            "team_full_names_json": _json.dumps(db.TEAM_FULL_NAMES),
+            "phase_colors_json": _json.dumps(db.PHASE_COLORS),
+            "valid_phases": db.VALID_PHASES,
+            "default_period_start": start,
+            "default_period_end": end,
+        },
+    )
+
+
+# ── Payroll Export ────────────────────────────────────────────────────────────
+
+@app.get("/payroll-export", response_class=HTMLResponse)
+def payroll_export_page(request: Request) -> HTMLResponse:
+    # Default: most recently completed pay period
+    today = date.today()
+    start, end = _current_pay_period()
+    if end >= today.isoformat():
+        # go back one period
+        prev_start = date.fromisoformat(start) - timedelta(days=14)
+        prev_end = date.fromisoformat(end) - timedelta(days=14)
+        start, end = prev_start.isoformat(), prev_end.isoformat()
+    return templates.TemplateResponse(
+        "payroll_export.html",
+        {
+            "request": request,
+            "now_local": _now_local_iso(),
+            "default_start": start,
+            "default_end": end,
+        },
+    )
+
+
+@app.get("/api/payroll-export")
+def api_payroll_export(start: Optional[str] = None, end: Optional[str] = None) -> dict[str, Any]:
+    if not start or not end:
+        s, e = _current_pay_period()
+        start = start or s
+        end = end or e
+    return db.get_payroll_data(start, end)
+
+
+@app.get("/api/payroll-export/csv")
+def api_payroll_export_csv(start: Optional[str] = None, end: Optional[str] = None) -> StreamingResponse:
+    if not start or not end:
+        s, e = _current_pay_period()
+        start = start or s
+        end = end or e
+
+    data = db.get_payroll_data(start, end)
+    entries = data.get("entries") or []
+    intake_by_pn: dict = data.get("intake_by_pn") or {}
+
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+    writer.writerow([
+        "Pay Period Start", "Pay Period End", "Engineer", "Project Number",
+        "Client", "Phase", "Date", "Hours", "Notes",
+    ])
+    for e in entries:
+        pn = e.get("project_number") or ""
+        intake = intake_by_pn.get(pn, {})
+        client = intake.get("client_name") or ""
+        writer.writerow([
+            start, end,
+            e.get("engineer_initials") or "",
+            pn,
+            client,
+            e.get("phase_code") or "",
+            e.get("entry_date") or "",
+            f"{float(e.get('hours', 0)):.2f}",
+            e.get("notes") or "",
+        ])
+
+    output.seek(0)
+    filename = f"avs-payroll-{start}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/health")

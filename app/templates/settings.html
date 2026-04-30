@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-project-title">Settings</div>
+
+<div class="card" style="max-width:560px">
+  <h2 style="margin-top:0">Project Number Sequence</h2>
+  <div class="subtle" style="margin-bottom:16px; line-height:1.6">
+    The project number generator assigns a sequential 4-digit number to each approved intake.
+    Set the seed once to pick up where your last manually assigned number left off.
+  </div>
+
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:18px">
+    <div class="card" style="background:var(--card-bg-deeper); box-shadow:none; padding:14px 16px">
+      <div class="subtle small">Current last-used number</div>
+      <div style="font-size:26px; font-weight:900; font-family:var(--mono); margin-top:4px" id="current-last">{{ last_number }}</div>
+    </div>
+    <div class="card" style="background:var(--card-bg-deeper); box-shadow:none; padding:14px 16px">
+      <div class="subtle small">Next number to be assigned</div>
+      <div style="font-size:26px; font-weight:900; font-family:var(--mono); margin-top:4px; color:var(--good)" id="next-number">{{ last_number + 1 }}</div>
+    </div>
+  </div>
+
+  <div class="hr"></div>
+
+  <div class="field" style="margin-bottom:10px">
+    <label>Set seed — the next number assigned will be seed + 1</label>
+    <div style="display:flex; gap:10px; align-items:flex-start">
+      <input type="number" id="seed-input" min="1000" max="99999"
+             value="{{ last_number }}"
+             style="max-width:160px; font-family:var(--mono); font-size:16px; font-weight:700" />
+      <button class="btn btn-primary" type="button" onclick="saveSeed()" id="save-btn">
+        Update Seed
+      </button>
+    </div>
+  </div>
+
+  <div id="seed-warn" style="display:none; color:var(--warn); font-size:13px; font-weight:600; margin-bottom:8px">
+    ⚠ Warning: setting a lower seed may duplicate an existing project number.
+  </div>
+  <div id="seed-success" style="display:none; color:var(--good); font-size:13px; font-weight:600; margin-bottom:8px">
+    ✓ Seed updated. Next project number: <span id="seed-next-display"></span>
+  </div>
+  <div id="seed-error" style="display:none; color:var(--bad); font-size:13px; font-weight:600; margin-bottom:8px"></div>
+
+  <div class="hr"></div>
+
+  <div style="background:rgba(154,107,26,.07); border:1px solid rgba(154,107,26,.30); border-radius:var(--radius); padding:12px 14px; font-size:13px; color:#5C3E0A; line-height:1.55">
+    <strong>⚠ Only change this once</strong> — to match your last manually assigned project number.
+    After that, leave it alone. The system auto-increments from here.
+  </div>
+</div>
+
+<script>
+(function() {
+  var currentSeed = {{ last_number }};
+
+  var inp = document.getElementById('seed-input');
+  inp.addEventListener('input', function() {
+    var val = parseInt(inp.value);
+    var warn = document.getElementById('seed-warn');
+    if (!isNaN(val) && val < currentSeed) {
+      warn.style.display = 'block';
+    } else {
+      warn.style.display = 'none';
+    }
+    document.getElementById('seed-success').style.display = 'none';
+    document.getElementById('seed-error').style.display = 'none';
+  });
+
+  window.saveSeed = function() {
+    var val = parseInt(inp.value);
+    var errEl = document.getElementById('seed-error');
+    var okEl  = document.getElementById('seed-success');
+    errEl.style.display = 'none';
+    okEl.style.display  = 'none';
+
+    if (isNaN(val) || val < 1000 || val > 99999) {
+      errEl.textContent = 'Seed must be a number between 1000 and 99999.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    var btn = document.getElementById('save-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    fetch('/api/settings/project-number-seed', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({seed: val}),
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) {
+        currentSeed = val;
+        document.getElementById('current-last').textContent  = val;
+        document.getElementById('next-number').textContent   = val + 1;
+        document.getElementById('seed-next-display').textContent = val + 1;
+        okEl.style.display = 'block';
+        document.getElementById('seed-warn').style.display = 'none';
+      } else {
+        errEl.textContent = d.detail || 'Save failed.';
+        errEl.style.display = 'block';
+      }
+    })
+    .catch(e => {
+      errEl.textContent = 'Network error: ' + e.message;
+      errEl.style.display = 'block';
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = 'Update Seed';
+    });
+  };
+})();
+</script>
+
+{% endblock %}

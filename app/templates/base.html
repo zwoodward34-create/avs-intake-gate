@@ -20,12 +20,19 @@
         {% if not hide_nav_actions %}
         <div class="actions">
           <a class="btn" href="/">Home</a>
-          <a class="btn btn-primary" href="/intakes/new">New intake</a>
+          <a class="btn btn-primary" href="/intakes/new">New Intake</a>
           <a class="btn" href="/intake/upload">Upload RFP</a>
           <a class="btn" href="/dashboard">All Intakes</a>
-          <a class="btn" href="/past-projects">Past Projects</a>
+          <a class="btn" href="/timesheet">
+            Timesheet
+            {% set _tc = timesheet_period_count() %}
+            {% if _tc > 0 %}
+              <span class="mo-badge" style="background:rgba(37,99,235,.12);border-color:rgba(37,99,235,.40);color:#2563eb">{{ _tc }}</span>
+            {% endif %}
+          </a>
           <a class="btn" href="/calendar">Calendar</a>
           <a class="btn" href="/capacity">Capacity</a>
+          <a class="btn" href="/payroll-export">Payroll</a>
           <a class="btn" href="/reports">Reports</a>
           <a class="btn" href="/mo-queue">
             Mo's Queue
@@ -34,6 +41,8 @@
               <span class="mo-badge">{{ _mc }}</span>
             {% endif %}
           </a>
+          <a class="btn" href="/past-projects">Past Projects</a>
+          <a class="btn" href="/settings">Settings</a>
         </div>
         {% endif %}
       </div>

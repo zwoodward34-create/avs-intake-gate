@@ -49,6 +49,7 @@ class IntakeRow:
     ifp_due_date: Optional[str] = None
     proposal_text: Optional[str] = None
     proposal_generated_at: Optional[str] = None
+    project_number: Optional[str] = None
 
     @property
     def red_flags(self) -> list[dict[str, Any]]:
@@ -96,6 +97,7 @@ class IntakeRow:
             ifp_due_date=d.get("ifp_due_date"),
             proposal_text=d.get("proposal_text"),
             proposal_generated_at=d.get("proposal_generated_at"),
+            project_number=d.get("project_number"),
         )
 
 
@@ -619,3 +621,417 @@ def count_ifp_on_date(check_date: str) -> int:
         .execute()
     )
     return resp.count or 0
+
+
+# ── Constants ────────────────────────────────────────────────────────────────
+
+BILLING_RATE: float = 150.0
+
+DEFAULT_PHASE_SPLITS: dict[str, float] = {
+    "SD":  0.05,
+    "50%": 0.20,
+    "75%": 0.20,
+    "90%": 0.15,
+    "IFP": 0.25,
+    "CA":  0.10,
+    "REV": 0.05,
+}
+
+TEAM_FULL_NAMES: dict[str, str] = {
+    "MK": "Mo Kateeb",
+    "NK": "Nathan Kline",
+    "RS": "R. Schwan",
+    "RO": "R. Ochoa",
+    "SW": "S. Woodward",
+    "JP": "J. Peterson",
+    "JW": "J. Woodward",
+    "JR": "J. Rodriguez",
+    "RK": "R. Kline",
+}
+
+
+# ── Project Number Sequence ──────────────────────────────────────────────────
+
+def assign_next_project_number() -> str:
+    resp = _client().rpc("increment_project_number", {}).execute()
+    return str(resp.data).zfill(4)
+
+
+def get_project_number_seed() -> dict[str, Any]:
+    resp = (
+        _client()
+        .table("project_number_sequence")
+        .select("*")
+        .eq("id", 1)
+        .maybe_single()
+        .execute()
+    )
+    return resp.data or {"last_number": 9000, "updated_at": None}
+
+
+def set_project_number_seed(seed: int) -> None:
+    (
+        _client()
+        .table("project_number_sequence")
+        .update({"last_number": seed, "updated_at": _utc_now_iso()})
+        .eq("id", 1)
+        .execute()
+    )
+
+
+def set_intake_project_number(intake_id: int, project_number: str) -> None:
+    (
+        _client()
+        .table("intakes")
+        .update({"project_number": project_number, "updated_at": _utc_now_iso()})
+        .eq("id", intake_id)
+        .execute()
+    )
+
+
+# ── Phase Budgets ────────────────────────────────────────────────────────────
+
+def generate_phase_budgets(intake_id: int, project_number: str, approved_fee: float) -> None:
+    now = _utc_now_iso()
+    rows = [
+        {
+            "intake_id": intake_id,
+            "project_number": project_number,
+            "phase_code": phase_code,
+            "budgeted_hours": round((approved_fee * split) / BILLING_RATE, 2),
+            "approved_fee": approved_fee,
+            "billing_rate": BILLING_RATE,
+            "created_at": now,
+            "updated_at": now,
+        }
+        for phase_code, split in DEFAULT_PHASE_SPLITS.items()
+    ]
+    (
+        _client()
+        .table("phase_budgets")
+        .upsert(rows, on_conflict="intake_id,phase_code")
+        .execute()
+    )
+
+
+def list_phase_budgets(intake_id: int) -> list[dict[str, Any]]:
+    budgets_resp = (
+        _client()
+        .table("phase_budgets")
+        .select("*")
+        .eq("intake_id", intake_id)
+        .execute()
+    )
+    budgets = budgets_resp.data or []
+
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("phase_code,hours")
+        .eq("intake_id", intake_id)
+        .execute()
+    )
+    hours_by_phase: dict[str, float] = {}
+    for e in (te_resp.data or []):
+        p = e["phase_code"]
+        hours_by_phase[p] = hours_by_phase.get(p, 0.0) + float(e["hours"])
+
+    phase_order = list(DEFAULT_PHASE_SPLITS.keys())
+
+    def _sort_key(b: dict) -> int:
+        try:
+            return phase_order.index(b["phase_code"])
+        except ValueError:
+            return 99
+
+    result = []
+    for b in sorted(budgets, key=_sort_key):
+        phase = b["phase_code"]
+        budgeted = float(b["budgeted_hours"])
+        used = round(hours_by_phase.get(phase, 0.0), 2)
+        remaining = round(budgeted - used, 2)
+        pct = round((used / budgeted * 100) if budgeted > 0 else 0.0, 1)
+        result.append({
+            "id": b["id"],
+            "intake_id": b["intake_id"],
+            "project_number": b["project_number"],
+            "phase_code": phase,
+            "budgeted_hours": budgeted,
+            "approved_fee": float(b["approved_fee"]),
+            "billing_rate": float(b["billing_rate"]),
+            "hours_used": used,
+            "remaining": remaining,
+            "pct_used": pct,
+        })
+    return result
+
+
+def update_phase_budget(intake_id: int, phase_code: str, budgeted_hours: float) -> None:
+    (
+        _client()
+        .table("phase_budgets")
+        .update({"budgeted_hours": budgeted_hours, "updated_at": _utc_now_iso()})
+        .eq("intake_id", intake_id)
+        .eq("phase_code", phase_code)
+        .execute()
+    )
+
+
+# ── Time Entries ─────────────────────────────────────────────────────────────
+
+def create_time_entry(
+    *,
+    engineer_initials: str,
+    project_number: str,
+    intake_id: Optional[int],
+    phase_code: str,
+    entry_date: str,
+    hours: float,
+    notes: Optional[str],
+) -> int:
+    now = _utc_now_iso()
+    resp = (
+        _client()
+        .table("time_entries")
+        .insert({
+            "engineer_initials": engineer_initials,
+            "project_number":    project_number,
+            "intake_id":         intake_id,
+            "phase_code":        phase_code,
+            "entry_date":        entry_date,
+            "hours":             hours,
+            "notes":             notes,
+            "created_at":        now,
+            "updated_at":        now,
+        })
+        .execute()
+    )
+    return int(resp.data[0]["id"])
+
+
+def list_time_entries(
+    *,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    engineer: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    q = (
+        _client()
+        .table("time_entries")
+        .select("*")
+        .order("entry_date", desc=False)
+        .order("id", desc=False)
+    )
+    if start:
+        q = q.gte("entry_date", start)
+    if end:
+        q = q.lte("entry_date", end)
+    if engineer:
+        q = q.eq("engineer_initials", engineer)
+    return q.execute().data or []
+
+
+def update_time_entry(entry_id: int, *, hours: float, notes: Optional[str]) -> None:
+    (
+        _client()
+        .table("time_entries")
+        .update({"hours": hours, "notes": notes, "updated_at": _utc_now_iso()})
+        .eq("id", entry_id)
+        .execute()
+    )
+
+
+def delete_time_entry(entry_id: int) -> None:
+    _client().table("time_entries").delete().eq("id", entry_id).execute()
+
+
+def get_time_entry(entry_id: int) -> Optional[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("time_entries")
+        .select("*")
+        .eq("id", entry_id)
+        .maybe_single()
+        .execute()
+    )
+    return resp.data
+
+
+def count_timesheet_period_entries(start: str, end: str) -> int:
+    resp = (
+        _client()
+        .table("time_entries")
+        .select("id", count="exact")
+        .gte("entry_date", start)
+        .lte("entry_date", end)
+        .execute()
+    )
+    return resp.count or 0
+
+
+# ── Active Projects (for timesheet dropdown) ─────────────────────────────────
+
+def list_active_projects(engineer: Optional[str] = None) -> list[dict[str, Any]]:
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    resp = (
+        _client()
+        .table("calendar_events")
+        .select("*")
+        .gte("end_date", today + "T00:00:00Z")
+        .eq("is_ooo", False)
+        .execute()
+    )
+    events = resp.data or []
+
+    if engineer:
+        events = [e for e in events if engineer in (e.get("team") or [])]
+
+    project_numbers = list({e["project_number"] for e in events if e.get("project_number")})
+    if not project_numbers:
+        return []
+
+    intake_resp = (
+        _client()
+        .table("intakes")
+        .select("id,project_number,project_name,client_name")
+        .in_("project_number", project_numbers)
+        .execute()
+    )
+    intake_by_pn: dict[str, dict] = {i["project_number"]: i for i in (intake_resp.data or [])}
+    intake_ids = [i["id"] for i in (intake_resp.data or [])]
+
+    phases_by_intake: dict[int, list[str]] = {}
+    if intake_ids:
+        pb_resp = (
+            _client()
+            .table("phase_budgets")
+            .select("intake_id,phase_code")
+            .in_("intake_id", intake_ids)
+            .execute()
+        )
+        for pb in (pb_resp.data or []):
+            iid = int(pb["intake_id"])
+            phases_by_intake.setdefault(iid, [])
+            if pb["phase_code"] not in phases_by_intake[iid]:
+                phases_by_intake[iid].append(pb["phase_code"])
+
+    results = []
+    for pn in sorted(project_numbers):
+        intake = intake_by_pn.get(pn, {})
+        iid = intake.get("id")
+        phases = phases_by_intake.get(int(iid), []) if iid else []
+        if not phases:
+            phases = sorted({e["phase"] for e in events if e.get("project_number") == pn and e.get("phase")})
+        cal_ev = next((e for e in events if e.get("project_number") == pn), {})
+        results.append({
+            "intake_id":    iid,
+            "project_number": pn,
+            "client":       intake.get("client_name") or cal_ev.get("client") or "",
+            "project_name": intake.get("project_name") or cal_ev.get("client") or pn,
+            "phases":       phases,
+        })
+    return results
+
+
+# ── Payroll Export ───────────────────────────────────────────────────────────
+
+def get_payroll_data(start: str, end: str) -> dict[str, Any]:
+    entries = list_time_entries(start=start, end=end)
+    if not entries:
+        return {
+            "entries": [],
+            "summary_rows": [],
+            "kpis": {"total_hours": 0.0, "engineers_active": 0, "projects_billed": 0},
+            "start": start,
+            "end": end,
+        }
+
+    project_numbers = list({e["project_number"] for e in entries})
+    intake_resp = (
+        _client()
+        .table("intakes")
+        .select("id,project_number,project_name,client_name")
+        .in_("project_number", project_numbers)
+        .execute()
+    )
+    intake_by_pn: dict[str, dict] = {i["project_number"]: i for i in (intake_resp.data or [])}
+    intake_ids = [i["id"] for i in (intake_resp.data or [])]
+
+    budgets_by_key: dict[tuple, float] = {}
+    if intake_ids:
+        pb_resp = (
+            _client()
+            .table("phase_budgets")
+            .select("intake_id,phase_code,budgeted_hours")
+            .in_("intake_id", intake_ids)
+            .execute()
+        )
+        for pb in (pb_resp.data or []):
+            budgets_by_key[(int(pb["intake_id"]), pb["phase_code"])] = float(pb["budgeted_hours"])
+
+    # cumulative hours per (project_number, phase_code) across all time
+    all_te_resp = (
+        _client()
+        .table("time_entries")
+        .select("project_number,phase_code,hours")
+        .in_("project_number", project_numbers)
+        .execute()
+    )
+    cumulative: dict[tuple, float] = {}
+    for e in (all_te_resp.data or []):
+        key = (e["project_number"], e["phase_code"])
+        cumulative[key] = cumulative.get(key, 0.0) + float(e["hours"])
+
+    # Aggregate this-period hours: engineer → pn → phase → hours
+    agg: dict[str, dict[str, dict[str, float]]] = {}
+    for e in entries:
+        eng, pn, ph = e["engineer_initials"], e["project_number"], e["phase_code"]
+        agg.setdefault(eng, {}).setdefault(pn, {}).setdefault(ph, 0.0)
+        agg[eng][pn][ph] += float(e["hours"])
+
+    summary_rows: list[dict[str, Any]] = []
+    for eng in sorted(agg):
+        eng_total = 0.0
+        detail_rows: list[dict[str, Any]] = []
+        for pn in sorted(agg[eng]):
+            intake = intake_by_pn.get(pn, {})
+            iid = intake.get("id")
+            for ph in sorted(agg[eng][pn]):
+                hrs = round(agg[eng][pn][ph], 2)
+                eng_total += hrs
+                budget = budgets_by_key.get((int(iid), ph), 0.0) if iid else 0.0
+                cum_hrs = round(cumulative.get((pn, ph), 0.0), 2)
+                pct = round(cum_hrs / budget * 100, 1) if budget > 0 else None
+                detail_rows.append({
+                    "engineer":       eng,
+                    "project_number": pn,
+                    "client":         intake.get("client_name") or "",
+                    "project_name":   intake.get("project_name") or "",
+                    "phase":          ph,
+                    "hours":          hrs,
+                    "budget":         budget,
+                    "pct_budget":     pct,
+                    "cum_hours":      cum_hrs,
+                    "is_subtotal":    False,
+                })
+        summary_rows.append({
+            "engineer": eng, "project_number": None, "client": "", "project_name": "",
+            "phase": "", "hours": round(eng_total, 2), "budget": None, "pct_budget": None,
+            "cum_hours": None, "is_subtotal": True,
+        })
+        summary_rows.extend(detail_rows)
+
+    kpis = {
+        "total_hours":       round(sum(float(e["hours"]) for e in entries), 2),
+        "engineers_active":  len({e["engineer_initials"] for e in entries}),
+        "projects_billed":   len({e["project_number"] for e in entries}),
+    }
+    return {
+        "entries":      entries,
+        "summary_rows": summary_rows,
+        "kpis":         kpis,
+        "start":        start,
+        "end":          end,
+        "intake_by_pn": intake_by_pn,
+    }
