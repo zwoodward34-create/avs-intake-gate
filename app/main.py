@@ -399,19 +399,33 @@ def intake_upload_get(request: Request) -> HTMLResponse:
 
 
 @app.post("/intake/upload", response_class=HTMLResponse)
-async def intake_upload_post(request: Request, file: UploadFile = File(...)) -> HTMLResponse:
+async def intake_upload_post(
+    request: Request,
+    file: Optional[UploadFile] = File(None),
+    paste_text: Optional[str] = Form(None),
+) -> HTMLResponse:
     import types
 
     error: Optional[str] = None
     prefill: dict[str, Any] = {}
+    source_label = "uploaded document"
 
     try:
-        raw = await file.read()
-        if not raw:
-            raise ValueError("Uploaded file is empty.")
-        text = document_extractor.extract_text(file.filename or "upload.txt", raw)
-        if text.startswith("[") and "error" in text.lower():
-            raise ValueError(text)
+        paste_clean = (paste_text or "").strip()
+        if paste_clean:
+            text = paste_clean
+            source_label = "pasted text"
+        elif file and file.filename:
+            raw = await file.read()
+            if not raw:
+                raise ValueError("Uploaded file is empty.")
+            text = document_extractor.extract_text(file.filename, raw)
+            if text.startswith("[") and "error" in text.lower():
+                raise ValueError(text)
+            source_label = file.filename
+        else:
+            raise ValueError("Please upload a file or paste document text.")
+
         prefill = document_extractor.extract_intake_fields(text)
     except Exception as exc:
         error = str(exc)
@@ -437,7 +451,7 @@ async def intake_upload_post(request: Request, file: UploadFile = File(...)) -> 
             "now_local": _now_local_iso(),
             "project_templates": db.list_templates(),
             "prefill_data": prefill,
-            "prefill_filename": file.filename or "uploaded document",
+            "prefill_filename": source_label,
         },
     )
 

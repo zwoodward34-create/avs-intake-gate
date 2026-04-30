@@ -5,8 +5,8 @@
 
 <div class="card" style="margin-bottom:18px">
   <h2 style="margin-top:0">What this does</h2>
-  <div class="subtle" style="margin-bottom:8px">Upload an architectural RFP, project email, or scope document. Claude extracts the project details and pre-fills the intake form — you review, adjust, and submit.</div>
-  <div class="subtle small">Supported formats: <strong>.pdf</strong> &nbsp;·&nbsp; <strong>.docx</strong> &nbsp;·&nbsp; <strong>.eml</strong> &nbsp;·&nbsp; <strong>.txt</strong></div>
+  <div class="subtle" style="margin-bottom:8px">Upload or paste an architectural RFP, project email, or scope document. Claude extracts the project details and pre-fills the intake form — you review, adjust, and submit.</div>
+  <div class="subtle small">Supported upload formats: <strong>.pdf</strong> &nbsp;·&nbsp; <strong>.docx</strong> &nbsp;·&nbsp; <strong>.eml</strong> &nbsp;·&nbsp; <strong>.txt</strong></div>
 </div>
 
 {% if error %}
@@ -17,25 +17,104 @@
 {% endif %}
 
 <div class="card">
-  <form method="post" action="/intake/upload" enctype="multipart/form-data" id="upload-form">
-    <div class="field" style="margin-bottom:20px">
-      <label>Document or Email</label>
-      <input type="file" name="file" accept=".pdf,.docx,.eml,.txt" required
-             style="display:block; margin-top:8px; font-size:14px; color:var(--text)" />
-      <div class="subtle small" style="margin-top:6px">Max recommended size: 10 MB</div>
+  <!-- Tab switcher -->
+  <div style="display:flex; gap:0; margin-bottom:20px; border-bottom:2px solid var(--border)">
+    <button type="button" id="tab-file-btn"
+            onclick="switchTab('file')"
+            style="padding:8px 18px; font-size:13px; font-weight:600; border:none; background:none; cursor:pointer;
+                   border-bottom:2px solid var(--accent); margin-bottom:-2px; color:var(--accent)">
+      Upload File
+    </button>
+    <button type="button" id="tab-paste-btn"
+            onclick="switchTab('paste')"
+            style="padding:8px 18px; font-size:13px; font-weight:600; border:none; background:none; cursor:pointer;
+                   border-bottom:2px solid transparent; margin-bottom:-2px; color:var(--subtle)">
+      Paste Text
+    </button>
+  </div>
+
+  <form method="post" action="/intake/upload" enctype="multipart/form-data" id="upload-form" onsubmit="return validateForm()">
+
+    <!-- File upload panel -->
+    <div id="panel-file">
+      <div class="field" style="margin-bottom:20px">
+        <label>Document or Email</label>
+        <input type="file" id="file-input" name="file" accept=".pdf,.docx,.eml,.txt"
+               style="display:block; margin-top:8px; font-size:14px; color:var(--text)" />
+        <div class="subtle small" style="margin-top:6px">Max recommended size: 10 MB</div>
+      </div>
     </div>
+
+    <!-- Paste text panel -->
+    <div id="panel-paste" style="display:none">
+      <div class="field" style="margin-bottom:20px">
+        <label>Paste email or document text</label>
+        <textarea
+          name="paste_text"
+          id="paste-input"
+          rows="14"
+          placeholder="Paste the full email, RFP, or project description here…"
+          style="display:block; width:100%; margin-top:8px; padding:10px 12px;
+                 font-size:13px; font-family:inherit; line-height:1.55;
+                 background:var(--surface); color:var(--text);
+                 border:1px solid var(--border); border-radius:6px;
+                 resize:vertical; box-sizing:border-box"
+        ></textarea>
+        <div class="subtle small" style="margin-top:6px">
+          Works with copied emails, PDFs, Word docs, or any plain text — paste the full content for best results.
+        </div>
+      </div>
+    </div>
+
     <button type="submit" class="btn btn-primary btn-submit" id="upload-btn">
       Extract &amp; Pre-fill Intake
     </button>
-    <span id="upload-status" class="subtle small" style="margin-left:12px; display:none">Extracting with Claude — this takes ~10 seconds…</span>
+    <span id="upload-status" class="subtle small" style="margin-left:12px; display:none">
+      Extracting with Claude — this takes ~10 seconds…
+    </span>
   </form>
 </div>
 
 <script>
-document.getElementById('upload-form').addEventListener('submit', function () {
+var _activeTab = 'file';
+
+function switchTab(tab) {
+  _activeTab = tab;
+  document.getElementById('panel-file').style.display  = tab === 'file'  ? '' : 'none';
+  document.getElementById('panel-paste').style.display = tab === 'paste' ? '' : 'none';
+
+  var fileBtn  = document.getElementById('tab-file-btn');
+  var pasteBtn = document.getElementById('tab-paste-btn');
+
+  fileBtn.style.borderBottomColor  = tab === 'file'  ? 'var(--accent)' : 'transparent';
+  fileBtn.style.color              = tab === 'file'  ? 'var(--accent)' : 'var(--subtle)';
+  pasteBtn.style.borderBottomColor = tab === 'paste' ? 'var(--accent)' : 'transparent';
+  pasteBtn.style.color             = tab === 'paste' ? 'var(--accent)' : 'var(--subtle)';
+}
+
+function validateForm() {
+  if (_activeTab === 'file') {
+    var f = document.getElementById('file-input');
+    if (!f.files || f.files.length === 0) {
+      alert('Please select a file to upload.');
+      return false;
+    }
+    // Clear paste textarea so backend uses file path
+    document.getElementById('paste-input').value = '';
+  } else {
+    var t = document.getElementById('paste-input').value.trim();
+    if (!t) {
+      alert('Please paste some text before submitting.');
+      return false;
+    }
+    // Clear file input so backend uses paste_text
+    document.getElementById('file-input').value = '';
+  }
+
   document.getElementById('upload-btn').disabled = true;
   document.getElementById('upload-btn').textContent = 'Extracting…';
   document.getElementById('upload-status').style.display = 'inline';
-});
+  return true;
+}
 </script>
 {% endblock %}
