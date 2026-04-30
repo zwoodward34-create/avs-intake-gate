@@ -655,4 +655,194 @@
   };
 })();
 </script>
+
+{# ════ INVOICE APPROVALS SECTION ════ #}
+<div style="margin-top:40px">
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px">
+    <div style="flex:1;height:1px;background:rgba(255,255,255,.12)"></div>
+    <div style="font-size:11px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:var(--accent);white-space:nowrap">Invoice Approvals</div>
+    <div style="flex:1;height:1px;background:rgba(255,255,255,.12)"></div>
+  </div>
+
+  {% if not pending_invoices %}
+    <div class="card" style="text-align:center;padding:32px 20px;max-width:520px;margin:0 auto">
+      <div class="subtle">No invoices pending approval</div>
+    </div>
+  {% else %}
+    {% for inv in pending_invoices %}
+      {% set intake = inv.intake %}
+      {% set hours = inv.hours_check %}
+      <div class="card" id="inv-card-{{ inv.id }}" style="margin-bottom:14px;border-left:3px solid var(--accent)">
+
+        <!-- header -->
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--accent);margin-bottom:4px">Invoice Approval Required</div>
+            <div style="font-size:18px;font-weight:900;letter-spacing:-.2px">
+              {% if intake.project_number %}#{{ intake.project_number }} · {% endif %}{{ intake.project_name or '—' }}
+            </div>
+            <div class="subtle" style="font-size:12px">{{ intake.client_name or '—' }}{% if intake.location_region %} · {{ intake.location_region }}{% endif %}</div>
+          </div>
+          <span class="badge" style="border-color:rgba(0,229,255,.35);color:var(--accent);background:rgba(0,229,255,.08);font-size:11px">
+            {{ billing_labels.get(inv.billing_phase_code, inv.billing_phase_code) }}
+          </span>
+        </div>
+
+        <!-- phase detail box -->
+        <div style="background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;margin-bottom:14px;font-size:13px">
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 16px;align-items:baseline">
+            <span style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Phase</span>
+            <span style="font-weight:700">{{ billing_labels.get(inv.billing_phase_code, inv.billing_phase_code) }} ({{ inv.billing_phase_code }})</span>
+
+            {% if inv.phase_completed_by %}
+            <span style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Completed by</span>
+            <span style="font-family:var(--mono)">{{ inv.phase_completed_by }}{% if inv.phase_completed_at %} · {{ inv.phase_completed_at[:10] }}{% endif %}</span>
+            {% endif %}
+
+            {% if inv.phase_completed_note %}
+            <span style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Note</span>
+            <span style="color:rgba(255,255,255,.75)">{{ inv.phase_completed_note }}</span>
+            {% endif %}
+
+            <span style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Hours</span>
+            <span>
+              <span style="font-family:var(--mono);font-weight:700">{{ hours.actual }}</span>
+              <span style="color:var(--muted)"> actual / </span>
+              <span style="font-family:var(--mono);font-weight:700">{{ hours.budgeted }}</span>
+              <span style="color:var(--muted)"> budgeted</span>
+              {% if hours.over_budget %}
+                <span style="color:var(--warn);font-weight:700;margin-left:8px">⚠ {{ "%.1f" | format(hours.variance) }} h over budget — verify scope</span>
+              {% else %}
+                <span style="color:var(--good);margin-left:8px">✓</span>
+              {% endif %}
+            </span>
+
+            <span style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Default fee</span>
+            <span style="font-family:var(--mono);font-weight:700">${{ "%.2f" | format(inv.fee_amount) }}
+              <span style="color:var(--muted);font-weight:400">({{ "%.0f" | format(inv.fee_pct * 100) }}%)</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- override fee + note -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+          <div class="field" style="margin:0">
+            <label>Override Fee (optional)</label>
+            <input type="number" id="inv-fee-{{ inv.id }}"
+                   value="{{ inv.fee_amount }}" step="100" min="0"
+                   style="font-family:var(--mono);font-weight:700;font-size:15px"
+                   oninput="updateApproveLabel({{ inv.id }}, {{ inv.intake_id }}, '{{ inv.billing_phase_code }}')" />
+          </div>
+          <div class="field" style="margin:0">
+            <label>Note (optional)</label>
+            <input type="text" id="inv-note-{{ inv.id }}" placeholder="Note to attach to invoice…" />
+          </div>
+        </div>
+
+        <!-- actions -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-proceed" type="button"
+                  id="inv-approve-btn-{{ inv.id }}"
+                  onclick="approveInvoice({{ inv.id }}, {{ inv.intake_id }}, '{{ inv.billing_phase_code }}', {{ inv.fee_amount }})">
+            ✓ Approve Invoice — ${{ "%.0f" | format(inv.fee_amount) | replace(',', '') }}
+          </button>
+          <button class="btn btn-decline" type="button"
+                  onclick="showDeclinePanel({{ inv.id }})">
+            Decline / Request Changes
+          </button>
+        </div>
+
+        <!-- decline panel -->
+        <div id="inv-decline-{{ inv.id }}" style="display:none;margin-top:12px;background:rgba(255,82,82,.06);border:1px solid rgba(255,82,82,.20);border-radius:10px;padding:14px">
+          <div style="font-size:12px;font-weight:700;color:var(--bad);margin-bottom:8px">Reason for declining / what needs to change?</div>
+          <textarea id="inv-decline-reason-{{ inv.id }}" rows="2"
+                    style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(255,82,82,.30);color:var(--text);border-radius:8px;padding:9px 11px;font-size:12px;resize:vertical;font-family:'DM Sans',sans-serif"
+                    placeholder="Describe what needs to be corrected…"></textarea>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn" style="font-size:12px;padding:5px 12px" onclick="hideDeclinePanel({{ inv.id }})">Cancel</button>
+            <button class="btn btn-decline" style="font-size:12px;padding:5px 14px" onclick="declineInvoice({{ inv.id }}, {{ inv.intake_id }}, '{{ inv.billing_phase_code }}')">Submit Decline</button>
+          </div>
+        </div>
+
+      </div><!-- /inv-card -->
+    {% endfor %}
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  const BILLING_LABELS = {{ billing_labels_json | safe }};
+
+  window.updateApproveLabel = function(rowId, intakeId, code) {
+    const inp = document.getElementById('inv-fee-' + rowId);
+    const btn = document.getElementById('inv-approve-btn-' + rowId);
+    if (!inp || !btn) return;
+    const val = parseFloat(inp.value);
+    btn.textContent = isNaN(val)
+      ? '✓ Approve Invoice'
+      : '✓ Approve Invoice — $' + val.toLocaleString(undefined, {maximumFractionDigits: 0});
+  };
+
+  window.approveInvoice = async function(rowId, intakeId, code, defaultFee) {
+    const feeInput = document.getElementById('inv-fee-' + rowId);
+    const noteInput = document.getElementById('inv-note-' + rowId);
+    const btn = document.getElementById('inv-approve-btn-' + rowId);
+    const fee = parseFloat((feeInput || {}).value);
+    const feeOverride = (!isNaN(fee) && fee !== defaultFee) ? fee : null;
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Approving…'; }
+    try {
+      const resp = await fetch('/api/projects/' + intakeId + '/billing-phases/' + code + '/approve-invoice', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          approved_by: 'MO',
+          fee_override: feeOverride,
+          note: (noteInput || {}).value || null,
+        }),
+      });
+      if (!resp.ok) { const e = await resp.json().catch(()=>({})); throw new Error(e.detail || 'Failed'); }
+      // Remove card with animation
+      const card = document.getElementById('inv-card-' + rowId);
+      if (card) {
+        card.style.transition = 'opacity .3s ease';
+        card.style.opacity = '0';
+        setTimeout(() => card.remove(), 310);
+      }
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = '✓ Approve Invoice'; }
+      alert('Error: ' + e.message);
+    }
+  };
+
+  window.showDeclinePanel = function(rowId) {
+    const el = document.getElementById('inv-decline-' + rowId);
+    if (el) el.style.display = 'block';
+  };
+  window.hideDeclinePanel = function(rowId) {
+    const el = document.getElementById('inv-decline-' + rowId);
+    if (el) el.style.display = 'none';
+  };
+
+  window.declineInvoice = async function(rowId, intakeId, code) {
+    const reasonEl = document.getElementById('inv-decline-reason-' + rowId);
+    const reason = (reasonEl || {}).value || '';
+    if (!reason.trim()) { alert('Please provide a reason.'); return; }
+    try {
+      const resp = await fetch('/api/projects/' + intakeId + '/billing-phases/' + code + '/decline-invoice', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({declined_by: 'MO', reason: reason.trim()}),
+      });
+      if (!resp.ok) { const e = await resp.json().catch(()=>({})); throw new Error(e.detail || 'Failed'); }
+      const card = document.getElementById('inv-card-' + rowId);
+      if (card) {
+        card.style.transition = 'opacity .3s ease';
+        card.style.opacity = '0';
+        setTimeout(() => card.remove(), 310);
+      }
+    } catch(e) { alert('Error: ' + e.message); }
+  };
+})();
+</script>
 {% endblock %}

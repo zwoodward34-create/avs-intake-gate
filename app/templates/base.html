@@ -23,6 +23,7 @@
           <a class="btn btn-primary" href="/intakes/new">New Intake</a>
           <a class="btn" href="/intake/upload">Upload RFP</a>
           <a class="btn" href="/dashboard">All Intakes</a>
+          <a class="btn" href="/pipeline">Pipeline</a>
           <a class="btn" href="/timesheet">
             Timesheet
             {% set _tc = timesheet_period_count() %}
@@ -37,8 +38,10 @@
           <a class="btn" href="/mo-queue">
             Mo's Queue
             {% set _mc = pending_mo_count() %}
-            {% if _mc > 0 %}
-              <span class="mo-badge">{{ _mc }}</span>
+            {% set _ic = pending_invoice_count() %}
+            {% set _total = _mc + _ic %}
+            {% if _total > 0 %}
+              <span class="mo-badge">{{ _total }}</span>
             {% endif %}
           </a>
           <a class="btn" href="/past-projects">Past Projects</a>

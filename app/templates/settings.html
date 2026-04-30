@@ -51,6 +51,127 @@
   </div>
 </div>
 
+<!-- ── Billing Phase Fee Distribution ── -->
+<div class="card" style="max-width:560px; margin-top:20px">
+  <h2 style="margin-top:0">Billing Phase Fee Distribution</h2>
+  <div class="subtle" style="margin-bottom:16px; line-height:1.6">
+    These percentages are applied to all new projects.
+    Individual projects can be adjusted after approval.
+  </div>
+
+  <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:14px">
+    <thead>
+      <tr>
+        <th style="text-align:left; padding:6px 0; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); border-bottom:1px solid var(--border)">Phase</th>
+        <th style="text-align:left; padding:6px 8px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); border-bottom:1px solid var(--border)">Default %</th>
+        <th style="text-align:left; padding:6px 0; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); border-bottom:1px solid var(--border)">Trigger</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in billing_defs %}
+      <tr>
+        <td style="padding:8px 0; font-weight:700">{{ d.label }}</td>
+        <td style="padding:8px 8px">
+          <div style="display:flex; align-items:center; gap:6px">
+            <input type="number" id="bp-pct-{{ d.code }}" data-code="{{ d.code }}"
+                   value="{{ (d.default_pct * 100) | int }}"
+                   min="0" max="100" step="1"
+                   style="max-width:70px; font-family:var(--mono); font-weight:700; font-size:14px"
+                   oninput="updateBpTotal()" />
+            <span style="color:var(--muted)">%</span>
+          </div>
+        </td>
+        <td style="padding:8px 0; color:var(--muted); font-size:12px">
+          {% if d.trigger_production_phase %}{{ d.trigger_production_phase }} phase complete{% else %}Project approval{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3" style="padding:10px 0 4px; border-top:1px solid var(--border)">
+          <span style="font-size:13px; font-weight:700">Total: </span>
+          <span id="bp-total" style="font-family:var(--mono); font-weight:900; font-size:14px"></span>%
+        </td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div id="bp-warn" style="display:none; color:var(--warn); font-size:13px; font-weight:600; margin-bottom:8px"></div>
+  <div id="bp-success" style="display:none; color:var(--good); font-size:13px; font-weight:600; margin-bottom:8px">✓ Saved. New projects will use this distribution.</div>
+  <div id="bp-error" style="display:none; color:var(--bad); font-size:13px; font-weight:600; margin-bottom:8px"></div>
+
+  <button class="btn btn-primary" type="button" onclick="saveBpDistribution()">Save Distribution</button>
+
+  <div class="hr"></div>
+  <div style="background:rgba(255,215,64,.06); border:1px solid rgba(255,215,64,.25); border-radius:var(--radius); padding:12px 14px; font-size:13px; color:rgba(255,255,255,.7); line-height:1.55">
+    ⚠ Changing these values only affects <strong>new projects</strong> — existing projects keep their original fee split.
+  </div>
+</div>
+
+<script>
+(function() {
+  function updateBpTotal() {
+    var inputs = document.querySelectorAll('[id^="bp-pct-"]');
+    var total = 0;
+    inputs.forEach(function(inp) { total += parseInt(inp.value) || 0; });
+    var el = document.getElementById('bp-total');
+    el.textContent = total;
+    el.style.color = total === 100 ? 'var(--good)' : 'var(--bad)';
+    var warn = document.getElementById('bp-warn');
+    if (total !== 100) {
+      warn.textContent = 'Percentages must sum to exactly 100% (currently ' + total + '%).';
+      warn.style.display = 'block';
+    } else {
+      warn.style.display = 'none';
+    }
+  }
+  window.updateBpTotal = updateBpTotal;
+
+  window.saveBpDistribution = function() {
+    var inputs = document.querySelectorAll('[id^="bp-pct-"]');
+    var total = 0;
+    var phases = [];
+    inputs.forEach(function(inp) {
+      var val = parseInt(inp.value) || 0;
+      total += val;
+      phases.push({ code: inp.dataset.code, pct: val / 100 });
+    });
+    var warnEl = document.getElementById('bp-warn');
+    var okEl   = document.getElementById('bp-success');
+    var errEl  = document.getElementById('bp-error');
+    warnEl.style.display = 'none';
+    okEl.style.display   = 'none';
+    errEl.style.display  = 'none';
+    if (total !== 100) {
+      warnEl.textContent = 'Percentages must sum to exactly 100% (currently ' + total + '%).';
+      warnEl.style.display = 'block';
+      return;
+    }
+    fetch('/api/billing-phase-definitions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phases: phases }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.success) {
+        okEl.style.display = 'block';
+      } else {
+        errEl.textContent = d.detail || 'Save failed.';
+        errEl.style.display = 'block';
+      }
+    })
+    .catch(function(e) {
+      errEl.textContent = 'Network error: ' + e.message;
+      errEl.style.display = 'block';
+    });
+  };
+
+  updateBpTotal();
+})();
+</script>
+
 <script>
 (function() {
   var currentSeed = {{ last_number }};

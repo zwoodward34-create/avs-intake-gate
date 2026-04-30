@@ -1035,3 +1035,569 @@ def get_payroll_data(start: str, end: str) -> dict[str, Any]:
         "end":          end,
         "intake_by_pn": intake_by_pn,
     }
+
+
+# ── Pipeline / Billing Phase constants ───────────────────────────────────────
+
+PRODUCTION_PHASE_ORDER: list[str] = [
+    "RFP", "SD", "DD", "50%", "75%", "90%", "CD", "IFP", "CA", "REV"
+]
+
+BILLING_PHASE_ORDER: list[str] = ["retainer", "SD", "DD", "CD", "CA"]
+
+# exiting this production phase triggers this billing gate
+BILLING_TRIGGER_MAP: dict[str, str] = {
+    "SD":  "SD",
+    "DD":  "DD",
+    "IFP": "CD",
+    "CA":  "CA",
+}
+
+# production phases that count toward each billing gate's hours budget
+BILLING_TO_PRODUCTION: dict[str, list[str]] = {
+    "SD":  ["SD"],
+    "DD":  ["DD"],
+    "CD":  ["50%", "75%", "90%", "CD", "IFP"],
+    "CA":  ["CA"],
+}
+
+BILLING_PHASE_LABELS: dict[str, str] = {
+    "retainer": "Retainer",
+    "SD":        "Schematic Design",
+    "DD":        "Design Development",
+    "CD":        "Construction Documents",
+    "CA":        "Construction Admin",
+}
+
+
+# ── Billing Phase Definitions (firm-level) ───────────────────────────────────
+
+def get_billing_phase_definitions() -> list[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("billing_phase_definitions")
+        .select("*")
+        .order("sequence_order")
+        .execute()
+    )
+    return resp.data or []
+
+
+def update_billing_phase_definition(code: str, default_pct: float) -> None:
+    (
+        _client()
+        .table("billing_phase_definitions")
+        .update({"default_pct": default_pct})
+        .eq("code", code)
+        .execute()
+    )
+
+
+# ── Project Billing Phases ────────────────────────────────────────────────────
+
+def create_billing_phases_for_project(intake_id: int, approved_fee: float) -> None:
+    """Idempotent — creates one billing phase row per definition if not already present."""
+    defs = get_billing_phase_definitions()
+    now = _utc_now_iso()
+    rows = []
+    for d in defs:
+        fee_amount = round(approved_fee * float(d["default_pct"]), 2)
+        status = "complete_pending_approval" if d["code"] == "retainer" else "pending"
+        rows.append({
+            "intake_id":           intake_id,
+            "billing_phase_code":  d["code"],
+            "fee_amount":          fee_amount,
+            "fee_pct":             float(d["default_pct"]),
+            "status":              status,
+            "created_at":          now,
+            "updated_at":          now,
+        })
+    (
+        _client()
+        .table("project_billing_phases")
+        .upsert(rows, on_conflict="intake_id,billing_phase_code", ignore_duplicates=True)
+        .execute()
+    )
+    # Mark project as pipeline-active
+    (
+        _client()
+        .table("intakes")
+        .update({
+            "pipeline_active":         1,
+            "current_billing_phase":   "retainer",
+            "current_production_phase": "SD",
+            "updated_at":              now,
+        })
+        .eq("id", intake_id)
+        .execute()
+    )
+
+
+def get_project_billing_phases(intake_id: int) -> list[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("project_billing_phases")
+        .select("*")
+        .eq("intake_id", intake_id)
+        .order("id")
+        .execute()
+    )
+    rows = resp.data or []
+    # sort by billing phase order
+    order_map = {c: i for i, c in enumerate(BILLING_PHASE_ORDER)}
+    rows.sort(key=lambda r: order_map.get(r["billing_phase_code"], 99))
+    return rows
+
+
+def get_pending_invoice_approvals() -> list[dict[str, Any]]:
+    """Returns billing phases awaiting Mo's invoice approval, enriched with intake data."""
+    pbp_resp = (
+        _client()
+        .table("project_billing_phases")
+        .select("*")
+        .eq("status", "complete_pending_approval")
+        .order("updated_at")
+        .execute()
+    )
+    rows = pbp_resp.data or []
+    if not rows:
+        return []
+
+    intake_ids = list({r["intake_id"] for r in rows})
+    intake_resp = (
+        _client()
+        .table("intakes")
+        .select("id,project_number,project_name,client_name,location_region")
+        .in_("id", intake_ids)
+        .execute()
+    )
+    intake_map = {i["id"]: i for i in (intake_resp.data or [])}
+
+    result = []
+    for r in rows:
+        intake = intake_map.get(r["intake_id"], {})
+        # hours check for this billing gate
+        hours = check_phase_hours_vs_budget(r["intake_id"], r["billing_phase_code"])
+        result.append({**r, **{"intake": intake, "hours_check": hours}})
+    return result
+
+
+def count_pending_invoice_approvals() -> int:
+    resp = (
+        _client()
+        .table("project_billing_phases")
+        .select("id", count="exact")
+        .eq("status", "complete_pending_approval")
+        .execute()
+    )
+    return resp.count or 0
+
+
+def approve_invoice(
+    intake_id: int,
+    billing_phase_code: str,
+    approved_by: str,
+    fee_override: Optional[float],
+    note: Optional[str],
+) -> dict[str, Any]:
+    now = _utc_now_iso()
+    update_data: dict[str, Any] = {
+        "status":               "invoice_approved",
+        "invoice_approved_by":  approved_by,
+        "invoice_approved_at":  now,
+        "invoice_approved_note": note,
+        "updated_at":           now,
+    }
+    if fee_override is not None:
+        update_data["invoice_fee_override"] = fee_override
+
+    (
+        _client()
+        .table("project_billing_phases")
+        .update(update_data)
+        .eq("intake_id", intake_id)
+        .eq("billing_phase_code", billing_phase_code)
+        .execute()
+    )
+
+    # advance current_billing_phase
+    try:
+        idx = BILLING_PHASE_ORDER.index(billing_phase_code)
+        next_billing = BILLING_PHASE_ORDER[idx + 1] if idx + 1 < len(BILLING_PHASE_ORDER) else "complete"
+    except ValueError:
+        next_billing = "complete"
+
+    (
+        _client()
+        .table("intakes")
+        .update({"current_billing_phase": next_billing, "updated_at": now})
+        .eq("id", intake_id)
+        .execute()
+    )
+
+    # phase history
+    (
+        _client()
+        .table("project_phase_history")
+        .insert({
+            "intake_id":  intake_id,
+            "phase_type": "billing",
+            "phase_code": billing_phase_code,
+            "moved_by":   approved_by,
+            "note":       f"Invoice approved. Next: {next_billing}",
+            "exited_at":  now,
+        })
+        .execute()
+    )
+    return {"success": True, "next_billing_phase": next_billing}
+
+
+def decline_invoice(
+    intake_id: int,
+    billing_phase_code: str,
+    declined_by: str,
+    reason: str,
+) -> dict[str, Any]:
+    now = _utc_now_iso()
+    # fetch existing note to append
+    existing_resp = (
+        _client()
+        .table("project_billing_phases")
+        .select("phase_completed_note")
+        .eq("intake_id", intake_id)
+        .eq("billing_phase_code", billing_phase_code)
+        .maybe_single()
+        .execute()
+    )
+    prev_note = (existing_resp.data or {}).get("phase_completed_note") or ""
+    combined_note = (prev_note + f"\n[DECLINED by {declined_by}: {reason}]").strip()
+
+    (
+        _client()
+        .table("project_billing_phases")
+        .update({
+            "status":              "pending",
+            "phase_completed_note": combined_note,
+            "updated_at":          now,
+        })
+        .eq("intake_id", intake_id)
+        .eq("billing_phase_code", billing_phase_code)
+        .execute()
+    )
+    return {"success": True}
+
+
+def set_change_order(intake_id: int, pending: bool, note: Optional[str]) -> None:
+    now = _utc_now_iso()
+    (
+        _client()
+        .table("intakes")
+        .update({
+            "change_order_pending": 1 if pending else 0,
+            "change_order_note":    note,
+            "updated_at":           now,
+        })
+        .eq("id", intake_id)
+        .execute()
+    )
+
+
+# ── Phase Advancement ─────────────────────────────────────────────────────────
+
+def check_phase_hours_vs_budget(intake_id: int, billing_phase_code: str) -> dict[str, Any]:
+    production_phases = BILLING_TO_PRODUCTION.get(billing_phase_code, [])
+    if not production_phases:
+        return {"over_budget": False, "budgeted": 0.0, "actual": 0.0, "variance": 0.0}
+
+    pb_resp = (
+        _client()
+        .table("phase_budgets")
+        .select("phase_code,budgeted_hours")
+        .eq("intake_id", intake_id)
+        .in_("phase_code", production_phases)
+        .execute()
+    )
+    budgeted = sum(float(r["budgeted_hours"]) for r in (pb_resp.data or []))
+
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("hours")
+        .eq("intake_id", intake_id)
+        .in_("phase_code", production_phases)
+        .execute()
+    )
+    actual = sum(float(r["hours"]) for r in (te_resp.data or []))
+
+    return {
+        "over_budget": actual > budgeted if budgeted > 0 else False,
+        "budgeted":    round(budgeted, 2),
+        "actual":      round(actual, 2),
+        "variance":    round(actual - budgeted, 2),
+    }
+
+
+def advance_production_phase(
+    intake_id: int,
+    to_phase: str,
+    completed_by: str,
+    note: str,
+) -> dict[str, Any]:
+    """Advances the production phase, triggers billing gate if applicable."""
+    intake_resp = (
+        _client()
+        .table("intakes")
+        .select("current_production_phase,change_order_pending")
+        .eq("id", intake_id)
+        .maybe_single()
+        .execute()
+    )
+    if not intake_resp.data:
+        return {"success": False, "error": "Intake not found"}
+
+    from_phase = intake_resp.data.get("current_production_phase") or "SD"
+    now = _utc_now_iso()
+
+    # 1. Update current production phase
+    (
+        _client()
+        .table("intakes")
+        .update({"current_production_phase": to_phase, "updated_at": now})
+        .eq("id", intake_id)
+        .execute()
+    )
+
+    # 2. Write history — close previous, open new
+    (
+        _client()
+        .table("project_phase_history")
+        .insert({
+            "intake_id":  intake_id,
+            "phase_type": "production",
+            "phase_code": from_phase,
+            "moved_by":   completed_by,
+            "note":       note,
+            "exited_at":  now,
+        })
+        .execute()
+    )
+    (
+        _client()
+        .table("project_phase_history")
+        .insert({
+            "intake_id":  intake_id,
+            "phase_type": "production",
+            "phase_code": to_phase,
+            "moved_by":   completed_by,
+            "note":       f"Entered from {from_phase}",
+        })
+        .execute()
+    )
+
+    # 3. Check billing trigger
+    triggered_billing = BILLING_TRIGGER_MAP.get(from_phase)
+    billing_alert: Optional[dict[str, Any]] = None
+
+    if triggered_billing:
+        co_pending = int(intake_resp.data.get("change_order_pending") or 0)
+        if co_pending:
+            billing_alert = {
+                "type": "co_blocked",
+                "message": f"Phase advanced, but {triggered_billing} invoice is blocked — resolve the change order first.",
+            }
+        else:
+            pbp_resp = (
+                _client()
+                .table("project_billing_phases")
+                .select("*")
+                .eq("intake_id", intake_id)
+                .eq("billing_phase_code", triggered_billing)
+                .maybe_single()
+                .execute()
+            )
+            pbp = pbp_resp.data
+            if pbp and pbp["status"] == "pending":
+                hours = check_phase_hours_vs_budget(intake_id, triggered_billing)
+                (
+                    _client()
+                    .table("project_billing_phases")
+                    .update({
+                        "status":               "complete_pending_approval",
+                        "phase_completed_by":   completed_by,
+                        "phase_completed_at":   now,
+                        "phase_completed_note": note,
+                        "updated_at":           now,
+                    })
+                    .eq("intake_id", intake_id)
+                    .eq("billing_phase_code", triggered_billing)
+                    .execute()
+                )
+                billing_alert = {
+                    "type":            "invoice_queued",
+                    "billing_phase":   triggered_billing,
+                    "fee_amount":      float(pbp["fee_amount"]),
+                    "hours_over_budget": hours["over_budget"],
+                    "message": (
+                        f"{triggered_billing} invoice draft queued for Mo's approval "
+                        f"(${float(pbp['fee_amount']):,.0f})"
+                    ),
+                }
+
+    return {"success": True, "from_phase": from_phase, "to_phase": to_phase, "billing_alert": billing_alert}
+
+
+# ── Pipeline Board Data ───────────────────────────────────────────────────────
+
+def get_pipeline_data() -> dict[str, Any]:
+    """Returns all pipeline_active projects grouped by current_billing_phase."""
+    intakes_resp = (
+        _client()
+        .table("intakes")
+        .select(
+            "id,project_number,project_name,client_name,location_region,"
+            "current_production_phase,current_billing_phase,pipeline_active,"
+            "change_order_pending,change_order_note,mo_fee_override"
+        )
+        .eq("pipeline_active", 1)
+        .order("project_number")
+        .execute()
+    )
+    intakes = intakes_resp.data or []
+    if not intakes:
+        return _empty_pipeline()
+
+    intake_ids = [i["id"] for i in intakes]
+
+    # billing phases
+    pbp_resp = (
+        _client()
+        .table("project_billing_phases")
+        .select("intake_id,billing_phase_code,fee_amount,fee_pct,status,change_order_pending,invoice_fee_override")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    pbp_by_intake: dict[int, list[dict]] = {}
+    for row in (pbp_resp.data or []):
+        pbp_by_intake.setdefault(int(row["intake_id"]), []).append(row)
+
+    # phase budgets — total budgeted hours per project
+    pb_resp = (
+        _client()
+        .table("phase_budgets")
+        .select("intake_id,budgeted_hours")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    budget_by_intake: dict[int, float] = {}
+    for row in (pb_resp.data or []):
+        iid = int(row["intake_id"])
+        budget_by_intake[iid] = budget_by_intake.get(iid, 0.0) + float(row["budgeted_hours"])
+
+    # actual hours per project
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("intake_id,hours")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    actual_by_intake: dict[int, float] = {}
+    for row in (te_resp.data or []):
+        iid = int(row["intake_id"])
+        actual_by_intake[iid] = actual_by_intake.get(iid, 0.0) + float(row["hours"])
+
+    # calendar team members per project
+    cal_resp = (
+        _client()
+        .table("calendar_events")
+        .select("project_number,team")
+        .in_("project_number", [i["project_number"] for i in intakes if i.get("project_number")])
+        .execute()
+    )
+    team_by_pn: dict[str, list[str]] = {}
+    for ev in (cal_resp.data or []):
+        pn = ev.get("project_number") or ""
+        team = ev.get("team") or []
+        if isinstance(team, list):
+            existing = team_by_pn.get(pn, [])
+            for m in team:
+                if m not in existing:
+                    existing.append(m)
+            team_by_pn[pn] = existing
+
+    columns: dict[str, dict] = {
+        "retainer": {"label": "Retainer",              "projects": []},
+        "SD":       {"label": "Schematic Design",      "projects": []},
+        "DD":       {"label": "Design Development",    "projects": []},
+        "CD":       {"label": "Construction Documents","projects": []},
+        "CA":       {"label": "Construction Admin",    "projects": []},
+        "complete": {"label": "Complete",              "projects": []},
+    }
+
+    for intake in intakes:
+        iid = intake["id"]
+        billing_col = intake.get("current_billing_phase") or "retainer"
+        if billing_col not in columns:
+            billing_col = "complete"
+
+        billing_phases = pbp_by_intake.get(iid, [])
+        current_pbp = next(
+            (p for p in billing_phases if p["billing_phase_code"] == billing_col), None
+        )
+        invoice_status = current_pbp["status"] if current_pbp else "pending"
+        billing_fee = float(current_pbp["fee_amount"]) if current_pbp else 0.0
+        billing_fee_pct = float(current_pbp["fee_pct"]) if current_pbp else 0.0
+
+        budgeted = round(budget_by_intake.get(iid, 0.0), 1)
+        actual   = round(actual_by_intake.get(iid, 0.0), 1)
+        pn = intake.get("project_number") or ""
+
+        project = {
+            "intake_id":              iid,
+            "project_number":         pn,
+            "project_name":           intake["project_name"],
+            "client":                 intake.get("client_name") or "",
+            "current_production_phase": intake.get("current_production_phase") or "SD",
+            "current_billing_phase":  billing_col,
+            "billing_fee":            billing_fee,
+            "billing_fee_pct":        billing_fee_pct,
+            "team":                   team_by_pn.get(pn, []),
+            "budgeted_hours":         budgeted,
+            "actual_hours":           actual,
+            "change_order_pending":   bool(int(intake.get("change_order_pending") or 0)),
+            "invoice_status":         invoice_status,
+            "can_advance":            invoice_status not in ("complete_pending_approval", "invoice_approved"),
+            "approved_fee":           float(intake.get("mo_fee_override") or 0),
+        }
+        columns[billing_col]["projects"].append(project)
+
+    total_fee = sum(
+        float(i.get("mo_fee_override") or 0) for i in intakes
+    )
+    pending_invoices = sum(
+        1 for col in columns.values()
+        for p in col["projects"] if p["invoice_status"] == "complete_pending_approval"
+    )
+
+    return {
+        "columns": columns,
+        "stats": {
+            "active_projects":   len(intakes),
+            "pending_invoices":  pending_invoices,
+            "total_pipeline":    round(total_fee, 2),
+        },
+    }
+
+
+def _empty_pipeline() -> dict[str, Any]:
+    return {
+        "columns": {
+            "retainer": {"label": "Retainer",              "projects": []},
+            "SD":       {"label": "Schematic Design",      "projects": []},
+            "DD":       {"label": "Design Development",    "projects": []},
+            "CD":       {"label": "Construction Documents","projects": []},
+            "CA":       {"label": "Construction Admin",    "projects": []},
+            "complete": {"label": "Complete",              "projects": []},
+        },
+        "stats": {"active_projects": 0, "pending_invoices": 0, "total_pipeline": 0},
+    }

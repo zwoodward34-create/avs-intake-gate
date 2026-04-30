@@ -1,0 +1,413 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  body{
+    --bg:#0F2113; --card-bg:rgba(255,255,255,0.07); --card-bg-deeper:rgba(255,255,255,0.04);
+    --border:rgba(255,255,255,0.10); --border-hover:rgba(255,255,255,0.18);
+    --blur:blur(20px); --radius:16px; --radius-sm:10px;
+    --text:#FFFFFF; --muted:rgba(255,255,255,0.55); --subtle:rgba(255,255,255,0.35);
+    --accent:#00E5FF; --good:#00E676; --warn:#FFD740; --bad:#FF5252;
+    background-color:var(--bg);
+    background-image:
+      radial-gradient(ellipse 90% 55% at 15% 0%,rgba(0,230,118,.08) 0%,transparent 60%),
+      radial-gradient(ellipse 60% 40% at 85% 90%,rgba(0,229,255,.06) 0%,transparent 60%);
+    color:var(--text);
+  }
+  .topbar{border-bottom:none; padding-bottom:0; margin-bottom:20px}
+  .title a{color:var(--text)}
+
+  /* ── KPI strip ── */
+  .pl-kpi-strip{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+  .pl-kpi{
+    flex:1;min-width:130px;
+    background:var(--card-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
+    border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;
+    position:relative;overflow:hidden;
+  }
+  .pl-kpi::before{content:'';position:absolute;inset:0;border-radius:inherit;
+    background:linear-gradient(135deg,rgba(255,255,255,.05) 0%,transparent 55%);pointer-events:none}
+  .pl-kpi-num{font-size:28px;font-weight:900;line-height:1;font-family:'JetBrains Mono',monospace}
+  .pl-kpi-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-top:4px}
+  .kpi-blue{border-color:rgba(0,229,255,.3)}.kpi-blue .pl-kpi-num{color:#00E5FF}
+  .kpi-amber{border-color:rgba(255,215,64,.3)}.kpi-amber .pl-kpi-num{color:#FFD740}
+  .kpi-green{border-color:rgba(0,230,118,.3)}.kpi-green .pl-kpi-num{color:#00E676}
+
+  /* ── Board ── */
+  .pl-board{
+    display:flex;gap:14px;overflow-x:auto;padding-bottom:16px;align-items:flex-start;
+  }
+  .pl-board::-webkit-scrollbar{height:6px}
+  .pl-board::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:3px}
+  .pl-board::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:3px}
+
+  /* ── Column ── */
+  .pl-col{
+    flex:0 0 280px;
+    background:var(--card-bg-deeper);
+    border:1px solid var(--border);border-radius:var(--radius);
+    padding:14px 12px;
+    display:flex;flex-direction:column;gap:10px;
+    min-height:200px;
+  }
+  .pl-col-header{
+    padding:0 2px 10px;
+    border-bottom:1px solid var(--border);
+    margin-bottom:2px;
+  }
+  .pl-col-label{
+    font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;
+    color:var(--accent);margin-bottom:4px;
+    display:flex;align-items:center;gap:6px;
+  }
+  .pl-col-label::before{content:'';display:inline-block;width:3px;height:12px;background:var(--accent);border-radius:2px}
+  .pl-col-count{font-size:11px;color:var(--muted)}
+
+  /* ── Project card ── */
+  .pl-card{
+    background:var(--card-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
+    border:1px solid var(--border);border-radius:var(--radius-sm);
+    padding:14px;cursor:pointer;
+    position:relative;overflow:hidden;
+    transition:border-color .15s ease;
+  }
+  .pl-card::before{content:'';position:absolute;inset:0;border-radius:inherit;
+    background:linear-gradient(135deg,rgba(255,255,255,.04) 0%,transparent 55%);pointer-events:none}
+  .pl-card:hover{border-color:var(--border-hover)}
+  .pl-card.co-pending{border-left:3px solid var(--warn) !important}
+  .pl-card.invoice-pending{border-left:3px solid var(--accent) !important}
+
+  .pl-card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:6px}
+  .pl-pn{font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--muted)}
+  .pl-phase-badge{
+    display:inline-flex;align-items:center;gap:4px;
+    font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;
+    padding:2px 7px;border-radius:4px;
+    border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);
+  }
+  .pl-phase-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+  .pl-name{font-size:13px;font-weight:800;line-height:1.3;margin-bottom:3px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .pl-client{font-size:11px;color:var(--muted);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* ── Hours bar ── */
+  .pl-hours-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;font-size:11px}
+  .pl-hours-nums{font-family:'JetBrains Mono',monospace;font-weight:700}
+  .pl-hours-pct{font-size:10px;font-weight:800;font-family:'JetBrains Mono',monospace}
+  .pl-bar-track{height:4px;background:rgba(255,255,255,.12);border-radius:2px;overflow:hidden;margin-bottom:10px}
+  .pl-bar-fill{height:100%;border-radius:2px;transition:width .3s ease}
+
+  /* ── Fee row ── */
+  .pl-fee{font-size:11px;color:var(--muted);margin-bottom:10px}
+  .pl-fee strong{color:var(--text);font-family:'JetBrains Mono',monospace}
+
+  /* ── Card footer ── */
+  .pl-card-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .pl-team{display:flex;gap:4px}
+  .pl-avatar{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff;flex-shrink:0}
+
+  .btn-advance{
+    display:inline-flex;align-items:center;gap:5px;
+    font-size:11px;font-weight:700;padding:4px 10px;
+    background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.30);
+    color:var(--accent);border-radius:6px;cursor:pointer;
+    transition:background .15s ease,border-color .15s ease;
+    white-space:nowrap;
+  }
+  .btn-advance:hover{background:rgba(0,229,255,.15);border-color:rgba(0,229,255,.55)}
+  .btn-advance:disabled{opacity:.4;cursor:not-allowed}
+
+  /* ── Status badges ── */
+  .pl-badge{
+    display:inline-flex;align-items:center;gap:4px;
+    font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;
+    text-transform:uppercase;letter-spacing:.4px;
+  }
+  .badge-co{background:rgba(255,215,64,.12);border:1px solid rgba(255,215,64,.35);color:var(--warn)}
+  .badge-inv{background:rgba(0,229,255,.10);border:1px solid rgba(0,229,255,.30);color:var(--accent)}
+
+  /* ── Advance panel ── */
+  .pl-advance-panel{
+    display:none;
+    background:rgba(0,0,0,.35);border:1px solid rgba(0,229,255,.20);border-radius:10px;
+    padding:14px;margin-top:10px;
+  }
+  .pl-advance-panel.open{display:block}
+  .pl-advance-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:10px}
+  .pl-advance-row{display:flex;gap:8px;margin-bottom:6px;font-size:12px}
+  .pl-advance-key{color:var(--muted);min-width:90px;flex-shrink:0}
+  .pl-advance-val{color:var(--text);font-weight:700}
+  .pl-advance-note{
+    width:100%;margin-top:8px;margin-bottom:10px;
+    background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.12);
+    color:var(--text);border-radius:8px;padding:9px 11px;font-size:12px;resize:vertical;
+    font-family:'DM Sans',sans-serif;min-height:56px;
+  }
+  .pl-advance-note:focus{outline:none;border-color:rgba(0,229,255,.45)}
+  .pl-advance-actions{display:flex;gap:8px}
+
+  /* ── Toast ── */
+  #pl-toast{
+    position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:rgba(15,33,19,.97);backdrop-filter:blur(20px);
+    border:1px solid rgba(255,255,255,.15);border-radius:12px;
+    padding:12px 22px;font-size:13px;font-weight:600;
+    opacity:0;transition:opacity .25s ease,transform .25s ease;
+    pointer-events:none;z-index:1000;white-space:nowrap;
+  }
+  #pl-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #pl-toast.toast-good{border-color:rgba(0,230,118,.4);color:var(--good)}
+  #pl-toast.toast-warn{border-color:rgba(255,215,64,.4);color:var(--warn)}
+  #pl-toast.toast-bad{border-color:rgba(255,82,82,.4);color:var(--bad)}
+
+  .pl-empty{text-align:center;padding:32px 12px;color:var(--muted);font-size:12px}
+</style>
+
+<!-- Toast -->
+<div id="pl-toast"></div>
+
+<!-- Page header -->
+<div style="font-size:22px;font-weight:900;letter-spacing:-.3px;margin-bottom:6px">Pipeline Board</div>
+<div class="subtle" style="margin-bottom:18px">Active projects · production and billing phase tracking</div>
+
+<!-- KPI strip -->
+<div class="pl-kpi-strip">
+  <div class="pl-kpi kpi-blue">
+    <div class="pl-kpi-num" id="stat-active">{{ pipeline.stats.active_projects }}</div>
+    <div class="pl-kpi-label">Active Projects</div>
+  </div>
+  <div class="pl-kpi kpi-amber">
+    <div class="pl-kpi-num" id="stat-invoices">{{ pipeline.stats.pending_invoices }}</div>
+    <div class="pl-kpi-label">Pending Invoices</div>
+  </div>
+  <div class="pl-kpi kpi-green">
+    <div class="pl-kpi-num" id="stat-pipeline">${{ "{:,.0f}".format(pipeline.stats.total_pipeline) }}</div>
+    <div class="pl-kpi-label">Total Approved Pipeline</div>
+  </div>
+</div>
+
+<!-- Kanban board -->
+<div class="pl-board" id="pl-board">
+  {% for col_key, col in pipeline.columns.items() %}
+  <div class="pl-col" id="col-{{ col_key }}" data-col="{{ col_key }}">
+    <div class="pl-col-header">
+      <div class="pl-col-label">{{ col.label }}</div>
+      <div class="pl-col-count" id="col-count-{{ col_key }}">{{ col.projects | length }} project{{ 's' if col.projects | length != 1 else '' }}</div>
+    </div>
+    <div id="col-cards-{{ col_key }}">
+      {% if col.projects %}
+        {% for p in col.projects %}
+          {{ _render_card(p, loop.index) }}
+        {% endfor %}
+      {% else %}
+        <div class="pl-empty" id="col-empty-{{ col_key }}">No projects</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% macro _render_card(p, idx) %}
+{# This macro is only used at page-load; JS re-renders cards dynamically #}
+{% endmacro %}
+
+<script>
+(function () {
+  const TEAM_COLORS  = {{ team_colors_json | safe }};
+  const PHASE_COLORS = {{ phase_colors_json | safe }};
+  const PROD_ORDER   = {{ prod_phase_order | safe }};
+  const BILLING_LABELS = {{ billing_labels | safe }};
+  const PIPELINE_DATA = {{ pipeline | tojson }};
+
+  // ── Render all cards from data ──────────────────────────────────────────
+  function renderBoard(data) {
+    const cols = data.columns;
+    let totalActive = 0, totalInvoices = 0, totalFee = 0;
+
+    Object.entries(cols).forEach(([key, col]) => {
+      const container = document.getElementById('col-cards-' + key);
+      const countEl   = document.getElementById('col-count-' + key);
+      const emptyEl   = document.getElementById('col-empty-' + key);
+      if (!container) return;
+
+      const projects = col.projects || [];
+      totalActive += projects.length;
+      totalFee    += projects.reduce((s, p) => s + (p.approved_fee || 0), 0);
+      totalInvoices += projects.filter(p => p.invoice_status === 'complete_pending_approval').length;
+
+      if (countEl) countEl.textContent = projects.length + ' project' + (projects.length !== 1 ? 's' : '');
+
+      // remove old cards (keep empty placeholder)
+      Array.from(container.querySelectorAll('.pl-card-wrap')).forEach(el => el.remove());
+      if (emptyEl) emptyEl.style.display = projects.length ? 'none' : 'block';
+
+      projects.forEach(p => {
+        const wrap = document.createElement('div');
+        wrap.className = 'pl-card-wrap';
+        wrap.innerHTML = buildCard(p);
+        container.appendChild(wrap);
+      });
+    });
+
+    const sa = document.getElementById('stat-active');
+    const si = document.getElementById('stat-invoices');
+    const sp = document.getElementById('stat-pipeline');
+    if (sa) sa.textContent = totalActive;
+    if (si) si.textContent = totalInvoices;
+    if (sp) sp.textContent = '$' + totalFee.toLocaleString(undefined, {maximumFractionDigits: 0});
+  }
+
+  function phaseDot(code) {
+    const color = PHASE_COLORS[code] || 'rgba(255,255,255,.3)';
+    return `<span class="pl-phase-dot" style="background:${color}"></span>`;
+  }
+
+  function buildCard(p) {
+    const co = p.change_order_pending;
+    const invPending = p.invoice_status === 'complete_pending_approval';
+    const canAdvance = p.can_advance && !co;
+
+    const pct = p.budgeted_hours > 0 ? Math.min(p.actual_hours / p.budgeted_hours * 100, 120) : 0;
+    const barColor = pct > 100 ? 'var(--bad)' : pct > 80 ? 'var(--warn)' : 'var(--good)';
+    const pctCls   = pct > 100 ? 'style="color:var(--bad)"' : pct > 80 ? 'style="color:var(--warn)"' : '';
+
+    const teamHtml = (p.team || []).slice(0, 5).map(m => {
+      const c = TEAM_COLORS[m] || 'rgba(255,255,255,.3)';
+      return `<span class="pl-avatar" style="background:${c}" title="${m}">${m}</span>`;
+    }).join('');
+
+    const advDisabled = (!canAdvance) ? 'disabled title="' + (co ? 'Resolve change order first' : 'Invoice pending Mo\'s approval') + '"' : '';
+
+    // Next production phase
+    const curIdx = PROD_ORDER.indexOf(p.current_production_phase);
+    const nextProd = curIdx >= 0 && curIdx < PROD_ORDER.length - 1 ? PROD_ORDER[curIdx + 1] : null;
+
+    const feeDisplay = p.billing_fee ? '$' + p.billing_fee.toLocaleString(undefined,{maximumFractionDigits:0}) : '—';
+    const feePct = p.billing_fee_pct ? ' (' + (p.billing_fee_pct * 100).toFixed(0) + '%)' : '';
+
+    return `
+    <div class="pl-card${co ? ' co-pending' : ''}${invPending ? ' invoice-pending' : ''}"
+         id="pcard-${p.intake_id}"
+         onclick="navToIntake(event, ${p.intake_id})">
+      <div class="pl-card-hdr">
+        <span class="pl-pn">#${p.project_number || '—'}</span>
+        <div style="display:flex;gap:5px;align-items:center">
+          ${co ? '<span class="pl-badge badge-co">⚠ CO</span>' : ''}
+          ${invPending ? '<span class="pl-badge badge-inv">● Invoice</span>' : ''}
+          <span class="pl-phase-badge">${phaseDot(p.current_production_phase)}${p.current_production_phase}</span>
+        </div>
+      </div>
+      <div class="pl-name">${esc(p.project_name)}</div>
+      <div class="pl-client">${esc(p.client)}</div>
+
+      <div class="pl-hours-row">
+        <span class="pl-hours-nums">${p.actual_hours.toFixed(1)} / ${p.budgeted_hours.toFixed(1)} h</span>
+        <span class="pl-hours-pct" ${pctCls}>${pct.toFixed(0)}%</span>
+      </div>
+      <div class="pl-bar-track">
+        <div class="pl-bar-fill" style="width:${Math.min(pct,100)}%;background:${barColor}"></div>
+      </div>
+
+      <div class="pl-fee">Fee: <strong>${feeDisplay}</strong>${feePct}</div>
+
+      <div class="pl-card-footer">
+        <div class="pl-team">${teamHtml}</div>
+        ${nextProd ? `<button class="btn-advance" onclick="openAdvance(event,${p.intake_id})" ${advDisabled}>▶ Advance</button>` : `<span style="font-size:10px;color:var(--muted)">Final phase</span>`}
+      </div>
+
+      <!-- Advance panel -->
+      ${nextProd ? `
+      <div class="pl-advance-panel" id="adv-panel-${p.intake_id}">
+        <div class="pl-advance-title">Mark Phase Complete</div>
+        <div class="pl-advance-row"><span class="pl-advance-key">Completing:</span><span class="pl-advance-val">${p.current_production_phase}</span></div>
+        <div class="pl-advance-row"><span class="pl-advance-key">Moving to:</span><span class="pl-advance-val">${nextProd}</span></div>
+        <textarea class="pl-advance-note" id="adv-note-${p.intake_id}" placeholder="Note / deliverable reference (required)…" rows="2"></textarea>
+        <div class="pl-advance-actions">
+          <button class="btn" style="font-size:12px;padding:5px 12px" onclick="cancelAdvance(event,${p.intake_id})">Cancel</button>
+          <button class="btn btn-primary" style="font-size:12px;padding:5px 14px" id="adv-confirm-${p.intake_id}" onclick="confirmAdvance(event,${p.intake_id},'${nextProd}')">✓ Confirm</button>
+        </div>
+      </div>` : ''}
+    </div>`;
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Navigation (clicking card body → intake detail) ──────────────────────
+  window.navToIntake = function(evt, id) {
+    const skip = evt.target.closest('button, textarea, .pl-advance-panel');
+    if (skip) return;
+    window.location.href = '/intakes/' + id;
+  };
+
+  // ── Advance phase panel ─────────────────────────────────────────────────
+  window.openAdvance = function(evt, id) {
+    evt.stopPropagation();
+    const panel = document.getElementById('adv-panel-' + id);
+    if (!panel) return;
+    const isOpen = panel.classList.contains('open');
+    // close all
+    document.querySelectorAll('.pl-advance-panel.open').forEach(p => p.classList.remove('open'));
+    if (!isOpen) panel.classList.add('open');
+  };
+
+  window.cancelAdvance = function(evt, id) {
+    evt.stopPropagation();
+    const panel = document.getElementById('adv-panel-' + id);
+    if (panel) panel.classList.remove('open');
+  };
+
+  window.confirmAdvance = async function(evt, intakeId, toPhase) {
+    evt.stopPropagation();
+    const note = (document.getElementById('adv-note-' + intakeId) || {}).value || '';
+    if (!note.trim()) {
+      showToast('Note is required before advancing.', 'bad');
+      return;
+    }
+    const btn = document.getElementById('adv-confirm-' + intakeId);
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    try {
+      const resp = await fetch('/api/projects/' + intakeId + '/advance-production-phase', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({to_phase: toPhase, completed_by: '', note: note.trim()}),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Failed');
+
+      const alert = data.billing_alert;
+      if (alert && alert.type === 'invoice_queued') {
+        showToast('✓ ' + alert.message, 'good');
+      } else if (alert && alert.type === 'co_blocked') {
+        showToast('⚠ ' + alert.message, 'warn');
+      } else {
+        showToast('✓ Phase advanced to ' + toPhase, 'good');
+      }
+
+      // re-fetch and re-render
+      const fresh = await fetch('/api/pipeline').then(r => r.json());
+      renderBoard(fresh);
+    } catch(e) {
+      showToast('Error: ' + e.message, 'bad');
+      if (btn) { btn.disabled = false; btn.textContent = '✓ Confirm'; }
+    }
+  };
+
+  // ── Toast ────────────────────────────────────────────────────────────────
+  let toastTimer = null;
+  function showToast(msg, type) {
+    const el = document.getElementById('pl-toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'show toast-' + (type || 'good');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = ''; }, 4000);
+  }
+
+  // ── Initial render ───────────────────────────────────────────────────────
+  renderBoard(PIPELINE_DATA);
+})();
+</script>
+{% endblock %}

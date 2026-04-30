@@ -156,6 +156,16 @@ def _timesheet_period_count() -> int:
 templates.env.globals["timesheet_period_count"] = _timesheet_period_count
 
 
+def _pending_invoice_count() -> int:
+    try:
+        return db.count_pending_invoice_approvals()
+    except Exception:
+        return 0
+
+
+templates.env.globals["pending_invoice_count"] = _pending_invoice_count
+
+
 app = FastAPI(title="AVS Intake Gate")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
@@ -536,15 +546,19 @@ def _require_mo_passcode_if_configured(passcode: Optional[str]) -> None:
 def mo_queue(request: Request) -> HTMLResponse:
     import json as _json
     intakes = db.list_pending_mo()
+    pending_invoices = db.get_pending_invoice_approvals()
     return templates.TemplateResponse(
         "mo_queue.html",
         {
-            "request": request,
-            "intakes": intakes,
-            "now_local": _now_local_iso(),
-            "valid_phases":    db.VALID_PHASES,
-            "team_colors_json":  _json.dumps(db.TEAM_COLORS),
-            "phase_colors_json": _json.dumps(db.PHASE_COLORS),
+            "request":            request,
+            "intakes":            intakes,
+            "pending_invoices":   pending_invoices,
+            "now_local":          _now_local_iso(),
+            "valid_phases":       db.VALID_PHASES,
+            "team_colors_json":   _json.dumps(db.TEAM_COLORS),
+            "phase_colors_json":  _json.dumps(db.PHASE_COLORS),
+            "billing_labels_json": _json.dumps(db.BILLING_PHASE_LABELS),
+            "billing_labels":     db.BILLING_PHASE_LABELS,
         },
     )
 
@@ -592,6 +606,10 @@ async def api_mo_review_json(request: Request, intake_id: int) -> dict:
                 db.generate_phase_budgets(intake_id, project_number, approved_fee)
             except Exception:
                 pass  # non-fatal: budgets can be generated later
+            try:
+                db.create_billing_phases_for_project(intake_id, approved_fee)
+            except Exception:
+                pass  # non-fatal: billing phases can be created later
 
     return {"success": True, "status": status, "intake_id": intake_id, "project_number": project_number}
 
@@ -1233,13 +1251,15 @@ def api_capacity() -> dict:
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request) -> HTMLResponse:
     seed_row = db.get_project_number_seed()
+    billing_defs = db.get_billing_phase_definitions()
     return templates.TemplateResponse(
         "settings.html",
         {
-            "request": request,
-            "now_local": _now_local_iso(),
-            "last_number": seed_row.get("last_number", 9000),
-            "updated_at": seed_row.get("updated_at"),
+            "request":      request,
+            "now_local":    _now_local_iso(),
+            "last_number":  seed_row.get("last_number", 9000),
+            "updated_at":   seed_row.get("updated_at"),
+            "billing_defs": billing_defs,
         },
     )
 
@@ -1455,6 +1475,101 @@ def api_payroll_export_csv(start: Optional[str] = None, end: Optional[str] = Non
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.get("/pipeline", response_class=HTMLResponse)
+def pipeline_page(request: Request) -> HTMLResponse:
+    data = db.get_pipeline_data()
+    return templates.TemplateResponse(
+        "pipeline.html",
+        {
+            "request":         request,
+            "now_local":       _now_local_iso(),
+            "pipeline":        data,
+            "team_colors_json": _json.dumps(db.TEAM_COLORS),
+            "phase_colors_json": _json.dumps(db.PHASE_COLORS),
+            "prod_phase_order": _json.dumps(db.PRODUCTION_PHASE_ORDER),
+            "billing_labels":   _json.dumps(db.BILLING_PHASE_LABELS),
+        },
+    )
+
+
+@app.get("/api/pipeline")
+def api_pipeline() -> dict[str, Any]:
+    return db.get_pipeline_data()
+
+
+@app.post("/api/projects/{intake_id}/advance-production-phase")
+async def api_advance_production_phase(request: Request, intake_id: int) -> dict[str, Any]:
+    body = await request.json()
+    to_phase = str(body.get("to_phase") or "").strip()
+    completed_by = str(body.get("completed_by") or "").strip()
+    note = str(body.get("note") or "").strip()
+    if not to_phase:
+        raise HTTPException(status_code=400, detail="to_phase required")
+    if not note:
+        raise HTTPException(status_code=400, detail="note required")
+    return db.advance_production_phase(intake_id, to_phase, completed_by or "SYSTEM", note)
+
+
+@app.post("/api/projects/{intake_id}/billing-phases/{billing_phase_code}/approve-invoice")
+async def api_approve_invoice(request: Request, intake_id: int, billing_phase_code: str) -> dict[str, Any]:
+    body = await request.json()
+    return db.approve_invoice(
+        intake_id,
+        billing_phase_code,
+        approved_by=str(body.get("approved_by") or "MO"),
+        fee_override=float(body["fee_override"]) if body.get("fee_override") is not None else None,
+        note=str(body.get("note") or "") or None,
+    )
+
+
+@app.post("/api/projects/{intake_id}/billing-phases/{billing_phase_code}/decline-invoice")
+async def api_decline_invoice(request: Request, intake_id: int, billing_phase_code: str) -> dict[str, Any]:
+    body = await request.json()
+    reason = str(body.get("reason") or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="reason required")
+    return db.decline_invoice(
+        intake_id,
+        billing_phase_code,
+        declined_by=str(body.get("declined_by") or "MO"),
+        reason=reason,
+    )
+
+
+@app.post("/api/projects/{intake_id}/toggle-change-order")
+async def api_toggle_change_order(request: Request, intake_id: int) -> dict[str, Any]:
+    body = await request.json()
+    pending = bool(body.get("pending", False))
+    note = str(body.get("note") or "") or None
+    db.set_change_order(intake_id, pending, note)
+    return {"success": True, "change_order_pending": pending}
+
+
+@app.get("/api/projects/{intake_id}/billing-phases")
+def api_project_billing_phases(intake_id: int) -> list[dict[str, Any]]:
+    return db.get_project_billing_phases(intake_id)
+
+
+@app.get("/api/billing-phase-definitions")
+def api_billing_phase_definitions() -> list[dict[str, Any]]:
+    return db.get_billing_phase_definitions()
+
+
+@app.post("/api/billing-phase-definitions")
+async def api_update_billing_phase_definitions(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    updates = body.get("phases", [])
+    total = sum(float(u.get("default_pct", 0)) for u in updates)
+    if abs(total - 1.0) > 0.001:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Percentages total {total * 100:.1f}% — they must sum to 100%.",
+        )
+    for u in updates:
+        db.update_billing_phase_definition(u["code"], float(u["default_pct"]))
+    return {"success": True}
 
 
 @app.get("/api/intakes/{intake_id}/proposal")
