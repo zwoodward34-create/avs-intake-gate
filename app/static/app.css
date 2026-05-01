@@ -685,3 +685,195 @@ input[type="checkbox"]{
 .prefill-banner-warn  { color: var(--warn);   font-weight: 600 }
 .prefill-banner-src   { color: var(--muted) }
 .prefill-banner-actions { display:flex; gap:8px; flex-shrink:0 }
+
+/* ─── Project Command Center ─────────────────────────────────────────────── */
+.cmd-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(15,33,19,0.97);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: -4px -20px 16px -20px;
+}
+.cmd-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.cmd-proj-num {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cmd-proj-name {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 380px;
+}
+.cmd-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.cmd-kpi {
+  text-align: center;
+  min-width: 48px;
+}
+.cmd-kpi-label {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--muted);
+  margin-bottom: 1px;
+}
+.cmd-kpi-val {
+  font-size: 14px;
+  font-weight: 800;
+  font-family: var(--mono);
+  line-height: 1.1;
+}
+.cmd-panels {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 14px;
+  margin-bottom: 14px;
+  align-items: start;
+}
+@media(max-width:860px) { .cmd-panels { grid-template-columns: 1fr; } }
+
+/* ─── Accordion ──────────────────────────────────────────────────────────── */
+.acc-group { display: flex; flex-direction: column; gap: 6px; }
+.acc-item {
+  background: var(--card-bg);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.acc-item[open] { border-color: var(--border-hover); }
+.acc-hd {
+  list-style: none;
+  padding: 13px 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 700;
+  user-select: none;
+  gap: 10px;
+}
+.acc-hd::-webkit-details-marker { display: none; }
+.acc-hd:hover { background: rgba(255,255,255,0.04); }
+.acc-hd-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.acc-chevron {
+  font-size: 11px;
+  color: var(--muted);
+  transition: transform .18s;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.acc-item[open] .acc-chevron { transform: rotate(180deg); }
+.acc-body {
+  padding: 4px 20px 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── Schedule dial ──────────────────────────────────────────────────────── */
+.sched-dates {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono);
+  margin-bottom: 4px;
+}
+.sched-bar-wrap {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--card-bg-deeper);
+  border: 1px solid var(--border);
+  margin: 8px 0 4px;
+}
+.sched-bar-fill {
+  position: absolute;
+  left: 0; top: 0;
+  height: 100%;
+  border-radius: 3px;
+  transition: width .3s;
+}
+.sched-bar-today-pin {
+  position: absolute;
+  top: -5px;
+  width: 3px;
+  height: 16px;
+  background: var(--accent);
+  border-radius: 2px;
+  transform: translateX(-50%);
+}
+.sched-slider {
+  width: 100%;
+  margin-top: 14px;
+  accent-color: var(--accent);
+}
+.sched-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+.sched-stat {
+  background: var(--card-bg-deeper);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.sched-stat-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.sched-stat-val {
+  font-size: 16px;
+  font-weight: 800;
+  font-family: var(--mono);
+}
+
+/* ─── Phase matrix table ─────────────────────────────────────────────────── */
+.pm-phase-row { cursor: pointer; }
+.pm-phase-row:hover td { background: rgba(255,255,255,0.04); }
+.pm-eng-row td {
+  font-size: 12px;
+  padding: 4px 10px 4px 28px;
+  color: var(--muted);
+  border-bottom: none;
+}
+.pm-eng-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}

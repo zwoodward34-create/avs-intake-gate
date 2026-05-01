@@ -1,105 +1,226 @@
 {% extends "base.html" %}
 {% block content %}
 
-  {# ── Page Title ── #}
-  <div class="page-project-title">
+{# ── Panel 1: Sticky Command Bar ─────────────────────────────────────────── #}
+<div class="cmd-bar" id="cmd-bar">
+  <div class="cmd-bar-left">
     {% if intake.project_number %}
-      <span style="color:var(--muted);font-size:20px;font-weight:700;font-family:var(--mono);margin-right:8px">#{{ intake.project_number }}</span>
+      <span class="cmd-proj-num">#{{ intake.project_number }}</span>
     {% endif %}
-    {{ intake.project_name }}
+    <span class="cmd-proj-name">{{ intake.project_name }}</span>
+    <span class="badge" style="font-size:11px;white-space:nowrap">{{ intake.status }}</span>
+    {% if fast_track %}<span class="badge badge-low" style="font-size:11px">Fast Track</span>{% endif %}
+  </div>
+  <div class="cmd-bar-right">
+    {% if approved_fee %}
+    <div class="cmd-kpi">
+      <div class="cmd-kpi-label">Fee</div>
+      <div class="cmd-kpi-val">${{ "{:,.0f}".format(approved_fee) }}</div>
+    </div>
+    {% endif %}
+    {% if hours_burned_pct is not none %}
+    <div class="cmd-kpi">
+      <div class="cmd-kpi-label">Hours</div>
+      <div class="cmd-kpi-val" style="color:{% if hours_burned_pct > 100 %}var(--bad){% elif hours_burned_pct >= 80 %}var(--warn){% else %}var(--good){% endif %}">{{ hours_burned_pct }}%</div>
+    </div>
+    {% endif %}
+    {% if days_to_ifp is not none %}
+    <div class="cmd-kpi">
+      <div class="cmd-kpi-label">IFP</div>
+      <div class="cmd-kpi-val" style="color:{% if days_to_ifp < 0 %}var(--bad){% elif days_to_ifp <= 7 %}var(--warn){% else %}var(--good){% endif %}">
+        {% if days_to_ifp < 0 %}{{ -days_to_ifp }}d late
+        {% elif days_to_ifp == 0 %}Today
+        {% else %}{{ days_to_ifp }}d
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+    <a class="btn" href="/intakes/{{ intake.id }}/edit" style="font-size:12px;padding:5px 12px">Edit</a>
+    <a class="btn btn-primary" href="/intakes/{{ intake.id }}/mo-review" style="font-size:12px;padding:5px 12px">Mo Review</a>
+  </div>
+</div>
+
+{# ── Panels 2 + 3: Phase Matrix + Schedule ───────────────────────────────── #}
+{% if intake.project_number or intake.ifp_due_date %}
+<div class="cmd-panels">
+
+  {# Panel 2: Phase / Resource Matrix #}
+  <div class="card" style="padding:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div>
+        <h2 style="margin:0">Phase / Resource Matrix</h2>
+        <div class="subtle small" style="margin-top:2px">Click a phase row to expand engineer breakdown · click budget to edit</div>
+      </div>
+      <div id="pm-save-status" style="font-size:12px;color:var(--good);display:none">✓ Saved</div>
+    </div>
+    <div id="phase-matrix-wrap"><div class="subtle small">Loading…</div></div>
   </div>
 
-  <div class="grid grid-2">
-    <div class="card">
-      <h2>Summary</h2>
-      <div class="kpi">
-        <span class="pill"><strong>Status</strong> {{ intake.status }}</span>
-        {% if intake.recommendation %}
-          <span class="pill"><strong>Auto</strong> {{ intake.recommendation }}</span>
-        {% endif %}
-        {% if fast_track %}
-          <span class="badge badge-low">Fast Track Eligible</span>
-        {% endif %}
-        <span class="pill"><strong>Updated</strong> {{ intake.updated_at }}</span>
+  {# Panel 3: Schedule Dial #}
+  <div class="card" style="padding:20px">
+    <h2 style="margin-top:0">Schedule</h2>
+    {% if schedule_data %}
+      {% set sd = schedule_data %}
+      <div class="sched-dates">
+        <span>{{ sd.start }}</span>
+        <span style="color:var(--text)">{{ sd.today }} ▲ today</span>
+        <span id="sched-end-label">{{ sd.end }}</span>
       </div>
-      <div class="hr"></div>
-      <div class="subtle">{{ intake.client_name or "—" }} • {{ intake.architect_name or "—" }}</div>
-      <div class="hr"></div>
-      <div class="row row-2">
-        <div><div class="subtle">Inquiry date</div><div>{{ intake.inquiry_date or "—" }}</div></div>
-        <div><div class="subtle">Submitted by</div><div>{{ intake.submitted_by or "—" }}</div></div>
+      <div class="sched-bar-wrap">
+        {% set bar_color %}{% if sd.pct > 100 %}var(--bad){% elif sd.pct >= 80 %}var(--warn){% else %}var(--good){% endif %}{% endset %}
+        <div class="sched-bar-fill" id="sched-fill" style="width:{{ [sd.pct, 100] | min }}%;background:{{ bar_color }}"></div>
+        <div class="sched-bar-today-pin" style="left:{{ [sd.pct, 100] | min }}%"></div>
       </div>
-      <div class="row row-2" style="margin-top:10px">
-        <div><div class="subtle">Lead contact</div><div>{{ intake.lead_contact or "—" }}</div></div>
-        <div><div class="subtle">Location</div><div>{{ intake.location_region or "—" }}</div></div>
-      </div>
-      <div class="row row-2" style="margin-top:10px">
-        <div><div class="subtle">Approx. square footage</div><div>{{ answers.get('approx_sf') or "—" }}</div></div>
-        <div><div class="subtle">Est. construction cost</div><div>{% if answers.get('est_construction_cost') %}${{ answers.get('est_construction_cost') }}{% else %}—{% endif %}</div></div>
-      </div>
-      <div class="row row-2" style="margin-top:10px">
-        <div><div class="subtle">Source of inquiry</div><div>{{ answers.get('inquiry_source') or "—" }}</div></div>
-        <div></div>
-      </div>
-      <div class="hr"></div>
-      <div class="subtle">Auto reason</div>
-      <div>{{ intake.recommendation_reason or "—" }}</div>
-      <div class="hr"></div>
-      <div class="actions">
-        <a class="btn" href="/intakes/{{ intake.id }}/edit">Edit</a>
-        <a class="btn btn-primary" href="/intakes/{{ intake.id }}/mo-review">Mo review</a>
-        {% if not intake.mo_decision %}
-          {% if intake.status == 'PENDING_MO_REVIEW' %}
-            <span class="badge" style="align-self:center">In Mo's Queue</span>
-          {% else %}
-            <form method="post" action="/intakes/{{ intake.id }}/push-to-mo" style="display:inline">
-              <button type="submit" class="btn btn-queue">Push to Mo's Queue</button>
-            </form>
-          {% endif %}
-        {% endif %}
-      </div>
-      {% if mo_passcode_enabled %}
-        <div class="subtle small" style="margin-top:8px">Mo review is passcode-protected.</div>
-      {% endif %}
-    </div>
+      <div style="font-size:11px;color:var(--muted);font-family:var(--mono);text-align:right">{{ sd.pct }}% elapsed</div>
 
-    <div class="card">
-      <h2>Red flags</h2>
-      {% set c = intake.red_flag_counts %}
-      <div class="kpi">
-        <span class="badge badge-critical">Critical {{ c.get("critical", 0) }}</span>
-        <span class="badge badge-high">High {{ c.get("high", 0) }}</span>
-        <span class="badge badge-medium">Medium {{ c.get("medium", 0) }}</span>
-        <span class="badge badge-low">Low {{ c.get("low", 0) }}</span>
-        <span class="badge">Total {{ c.get("total", 0) }}</span>
+      <div class="sched-stats" style="margin-top:12px">
+        <div class="sched-stat">
+          <div class="sched-stat-label">Elapsed</div>
+          <div class="sched-stat-val">{{ sd.elapsed_days }}d</div>
+        </div>
+        <div class="sched-stat">
+          <div class="sched-stat-label">Remaining</div>
+          <div class="sched-stat-val" id="sched-days-rem" style="color:{% if sd.days_remaining < 0 %}var(--bad){% elif sd.days_remaining <= 7 %}var(--warn){% else %}var(--good){% endif %}">
+            {% if sd.days_remaining < 0 %}{{ -sd.days_remaining }}d late{% elif sd.days_remaining == 0 %}Today{% else %}{{ sd.days_remaining }}d{% endif %}
+          </div>
+        </div>
+        <div class="sched-stat" style="grid-column:1/-1">
+          <div class="sched-stat-label">Total Duration</div>
+          <div class="sched-stat-val">{{ sd.total_days }}d</div>
+        </div>
       </div>
-      <div class="hr"></div>
-      {% if intake.red_flags %}
-        <table class="table">
-          <thead>
-            <tr><th>Severity</th><th>Category</th><th>Flag</th><th>Detail</th></tr>
-          </thead>
-          <tbody>
-            {% for rf in intake.red_flags %}
-              <tr class="rf-row rf-row-{{ rf.severity }}">
-                <td><span class="{{ rf.severity|badge_class }}">{{ rf.severity }}</span></td>
-                <td class="subtle">{{ rf.category }}</td>
-                <td style="font-weight:800">{{ rf.title }}</td>
-                <td class="subtle">{{ rf.detail }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+
+      <div style="margin-top:16px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Shift IFP deadline</div>
+        <input type="range" class="sched-slider" id="sched-slider" min="-14" max="14" value="0" step="1" />
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:2px">
+          <span>−14d</span>
+          <span id="sched-shift-label" style="color:var(--text);font-weight:700">0</span>
+          <span>+14d</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn" id="sched-apply-btn" style="font-size:12px;padding:5px 14px;flex:1">Apply shift</button>
+          <button class="btn" id="sched-reset-btn" style="font-size:12px;padding:5px 10px" title="Reset slider">✕</button>
+        </div>
+        <div id="sched-save-msg" style="font-size:12px;color:var(--good);margin-top:6px;display:none">✓ Saved</div>
+        <div id="sched-err-msg"  style="font-size:12px;color:var(--bad);margin-top:6px;display:none"></div>
+      </div>
+    {% else %}
+      <div class="subtle small">Set an inquiry date and IFP due date on the intake to see the schedule dial.</div>
+      {% if intake.ifp_due_date %}
+      <div class="subtle small" style="margin-top:8px">IFP: {{ intake.ifp_due_date }}</div>
       {% else %}
-        <div class="good">No red flags detected.</div>
+      <div class="subtle small" style="margin-top:8px">No IFP date set. <a href="/intakes/{{ intake.id }}/edit">Edit intake</a> to add one.</div>
       {% endif %}
-      <div class="hr"></div>
+    {% endif %}
+  </div>
 
-      {# ── Email to Mo ── #}
-      <h2>Email to Mo</h2>
-      <div class="subtle" style="margin-bottom:10px">If flagged, copy this template and send to Mo.</div>
-      <div class="email-card">
-        <div id="mo-email" class="email-body">INTAKE FLAG: {{ intake.project_name }} — {{ intake.architect_name or "Architect TBD" }}
+</div>
+{% endif %}
+
+{# ── Zone 2: Accordion Sections ───────────────────────────────────────────── #}
+<div class="acc-group">
+
+  {# ── Summary & Details ── #}
+  <details class="acc-item" {% if 'summary' in default_open %}open{% endif %}>
+    <summary class="acc-hd">
+      <div class="acc-hd-left">
+        <span>Summary &amp; Details</span>
+        <span class="badge" style="font-size:11px">{{ intake.status }}</span>
+        {% if intake.recommendation %}<span class="subtle small">{{ intake.recommendation }}</span>{% endif %}
+      </div>
+      <span class="acc-chevron">▾</span>
+    </summary>
+    <div class="acc-body">
+      <div class="grid grid-2" style="margin-top:14px">
+
+        {# Summary card #}
+        <div>
+          <div class="kpi">
+            <span class="pill"><strong>Status</strong> {{ intake.status }}</span>
+            {% if intake.recommendation %}<span class="pill"><strong>Auto</strong> {{ intake.recommendation }}</span>{% endif %}
+            {% if fast_track %}<span class="badge badge-low">Fast Track Eligible</span>{% endif %}
+            <span class="pill"><strong>Updated</strong> {{ intake.updated_at }}</span>
+          </div>
+          <div class="hr"></div>
+          <div class="subtle">{{ intake.client_name or "—" }} • {{ intake.architect_name or "—" }}</div>
+          <div class="hr"></div>
+          <div class="row row-2">
+            <div><div class="subtle">Inquiry date</div><div>{{ intake.inquiry_date or "—" }}</div></div>
+            <div><div class="subtle">Submitted by</div><div>{{ intake.submitted_by or "—" }}</div></div>
+          </div>
+          <div class="row row-2" style="margin-top:10px">
+            <div><div class="subtle">Lead contact</div><div>{{ intake.lead_contact or "—" }}</div></div>
+            <div><div class="subtle">Location</div><div>{{ intake.location_region or "—" }}</div></div>
+          </div>
+          <div class="row row-2" style="margin-top:10px">
+            <div><div class="subtle">IFP due date</div><div>{{ intake.ifp_due_date or "—" }}</div></div>
+            <div><div class="subtle">Project #</div><div style="font-family:var(--mono);font-weight:700">{{ intake.project_number or "—" }}</div></div>
+          </div>
+          <div class="row row-2" style="margin-top:10px">
+            <div><div class="subtle">Approx. SF</div><div>{{ answers.get('approx_sf') or "—" }}</div></div>
+            <div><div class="subtle">Est. construction cost</div><div>{% if answers.get('est_construction_cost') %}${{ answers.get('est_construction_cost') }}{% else %}—{% endif %}</div></div>
+          </div>
+          <div class="row row-2" style="margin-top:10px">
+            <div><div class="subtle">Source of inquiry</div><div>{{ answers.get('inquiry_source') or "—" }}</div></div>
+            <div></div>
+          </div>
+          <div class="hr"></div>
+          <div class="subtle">Auto reason</div>
+          <div>{{ intake.recommendation_reason or "—" }}</div>
+          <div class="hr"></div>
+          <div class="actions">
+            <a class="btn" href="/intakes/{{ intake.id }}/edit">Edit</a>
+            <a class="btn btn-primary" href="/intakes/{{ intake.id }}/mo-review">Mo review</a>
+            {% if not intake.mo_decision %}
+              {% if intake.status == 'PENDING_MO_REVIEW' %}
+                <span class="badge" style="align-self:center">In Mo's Queue</span>
+              {% else %}
+                <form method="post" action="/intakes/{{ intake.id }}/push-to-mo" style="display:inline">
+                  <button type="submit" class="btn btn-queue">Push to Mo's Queue</button>
+                </form>
+              {% endif %}
+            {% endif %}
+          </div>
+          {% if mo_passcode_enabled %}
+            <div class="subtle small" style="margin-top:8px">Mo review is passcode-protected.</div>
+          {% endif %}
+        </div>
+
+        {# Red Flags card #}
+        <div>
+          <h2>Red Flags</h2>
+          {% set c = intake.red_flag_counts %}
+          <div class="kpi">
+            <span class="badge badge-critical">Critical {{ c.get("critical", 0) }}</span>
+            <span class="badge badge-high">High {{ c.get("high", 0) }}</span>
+            <span class="badge badge-medium">Medium {{ c.get("medium", 0) }}</span>
+            <span class="badge badge-low">Low {{ c.get("low", 0) }}</span>
+            <span class="badge">Total {{ c.get("total", 0) }}</span>
+          </div>
+          <div class="hr"></div>
+          {% if intake.red_flags %}
+            <table class="table">
+              <thead><tr><th>Severity</th><th>Category</th><th>Flag</th><th>Detail</th></tr></thead>
+              <tbody>
+                {% for rf in intake.red_flags %}
+                <tr class="rf-row rf-row-{{ rf.severity }}">
+                  <td><span class="{{ rf.severity|badge_class }}">{{ rf.severity }}</span></td>
+                  <td class="subtle">{{ rf.category }}</td>
+                  <td style="font-weight:800">{{ rf.title }}</td>
+                  <td class="subtle">{{ rf.detail }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <div class="good">No red flags detected.</div>
+          {% endif %}
+          <div class="hr"></div>
+          <h2>Email to Mo</h2>
+          <div class="subtle" style="margin-bottom:10px">If flagged, copy this template and send to Mo.</div>
+          <div class="email-card">
+            <div id="mo-email" class="email-body">INTAKE FLAG: {{ intake.project_name }} — {{ intake.architect_name or "Architect TBD" }}
 
 Client: {{ intake.client_name or "—" }}
 Inquiry date: {{ intake.inquiry_date or "—" }}
@@ -112,447 +233,585 @@ Red flags:
 {% endif %}
 
 Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline?</div>
-      </div>
-      <div style="margin-top:12px">
-        <button class="btn btn-copy-email" type="button" id="copy-email-btn" onclick="buildMoEmail()">
-          <span id="copy-btn-text">Copy to Clipboard</span>
-          <span id="copy-btn-check" style="display:none">&#10003; Copied!</span>
-        </button>
+          </div>
+          <div style="margin-top:12px">
+            <button class="btn btn-copy-email" type="button" id="copy-email-btn" onclick="buildMoEmail()">
+              <span id="copy-btn-text">Copy to Clipboard</span>
+              <span id="copy-btn-check" style="display:none">&#10003; Copied!</span>
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
-  </div>
+  </details>
 
-  {# ── Project Intelligence card (Phase 2 fields) ── #}
+  {# ── Project Intelligence ── #}
   {% set _ce = complexity_estimate %}
   {% if fee_range_estimate or (_ce and _ce != 'unknown') or cognasync_estimate %}
-  <div class="card pi-card" style="margin-top:14px">
-    <div class="pi-header">
-      <span class="pi-icon">&#9650;</span>
-      <span class="pi-title">Project Intelligence</span>
-      <span class="subtle small" style="margin-left:6px">Preliminary estimates — Mo confirms final fee</span>
-    </div>
-    <div class="pi-body">
-      {% if fee_range_estimate %}
-      <div class="pi-item">
-        <div class="subtle">Estimated Fee Range</div>
-        <div class="pi-value">{{ fee_range_estimate }}</div>
-        <div class="subtle small" style="margin-top:2px">Based on historical $/SF rates</div>
+  <details class="acc-item" {% if 'intel' in default_open %}open{% endif %}>
+    <summary class="acc-hd">
+      <div class="acc-hd-left">
+        <span>Project Intelligence</span>
+        {% if cognasync_estimate and not cognasync_estimate.needs_manual_review %}
+          <span class="subtle small">${{ "{:,.0f}".format(cognasync_estimate.suggested_fee_range.low) }}–${{ "{:,.0f}".format(cognasync_estimate.suggested_fee_range.high) }}</span>
+        {% endif %}
+      </div>
+      <span class="acc-chevron">▾</span>
+    </summary>
+    <div class="acc-body" style="padding-top:14px">
+      <div class="pi-body">
+        {% if fee_range_estimate %}
+        <div class="pi-item">
+          <div class="subtle">Estimated Fee Range</div>
+          <div class="pi-value">{{ fee_range_estimate }}</div>
+          <div class="subtle small" style="margin-top:2px">Based on historical $/SF rates</div>
+        </div>
+        {% endif %}
+        {% if _ce and _ce != 'unknown' %}
+        <div class="pi-item">
+          <div class="subtle">Complexity Estimate</div>
+          <div class="pi-value" style="margin-top:4px">
+            {% if _ce == 'low' %}<span class="badge badge-low">low</span>
+            {% elif _ce == 'medium' %}<span class="badge badge-high">medium</span>
+            {% elif _ce == 'high' %}<span class="badge badge-critical">high</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if cognasync_estimate and not cognasync_estimate.needs_manual_review %}
+      {% set cfe = cognasync_estimate %}
+      <div class="hr" style="margin:14px 0 10px"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="font-size:13px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--accent)">Risk-Adjusted Fee Estimator</span>
+        <span class="subtle small">{{ cfe.building_type | replace('_','') }} · {{ cfe.delivery_bucket | upper }} · ${{ "%.2f"|format(cfe.effective_rate_low) }}–${{ "%.2f"|format(cfe.effective_rate_high) }}/SF</span>
+      </div>
+      {% if cfe.fee_requires_review %}
+      <div style="background:rgba(255,183,77,0.10);border:1px solid rgba(255,183,77,0.4);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:10px;align-items:flex-start">
+        <span style="color:#ffb74d;font-size:16px;line-height:1.4">&#9888;</span>
+        <div>
+          <div style="font-weight:700;color:#ffb74d;font-size:13px;margin-bottom:2px">Fee requires Mo review before proposal</div>
+          <div class="subtle small">{{ cfe.review_reason }} — this estimate is directional only.</div>
+        </div>
       </div>
       {% endif %}
-      {% if _ce and _ce != 'unknown' %}
-      <div class="pi-item">
-        <div class="subtle">Complexity Estimate</div>
-        <div class="pi-value" style="margin-top:4px">
-          {% if _ce == 'low' %}
-            <span class="badge badge-low">low</span>
-          {% elif _ce == 'medium' %}
-            <span class="badge badge-high">medium</span>
-          {% elif _ce == 'high' %}
-            <span class="badge badge-critical">high</span>
+      <div style="background:rgba(79,142,247,0.08);border:1px solid rgba(79,142,247,0.2);border-radius:8px;padding:12px 16px;margin-bottom:12px">
+        <div class="subtle small" style="margin-bottom:4px">{% if cfe.fee_requires_review %}Rough Estimate (directional only){% else %}Suggested Fee Range{% endif %}</div>
+        <div style="font-size:1.5rem;font-weight:900">
+          ${{ "{:,.0f}".format(cfe.suggested_fee_range.low) }} – ${{ "{:,.0f}".format(cfe.suggested_fee_range.high) }}
+        </div>
+        {% if cfe.floor_applied %}
+        <div class="subtle small" style="margin-top:4px;color:#ffb74d">&#9650; Floor of ${{ "{:,.0f}".format(cfe.floor_fee) }} applied</div>
+        {% endif %}
+      </div>
+      <div class="pi-body" style="gap:10px;font-size:.85rem">
+        <div class="pi-item">
+          <div class="subtle">① Base ($/SF × SF)</div>
+          <div style="font-weight:700">${{ "{:,.0f}".format(cfe.base_fee_range.low) }} – ${{ "{:,.0f}".format(cfe.base_fee_range.high) }}</div>
+        </div>
+        <div class="pi-item">
+          <div class="subtle">② Complexity ({{ cfe.complexity_multiplier }}×)</div>
+          <div style="font-weight:700">${{ "{:,.0f}".format(cfe.complexity_adjusted_range.low) }} – ${{ "{:,.0f}".format(cfe.complexity_adjusted_range.high) }}</div>
+        </div>
+        <div class="pi-item">
+          <div class="subtle">③ Risk ({{ cfe.risk_multiplier }}× · {{ cfe.flag_count }} flag{{ 's' if cfe.flag_count != 1 else '' }})</div>
+          <div style="font-weight:700;color:{% if cfe.risk_multiplier >= 1.35 %}#e57373{% elif cfe.risk_multiplier >= 1.15 %}#ffb74d{% else %}#4caf7d{% endif %}">
+            ${{ "{:,.0f}".format(cfe.risk_adjusted_range.low) }} – ${{ "{:,.0f}".format(cfe.risk_adjusted_range.high) }}
+          </div>
+        </div>
+      </div>
+      {% if cfe.warnings %}
+      <div style="margin-top:10px;padding:8px 12px;background:rgba(229,115,115,0.10);border-left:3px solid #e57373;border-radius:4px">
+        <div class="subtle small" style="margin-bottom:4px;font-weight:700;color:#e57373">Risk flags ({{ cfe.flag_count }})</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          {% for w in cfe.warnings %}<span class="badge badge-high" style="font-size:11px">{{ w.replace('_', ' ') }}</span>{% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% endif %}
+    </div>
+  </details>
+  {% endif %}
+
+  {# ── Mo's Decision ── #}
+  <details class="acc-item" {% if 'mo' in default_open %}open{% endif %}>
+    <summary class="acc-hd">
+      <div class="acc-hd-left">
+        <span>Mo's Decision</span>
+        {% if intake.mo_decision %}
+          <span class="badge" style="font-size:11px">{{ intake.mo_decision }}</span>
+        {% else %}
+          <span class="subtle small">Pending</span>
+        {% endif %}
+      </div>
+      <span class="acc-chevron">▾</span>
+    </summary>
+    <div class="acc-body" style="padding-top:14px">
+      {% if intake.mo_decision %}
+        {% set _d = intake.mo_decision | lower %}
+        {% if 'proceed' in _d and 'condition' not in _d %}{% set decision_class = "mo-banner mo-banner-proceed" %}
+        {% elif 'decline' in _d %}{% set decision_class = "mo-banner mo-banner-decline" %}
+        {% elif 'clarif' in _d %}{% set decision_class = "mo-banner mo-banner-clarify" %}
+        {% elif 'condition' in _d %}{% set decision_class = "mo-banner mo-banner-conditions" %}
+        {% else %}{% set decision_class = "mo-banner mo-banner-neutral" %}
+        {% endif %}
+        <div class="{{ decision_class }}">
+          <div class="mo-banner-label">Mo Decision</div>
+          <div class="mo-banner-decision">{{ intake.mo_decision }}</div>
+          <div class="mo-banner-meta">Reviewed {{ intake.mo_reviewed_at }}</div>
+          {% if intake.mo_conditions %}
+            <div class="hr" style="margin:12px 0;opacity:.4"></div>
+            <div class="subtle">Conditions</div>
+            <div style="margin-top:4px">{{ intake.mo_conditions }}</div>
+          {% endif %}
+          {% if intake.mo_notes %}
+            <div class="hr" style="margin:12px 0;opacity:.4"></div>
+            <div class="subtle">Notes</div>
+            <div style="margin-top:4px">{{ intake.mo_notes }}</div>
+          {% endif %}
+          {% if intake.mo_fee_decision %}
+            <div class="hr" style="margin:12px 0;opacity:.4"></div>
+            <div class="subtle">Fee decision</div>
+            {% if intake.mo_fee_decision == 'ACCEPTED' %}
+              <div style="margin-top:4px;font-weight:700;color:#4caf7d">Accepted suggested range</div>
+              {% if cognasync_estimate %}
+              <div class="subtle small">${{ "{:,.0f}".format(cognasync_estimate.suggested_fee_range.low) }} – ${{ "{:,.0f}".format(cognasync_estimate.suggested_fee_range.high) }}</div>
+              {% endif %}
+            {% elif intake.mo_fee_decision == 'OVERRIDE' and intake.mo_fee_override %}
+              <div style="margin-top:4px;font-weight:700;color:#ffb74d">Mo override: ${{ "{:,.0f}".format(intake.mo_fee_override | float) }}</div>
+            {% elif intake.mo_fee_decision == 'DECLINED' %}
+              <div style="margin-top:4px;font-weight:700;color:#888">Deferred — fee not set at this stage</div>
+            {% endif %}
           {% endif %}
         </div>
-      </div>
-      {% endif %}
-    </div>
-
-    {# ── Risk-Adjusted Fee Estimator ── #}
-    {% if cognasync_estimate and not cognasync_estimate.needs_manual_review %}
-    {% set cfe = cognasync_estimate %}
-    <div class="hr" style="margin:14px 0 10px"></div>
-    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px">
-      <span style="font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--accent,#4f8ef7)">Risk-Adjusted Fee Estimator</span>
-      <span class="subtle small">{{ cfe.building_type | replace('_','') }} · {{ cfe.delivery_bucket | upper }} · ${{ "%.2f"|format(cfe.effective_rate_low) }}–${{ "%.2f"|format(cfe.effective_rate_high) }}/SF</span>
-    </div>
-
-    {# Review callout — shown when fee needs Mo review before use #}
-    {% if cfe.fee_requires_review %}
-    <div style="background:rgba(255,183,77,0.10); border:1px solid rgba(255,183,77,0.4); border-radius:8px; padding:10px 14px; margin-bottom:12px; display:flex; gap:10px; align-items:flex-start">
-      <span style="color:#ffb74d; font-size:16px; line-height:1.4">&#9888;</span>
-      <div>
-        <div style="font-weight:700; color:#ffb74d; font-size:13px; margin-bottom:2px">Fee requires Mo review before proposal</div>
-        <div class="subtle small">{{ cfe.review_reason }} — this estimate is directional only.</div>
-      </div>
-    </div>
-    {% endif %}
-
-    {# Suggested fee — prominent #}
-    <div style="background:rgba(79,142,247,0.08); border:1px solid rgba(79,142,247,0.2); border-radius:8px; padding:12px 16px; margin-bottom:12px">
-      <div class="subtle small" style="margin-bottom:4px">{% if cfe.fee_requires_review %}Rough Estimate (directional only){% else %}Suggested Fee Range{% endif %}</div>
-      <div style="font-size:1.5rem; font-weight:900">
-        ${{ "{:,.0f}".format(cfe.suggested_fee_range.low) }} – ${{ "{:,.0f}".format(cfe.suggested_fee_range.high) }}
-      </div>
-      {% if cfe.floor_applied %}
-      <div class="subtle small" style="margin-top:4px; color:#ffb74d">&#9650; Floor of ${{ "{:,.0f}".format(cfe.floor_fee) }} applied</div>
-      {% endif %}
-    </div>
-
-    {# Step-by-step breakdown #}
-    <div class="pi-body" style="gap:10px; font-size:.85rem">
-      <div class="pi-item">
-        <div class="subtle">① Base ($/SF × SF)</div>
-        <div style="font-weight:700">${{ "{:,.0f}".format(cfe.base_fee_range.low) }} – ${{ "{:,.0f}".format(cfe.base_fee_range.high) }}</div>
-      </div>
-      <div class="pi-item">
-        <div class="subtle">② Complexity ({{ cfe.complexity_multiplier }}×)</div>
-        <div style="font-weight:700">${{ "{:,.0f}".format(cfe.complexity_adjusted_range.low) }} – ${{ "{:,.0f}".format(cfe.complexity_adjusted_range.high) }}</div>
-      </div>
-      <div class="pi-item">
-        <div class="subtle">③ Risk ({{ cfe.risk_multiplier }}× · {{ cfe.flag_count }} flag{{ 's' if cfe.flag_count != 1 else '' }})</div>
-        <div style="font-weight:700; color:{% if cfe.risk_multiplier >= 1.35 %}#e57373{% elif cfe.risk_multiplier >= 1.15 %}#ffb74d{% else %}#4caf7d{% endif %}">
-          ${{ "{:,.0f}".format(cfe.risk_adjusted_range.low) }} – ${{ "{:,.0f}".format(cfe.risk_adjusted_range.high) }}
+      {% else %}
+        <div class="card mo-pending" style="margin-top:4px">
+          <div class="mo-pending-inner">
+            <div>
+              <div style="font-size:16px;font-weight:700;margin-bottom:4px">Mo Decision</div>
+              <div class="subtle">No decision recorded yet.</div>
+            </div>
+            <a class="btn btn-primary btn-mo-decide" href="/intakes/{{ intake.id }}/mo-review">Record Mo Decision</a>
+          </div>
         </div>
-      </div>
-    </div>
-
-    {% if cfe.warnings %}
-    <div style="margin-top:10px; padding:8px 12px; background:rgba(229,115,115,0.10); border-left:3px solid #e57373; border-radius:4px">
-      <div class="subtle small" style="margin-bottom:4px; font-weight:700; color:#e57373">Risk flags ({{ cfe.flag_count }})</div>
-      <div style="display:flex; flex-wrap:wrap; gap:6px">
-        {% for w in cfe.warnings %}
-          <span class="badge badge-high" style="font-size:11px">{{ w.replace('_', ' ') }}</span>
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-    {% endif %}
-
-  </div>
-  {% endif %}
-
-  {# ── Mo Decision ── #}
-  {% if intake.mo_decision %}
-    {% set _d = intake.mo_decision | lower %}
-    {% if 'proceed' in _d and 'condition' not in _d %}
-      {% set decision_class = "mo-banner mo-banner-proceed" %}
-    {% elif 'decline' in _d %}
-      {% set decision_class = "mo-banner mo-banner-decline" %}
-    {% elif 'clarif' in _d %}
-      {% set decision_class = "mo-banner mo-banner-clarify" %}
-    {% elif 'condition' in _d %}
-      {% set decision_class = "mo-banner mo-banner-conditions" %}
-    {% else %}
-      {% set decision_class = "mo-banner mo-banner-neutral" %}
-    {% endif %}
-  <div class="{{ decision_class }}" style="margin-top:14px">
-    <div class="mo-banner-label">Mo Decision</div>
-    <div class="mo-banner-decision">{{ intake.mo_decision }}</div>
-    <div class="mo-banner-meta">Reviewed {{ intake.mo_reviewed_at }}</div>
-    {% if intake.mo_conditions %}
-      <div class="hr" style="margin:12px 0; opacity:.4"></div>
-      <div class="subtle">Conditions</div>
-      <div style="margin-top:4px">{{ intake.mo_conditions }}</div>
-    {% endif %}
-    {% if intake.mo_notes %}
-      <div class="hr" style="margin:12px 0; opacity:.4"></div>
-      <div class="subtle">Notes</div>
-      <div style="margin-top:4px">{{ intake.mo_notes }}</div>
-    {% endif %}
-    {% if intake.mo_fee_decision %}
-      <div class="hr" style="margin:12px 0; opacity:.4"></div>
-      <div class="subtle">Fee decision</div>
-      {% if intake.mo_fee_decision == 'ACCEPTED' %}
-        <div style="margin-top:4px; font-weight:700; color:#4caf7d">Accepted suggested range</div>
-        {% if cognasync_estimate %}
-        <div class="subtle small">${{ "{:,.0f}".format(cognasync_estimate.suggested_fee_range.low) }} – ${{ "{:,.0f}".format(cognasync_estimate.suggested_fee_range.high) }}</div>
-        {% endif %}
-      {% elif intake.mo_fee_decision == 'OVERRIDE' and intake.mo_fee_override %}
-        <div style="margin-top:4px; font-weight:700; color:#ffb74d">Mo override: ${{ "{:,.0f}".format(intake.mo_fee_override | float) }}</div>
-      {% elif intake.mo_fee_decision == 'DECLINED' %}
-        <div style="margin-top:4px; font-weight:700; color:#888">Deferred — fee not set at this stage</div>
       {% endif %}
-    {% endif %}
-  </div>
-  {% else %}
-  <div class="card mo-pending" style="margin-top:14px">
-    <div class="mo-pending-inner">
-      <div>
-        <div style="font-size:16px; font-weight:700; margin-bottom:4px">Mo Decision</div>
-        <div class="subtle">No decision recorded yet.</div>
-      </div>
-      <a class="btn btn-primary btn-mo-decide" href="/intakes/{{ intake.id }}/mo-review">Record Mo Decision</a>
     </div>
-  </div>
-  {% endif %}
+  </details>
 
-  {# ── Proposal Prep Card ── #}
+  {# ── Proposal Prep & Generator ── #}
   {% if intake.status in ('PROCEED_TO_PROPOSAL', 'PROCEED_WITH_CONDITIONS') %}
   {% set _cl = proposal_checklist %}
   {% set _checked = (_cl.get('rfp_extracted', False)|int) + (_cl.get('project_classified', False)|int) + (_cl.get('complexity_assessed', False)|int) + (_cl.get('fee_estimated', False)|int) + (_cl.get('scope_items_determined', False)|int) + (_cl.get('proposal_drafted', False)|int) + (_cl.get('proposal_sent', False)|int) %}
-  <div class="card" id="proposal-prep" style="margin-top:14px">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
-      <h2 style="margin:0">Proposal Prep</h2>
-      <span class="pill" style="font-weight:700">{{ _checked }} of 7 complete</span>
-    </div>
-    {% if proposal_completed_at %}
-    <div style="background:#0d3d20; border:1px solid #1a7a3a; border-radius:6px; padding:10px 14px; margin-bottom:12px; color:#4caf7d; font-weight:600; font-size:14px">
-      Proposal completed on {{ proposal_completed_at[:10] }}
-    </div>
-    {% endif %}
-    <div style="background:rgba(255,255,255,0.08); border-radius:6px; height:6px; margin-bottom:14px; overflow:hidden">
-      <div style="background:var(--accent,#4f8ef7); height:100%; width:{{ (_checked / 7 * 100)|int }}%; transition:width .3s"></div>
-    </div>
+  <details class="acc-item" {% if 'proposal' in default_open %}open{% endif %}>
+    <summary class="acc-hd">
+      <div class="acc-hd-left">
+        <span>Proposal</span>
+        <span class="subtle small">{{ _checked }}/7 steps</span>
+        {% if intake.proposal_text %}<span class="badge badge-low" style="font-size:11px">Letter generated</span>{% endif %}
+        {% if proposal_completed_at %}<span class="badge" style="font-size:11px;background:rgba(0,230,118,.12);border-color:rgba(0,230,118,.35);color:var(--good)">Completed {{ proposal_completed_at[:10] }}</span>{% endif %}
+      </div>
+      <span class="acc-chevron">▾</span>
+    </summary>
+    <div class="acc-body" style="padding-top:14px">
 
-    {# Summary info #}
-    <div class="row row-2" style="margin-bottom:10px">
-      <div><div class="subtle">Project type</div><div>{{ answers.get('project_type') or '—' }}</div></div>
-      {% if complexity_estimate and complexity_estimate != 'unknown' %}
-      <div>
-        <div class="subtle">Complexity</div>
-        <div>
-          {% if complexity_estimate == 'low' %}<span class="badge badge-low">low</span>
-          {% elif complexity_estimate == 'medium' %}<span class="badge badge-high">medium</span>
-          {% elif complexity_estimate == 'high' %}<span class="badge badge-critical">high</span>
+      {# Proposal Prep checklist #}
+      <div id="proposal-prep">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <h2 style="margin:0">Proposal Prep</h2>
+          <span class="pill" style="font-weight:700">{{ _checked }} of 7 complete</span>
+        </div>
+        {% if proposal_completed_at %}
+        <div style="background:#0d3d20;border:1px solid #1a7a3a;border-radius:6px;padding:10px 14px;margin-bottom:12px;color:#4caf7d;font-weight:600;font-size:14px">
+          Proposal completed on {{ proposal_completed_at[:10] }}
+        </div>
+        {% endif %}
+        <div style="background:rgba(255,255,255,0.08);border-radius:6px;height:6px;margin-bottom:14px;overflow:hidden">
+          <div style="background:var(--accent);height:100%;width:{{ (_checked / 7 * 100)|int }}%;transition:width .3s"></div>
+        </div>
+        <div class="row row-2" style="margin-bottom:10px">
+          <div><div class="subtle">Project type</div><div>{{ answers.get('project_type') or '—' }}</div></div>
+          {% if complexity_estimate and complexity_estimate != 'unknown' %}
+          <div>
+            <div class="subtle">Complexity</div>
+            <div>
+              {% if complexity_estimate == 'low' %}<span class="badge badge-low">low</span>
+              {% elif complexity_estimate == 'medium' %}<span class="badge badge-high">medium</span>
+              {% elif complexity_estimate == 'high' %}<span class="badge badge-critical">high</span>
+              {% endif %}
+            </div>
+          </div>
           {% endif %}
         </div>
+        <div class="row row-2" style="margin-bottom:10px">
+          {% if fee_range_estimate %}
+          <div><div class="subtle">Fee range estimate</div><div>{{ fee_range_estimate }}</div></div>
+          {% endif %}
+          {% if answers.get('approx_sf') %}
+          <div><div class="subtle">Square footage</div><div>{{ answers.get('approx_sf') }} SF</div></div>
+          {% endif %}
+        </div>
+        {% if answers.get('est_construction_cost') %}
+        <div style="margin-bottom:10px">
+          <div class="subtle">Est. construction cost</div>
+          <div>${{ answers.get('est_construction_cost') }}</div>
+        </div>
+        {% endif %}
+        <div class="hr"></div>
+        <form method="POST" action="/intakes/{{ intake.id }}/proposal-checklist">
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+            {% set items = [
+              ('rfp_extracted',          'RFP data extracted (project name, location, SF, building type)'),
+              ('project_classified',     'Project classified (new construction or BTS)'),
+              ('complexity_assessed',    'Complexity assessed (low / medium / high)'),
+              ('fee_estimated',          'Fee estimated using tier matrix'),
+              ('scope_items_determined', 'Scope items determined (A–G or A–H)'),
+              ('proposal_drafted',       'Proposal drafted using standard template'),
+              ('proposal_sent',          'Proposal sent to client'),
+            ] %}
+            {% for key, label in items %}
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+              <input type="checkbox" name="{{ key }}" {% if _cl.get(key) %}checked{% endif %}
+                     style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+              <span style="{% if _cl.get(key) %}opacity:.5;text-decoration:line-through{% endif %}">{{ label }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          <button type="submit" class="btn btn-primary">Save checklist</button>
+        </form>
+      </div>
+
+      <div class="hr" style="margin:20px 0"></div>
+
+      {# Proposal Generator #}
+      {% if intake.mo_decision in ('PROCEED', 'PROCEED_WITH_CONDITIONS') %}
+      {% if intake.proposal_text %}
+      <div id="proposal-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div>
+            <h2 style="margin:0">Generated Proposal</h2>
+            {% if intake.proposal_generated_at %}<div class="subtle small" style="margin-top:2px">Generated {{ intake.proposal_generated_at[:10] }}</div>{% endif %}
+          </div>
+          <button class="btn" type="button" onclick="copyProposal()">Copy to Clipboard</button>
+        </div>
+        <pre id="proposal-text" style="white-space:pre-wrap;font-family:var(--mono);font-size:13px;line-height:1.6;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:16px;overflow-x:auto">{{ intake.proposal_text }}</pre>
+        <div class="hr" style="margin:14px 0 10px"></div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--muted)">Regenerate with different fee or notes:</div>
+        <form method="post" action="/intakes/{{ intake.id }}/generate-proposal" id="regen-form">
+          <div class="row row-2" style="margin-bottom:12px">
+            <div class="field">
+              <label>Fee Amount ($)</label>
+              <input type="number" name="fee_amount" min="1000" step="500" value="{{ proposal_fee_default or '' }}" required />
+            </div>
+            <div class="field">
+              <label>Structural system / scope notes (optional)</label>
+              <input type="text" name="structural_system" placeholder="e.g. tilt-up panels, metal deck, slab on grade" value="{{ answers.get('structural_system') or '' }}" />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary" id="regen-btn">Regenerate Proposal</button>
+          <span id="regen-status" class="subtle small" style="margin-left:10px;display:none">Generating with Claude…</span>
+        </form>
+      </div>
+      {% else %}
+      <div id="proposal-section" style="border-left:3px solid rgba(79,142,247,0.4);padding-left:14px">
+        <h2 style="margin-top:0">Generate Proposal Letter</h2>
+        <div class="subtle" style="margin-bottom:14px">
+          Mo approved this intake. Enter the approved fee and Claude will draft the full proposal letter based on the AVS template.
+        </div>
+        <form method="post" action="/intakes/{{ intake.id }}/generate-proposal" id="gen-form">
+          <div class="row row-2" style="margin-bottom:12px">
+            <div class="field">
+              <label>Approved Fee Amount ($) *</label>
+              <input type="number" name="fee_amount" min="1000" step="500" value="{{ proposal_fee_default or '' }}" required />
+              {% if proposal_fee_default %}<div class="subtle small" style="margin-top:4px">Pre-filled from Mo's fee decision</div>{% endif %}
+            </div>
+            <div class="field">
+              <label>Structural system / scope notes (optional)</label>
+              <input type="text" name="structural_system" placeholder="e.g. tilt-up panels, metal deck on steel joists, slab on grade" value="{{ answers.get('structural_system') or '' }}" />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-submit" id="gen-btn">Generate Proposal</button>
+          <span id="gen-status" class="subtle small" style="margin-left:10px;display:none">Generating with Claude — ~10 seconds…</span>
+        </form>
       </div>
       {% endif %}
-    </div>
-    <div class="row row-2" style="margin-bottom:10px">
-      {% if fee_range_estimate %}
-      <div><div class="subtle">Fee range estimate</div><div>{{ fee_range_estimate }}</div></div>
       {% endif %}
-      {% if answers.get('approx_sf') %}
-      <div><div class="subtle">Square footage</div><div>{{ answers.get('approx_sf') }} SF</div></div>
-      {% endif %}
-    </div>
-    {% if answers.get('est_construction_cost') %}
-    <div style="margin-bottom:10px">
-      <div class="subtle">Est. construction cost</div>
-      <div>${{ answers.get('est_construction_cost') }}</div>
-    </div>
-    {% endif %}
 
-    <div class="hr"></div>
-
-    {# Checklist #}
-    <form method="POST" action="/intakes/{{ intake.id }}/proposal-checklist">
-      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px">
-        {% set items = [
-          ('rfp_extracted',          'RFP data extracted (project name, location, SF, building type)'),
-          ('project_classified',     'Project classified (new construction or BTS)'),
-          ('complexity_assessed',    'Complexity assessed (low / medium / high)'),
-          ('fee_estimated',          'Fee estimated using tier matrix'),
-          ('scope_items_determined', 'Scope items determined (A–G or A–H)'),
-          ('proposal_drafted',       'Proposal drafted using standard template'),
-          ('proposal_sent',          'Proposal sent to client'),
-        ] %}
-        {% for key, label in items %}
-        <label style="display:flex; align-items:center; gap:10px; cursor:pointer">
-          <input type="checkbox" name="{{ key }}" {% if _cl.get(key) %}checked{% endif %}
-                 style="width:16px; height:16px; accent-color:var(--accent,#4f8ef7); cursor:pointer">
-          <span style="{% if _cl.get(key) %}opacity:.5; text-decoration:line-through{% endif %}">{{ label }}</span>
-        </label>
-        {% endfor %}
-      </div>
-      <button type="submit" class="btn btn-primary">Save checklist</button>
-    </form>
-  </div>
+    </div>
+  </details>
   {% endif %}
 
-
-  {# ── Proposal Generator ── #}
-  {% if intake.mo_decision in ('PROCEED', 'PROCEED_WITH_CONDITIONS') %}
-
-  {% if intake.proposal_text %}
-  {# ── Existing proposal ── #}
-  <div class="card" id="proposal-section" style="margin-top:14px">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px">
-      <div>
-        <h2 style="margin:0">Generated Proposal</h2>
-        {% if intake.proposal_generated_at %}
-          <div class="subtle small" style="margin-top:2px">Generated {{ intake.proposal_generated_at[:10] }}</div>
+  {# ── Time Entries ── #}
+  {% if intake.project_number %}
+  <details class="acc-item" {% if 'budget' in default_open %}open{% endif %}>
+    <summary class="acc-hd">
+      <div class="acc-hd-left">
+        <span>Time Entries</span>
+        {% if hours_burned_pct is not none %}
+          <span class="subtle small" style="font-family:var(--mono)">{{ hours_burned_pct }}% of budget burned</span>
         {% endif %}
       </div>
-      <button class="btn" type="button" onclick="copyProposal()">Copy to Clipboard</button>
+      <span class="acc-chevron">▾</span>
+    </summary>
+    <div class="acc-body" style="padding-top:14px">
+      <div id="te-wrap"><div class="subtle small">Loading…</div></div>
     </div>
-    <pre id="proposal-text" style="white-space:pre-wrap; font-family:var(--mono); font-size:13px; line-height:1.6; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:16px; overflow-x:auto">{{ intake.proposal_text }}</pre>
-    <div class="hr" style="margin:14px 0 10px"></div>
-    <div style="font-size:13px; font-weight:600; margin-bottom:10px; color:var(--muted)">Regenerate with different fee or notes:</div>
-    <form method="post" action="/intakes/{{ intake.id }}/generate-proposal" id="regen-form">
-      <div class="row row-2" style="margin-bottom:12px">
-        <div class="field">
-          <label>Fee Amount ($)</label>
-          <input type="number" name="fee_amount" min="1000" step="500"
-                 value="{{ proposal_fee_default or '' }}" required />
-        </div>
-        <div class="field">
-          <label>Structural system / scope notes (optional)</label>
-          <input type="text" name="structural_system" placeholder="e.g. tilt-up panels, metal deck, slab on grade"
-                 value="{{ answers.get('structural_system') or '' }}" />
-        </div>
-      </div>
-      <button type="submit" class="btn btn-primary" id="regen-btn">Regenerate Proposal</button>
-      <span id="regen-status" class="subtle small" style="margin-left:10px; display:none">Generating with Claude…</span>
-    </form>
-  </div>
-
-  {% else %}
-  {# ── Generate for first time ── #}
-  <div class="card" id="proposal-section" style="margin-top:14px; border-left:3px solid rgba(79,142,247,0.4)">
-    <h2 style="margin-top:0">Generate Proposal Letter</h2>
-    <div class="subtle" style="margin-bottom:14px">
-      Mo approved this intake. Enter the approved fee and Claude will draft the full proposal letter based on the AVS template.
-    </div>
-    <form method="post" action="/intakes/{{ intake.id }}/generate-proposal" id="gen-form">
-      <div class="row row-2" style="margin-bottom:12px">
-        <div class="field">
-          <label>Approved Fee Amount ($) *</label>
-          <input type="number" name="fee_amount" min="1000" step="500"
-                 value="{{ proposal_fee_default or '' }}" required />
-          {% if proposal_fee_default %}
-            <div class="subtle small" style="margin-top:4px">Pre-filled from Mo's fee decision</div>
-          {% endif %}
-        </div>
-        <div class="field">
-          <label>Structural system / scope notes (optional)</label>
-          <input type="text" name="structural_system"
-                 placeholder="e.g. tilt-up panels, metal deck on steel joists, slab on grade"
-                 value="{{ answers.get('structural_system') or '' }}" />
-        </div>
-      </div>
-      <button type="submit" class="btn btn-primary btn-submit" id="gen-btn">Generate Proposal</button>
-      <span id="gen-status" class="subtle small" style="margin-left:10px; display:none">Generating with Claude — ~10 seconds…</span>
-    </form>
-  </div>
-  {% endif %}
+  </details>
   {% endif %}
 
-  <script>
-  function copyProposal() {
-    var text = document.getElementById('proposal-text').textContent;
-    navigator.clipboard.writeText(text).then(function() {
-      var btn = event.target;
-      btn.textContent = '✓ Copied!';
-      setTimeout(function() { btn.textContent = 'Copy to Clipboard'; }, 2000);
-    });
-  }
-  ['gen-form','regen-form'].forEach(function(id) {
-    var f = document.getElementById(id);
-    if (!f) return;
-    f.addEventListener('submit', function() {
-      var btn = f.querySelector('[type=submit]');
-      var status = document.getElementById(id === 'gen-form' ? 'gen-status' : 'regen-status');
-      btn.disabled = true;
-      btn.textContent = 'Generating…';
-      if (status) status.style.display = 'inline';
-    });
+</div>
+
+{# ── Scripts ─────────────────────────────────────────────────────────────── #}
+<script>
+var _intakeId = {{ intake.id }};
+
+// ── Email copy ────────────────────────────────────────────────────────────
+function buildMoEmail() {
+  var text = document.getElementById('mo-email').textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    document.getElementById('copy-btn-text').style.display = 'none';
+    document.getElementById('copy-btn-check').style.display = 'inline';
+    setTimeout(function() {
+      document.getElementById('copy-btn-text').style.display = 'inline';
+      document.getElementById('copy-btn-check').style.display = 'none';
+    }, 2000);
   });
-  </script>
+}
 
-  {# ── Phase Budget Panel ── #}
-  {% if intake.mo_decision in ('PROCEED', 'PROCEED_WITH_CONDITIONS') and intake.project_number %}
-  <div class="card" id="phase-budget-panel" style="margin-top:14px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-      <div>
-        <h2 style="margin:0">Phase Hour Budgets</h2>
-        <div class="subtle small" style="margin-top:2px">Project #{{ intake.project_number }} — click any Budgeted Hours cell to edit</div>
-      </div>
-      <div id="pb-save-status" style="font-size:12px;color:var(--good);display:none">✓ Saved</div>
-    </div>
-    <div id="phase-budget-table-wrap">
-      <div class="subtle small">Loading…</div>
-    </div>
-  </div>
+// ── Proposal copy ─────────────────────────────────────────────────────────
+function copyProposal() {
+  var el = document.getElementById('proposal-text');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(function() {
+    var btn = event.target;
+    btn.textContent = '✓ Copied!';
+    setTimeout(function() { btn.textContent = 'Copy to Clipboard'; }, 2000);
+  });
+}
 
-  <script>
-  (function() {
-    var intakeId = {{ intake.id }};
+// ── Proposal form loading indicators ──────────────────────────────────────
+['gen-form','regen-form'].forEach(function(id) {
+  var f = document.getElementById(id);
+  if (!f) return;
+  f.addEventListener('submit', function() {
+    var btn = f.querySelector('[type=submit]');
+    var status = document.getElementById(id === 'gen-form' ? 'gen-status' : 'regen-status');
+    btn.disabled = true;
+    btn.textContent = 'Generating…';
+    if (status) status.style.display = 'inline';
+  });
+});
 
-    function pctColor(pct) {
-      if (pct === null || pct === undefined) return 'var(--muted)';
-      if (pct > 100) return 'var(--bad)';
-      if (pct >= 80)  return 'var(--warn)';
-      return 'var(--good)';
+// ── Phase / Resource Matrix ───────────────────────────────────────────────
+(function() {
+  var wrap = document.getElementById('phase-matrix-wrap');
+  if (!wrap) return;
+
+  function pctColor(p) {
+    if (p === null || p === undefined) return 'var(--muted)';
+    if (p > 100) return 'var(--bad)';
+    if (p >= 80)  return 'var(--warn)';
+    return 'var(--good)';
+  }
+
+  function loadMatrix() {
+    fetch('/api/intakes/' + _intakeId + '/phase-matrix')
+      .then(r => r.json())
+      .then(data => renderMatrix(data))
+      .catch(() => { wrap.innerHTML = '<div class="subtle small">Could not load matrix.</div>'; });
+  }
+
+  function renderMatrix(data) {
+    var phases = data.phases || [];
+    var totals = data.totals || {};
+    if (!phases.length) {
+      wrap.innerHTML = '<div class="subtle small">No phase budgets yet. Approve with a fee to auto-generate.</div>';
+      return;
     }
 
-    function loadBudgets() {
-      fetch('/api/intakes/' + intakeId + '/phase-budgets')
-        .then(r => r.json())
-        .then(rows => renderBudgetTable(rows))
-        .catch(() => {
-          document.getElementById('phase-budget-table-wrap').innerHTML =
-            '<div class="subtle small">Could not load phase budgets.</div>';
+    var html = '<table class="table"><thead><tr>' +
+      '<th>Phase</th><th>Budget</th><th>Used</th><th>Remaining</th><th>%</th><th style="width:32px"></th>' +
+      '</tr></thead><tbody>';
+
+    phases.forEach(function(p, idx) {
+      var pc = pctColor(p.pct_used);
+      var engId = 'pm-eng-' + idx;
+      html += '<tr class="pm-phase-row table-row" onclick="toggleEngRows(\'' + engId + '\', this)">' +
+        '<td style="font-family:var(--mono);font-weight:700">' + p.phase_code + '</td>' +
+        '<td class="budget-edit-cell" data-phase="' + p.phase_code + '" data-value="' + p.budgeted_hours + '" ' +
+            'style="font-family:var(--mono);cursor:pointer;text-decoration:underline dotted" title="Click to edit" ' +
+            'onclick="event.stopPropagation();editBudgetCell(this)">' +
+          p.budgeted_hours.toFixed(1) + 'h</td>' +
+        '<td style="font-family:var(--mono)">' + p.hours_used.toFixed(1) + 'h</td>' +
+        '<td style="font-family:var(--mono);color:' + (p.remaining < 0 ? 'var(--bad)' : 'inherit') + '">' +
+          p.remaining.toFixed(1) + 'h</td>' +
+        '<td style="font-family:var(--mono);font-weight:700;color:' + pc + '">' +
+          (p.pct_used !== null ? p.pct_used.toFixed(0) + '%' : '—') + '</td>' +
+        '<td style="font-size:11px;color:var(--muted);text-align:center">' +
+          (p.engineers && p.engineers.length ? '▾' : '') + '</td>' +
+        '</tr>';
+
+      if (p.engineers && p.engineers.length) {
+        html += '<tr id="' + engId + '" style="display:none"><td colspan="6" style="padding:0">' +
+          '<table style="width:100%;border-collapse:collapse">';
+        p.engineers.forEach(function(e) {
+          html += '<tr class="pm-eng-row">' +
+            '<td style="padding:4px 10px 4px 24px;font-family:var(--mono);font-size:12px">' +
+              '<span class="pm-eng-dot" style="background:' + e.color + '"></span>' +
+              e.initials + '</td>' +
+            '<td style="font-size:12px;color:var(--muted);padding:4px 10px">' + (e.role || '') + '</td>' +
+            '<td colspan="4" style="font-family:var(--mono);font-size:12px;padding:4px 10px">' + e.hours.toFixed(1) + 'h</td>' +
+            '</tr>';
         });
-    }
+        html += '</table></td></tr>';
+      }
+    });
 
-    function renderBudgetTable(rows) {
-      if (!rows.length) {
-        document.getElementById('phase-budget-table-wrap').innerHTML =
-          '<div class="subtle small">No phase budgets generated yet. Approve with a fee to auto-generate.</div>';
+    html += '</tbody><tfoot><tr style="border-top:2px solid var(--border)">' +
+      '<td style="font-weight:800">Total</td>' +
+      '<td style="font-family:var(--mono);font-weight:700">' + (totals.budgeted_hours||0).toFixed(1) + 'h</td>' +
+      '<td style="font-family:var(--mono);font-weight:700">' + (totals.hours_used||0).toFixed(1) + 'h</td>' +
+      '<td style="font-family:var(--mono);font-weight:700;color:' + (totals.remaining < 0 ? 'var(--bad)' : 'inherit') + '">' +
+        (totals.remaining||0).toFixed(1) + 'h</td>' +
+      '<td style="font-family:var(--mono);font-weight:700;color:' + pctColor(totals.pct_used) + '">' +
+        (totals.pct_used||0).toFixed(0) + '%</td>' +
+      '<td></td>' +
+      '</tr></tfoot></table>';
+
+    wrap.innerHTML = html;
+  }
+
+  window.toggleEngRows = function(engId, phaseRow) {
+    var row = document.getElementById(engId);
+    if (!row) return;
+    var isOpen = row.style.display !== 'none';
+    row.style.display = isOpen ? 'none' : 'table-row';
+    var chevron = phaseRow.querySelector('td:last-child');
+    if (chevron) chevron.textContent = isOpen ? '▾' : '▴';
+  };
+
+  window.editBudgetCell = function(cell) {
+    if (cell.querySelector('input')) return;
+    var phase = cell.dataset.phase;
+    var current = parseFloat(cell.dataset.value);
+    var orig = cell.innerHTML;
+    cell.innerHTML = '<input type="number" min="0" step="0.5" value="' + current + '" ' +
+      'style="width:80px;font-family:var(--mono);font-size:13px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px" />';
+    var inp = cell.querySelector('input');
+    inp.focus(); inp.select();
+    function save() {
+      var val = parseFloat(inp.value);
+      if (isNaN(val) || val < 0) { cell.innerHTML = orig; return; }
+      fetch('/api/intakes/' + _intakeId + '/phase-budgets/' + encodeURIComponent(phase), {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({budgeted_hours: val}),
+      }).then(() => {
+        var st = document.getElementById('pm-save-status');
+        if (st) { st.style.display = 'inline'; setTimeout(() => st.style.display = 'none', 1800); }
+        loadMatrix();
+      }).catch(() => { cell.innerHTML = orig; });
+    }
+    inp.addEventListener('blur', save);
+    inp.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') inp.blur();
+      if (e.key === 'Escape') cell.innerHTML = orig;
+    });
+  };
+
+  loadMatrix();
+})();
+
+// ── Schedule slider ───────────────────────────────────────────────────────
+(function() {
+  var slider = document.getElementById('sched-slider');
+  if (!slider) return;
+  var applyBtn = document.getElementById('sched-apply-btn');
+  var resetBtn = document.getElementById('sched-reset-btn');
+  var shiftLabel = document.getElementById('sched-shift-label');
+  var saveMsg = document.getElementById('sched-save-msg');
+  var errMsg  = document.getElementById('sched-err-msg');
+  var endLabel = document.getElementById('sched-end-label');
+
+  slider.addEventListener('input', function() {
+    var v = parseInt(this.value);
+    shiftLabel.textContent = (v > 0 ? '+' : '') + v;
+    shiftLabel.style.color = v === 0 ? 'var(--text)' : v > 0 ? 'var(--warn)' : 'var(--accent)';
+  });
+
+  applyBtn.addEventListener('click', async function() {
+    var shift = parseInt(slider.value);
+    if (shift === 0) return;
+    saveMsg.style.display = 'none';
+    errMsg.style.display  = 'none';
+    applyBtn.disabled = true;
+    try {
+      var resp = await fetch('/api/intakes/' + _intakeId + '/schedule', {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({shift_days: shift}),
+      });
+      var data = await resp.json();
+      if (resp.ok && data.ifp_due_date) {
+        if (endLabel) endLabel.textContent = data.ifp_due_date;
+        saveMsg.textContent = '✓ IFP shifted to ' + data.ifp_due_date;
+        saveMsg.style.display = 'block';
+        slider.value = '0';
+        shiftLabel.textContent = '0';
+        shiftLabel.style.color = 'var(--text)';
+        setTimeout(() => saveMsg.style.display = 'none', 3000);
+      } else {
+        errMsg.textContent = data.detail || 'Error shifting date.';
+        errMsg.style.display = 'block';
+      }
+    } catch(e) {
+      errMsg.textContent = 'Network error.';
+      errMsg.style.display = 'block';
+    } finally {
+      applyBtn.disabled = false;
+    }
+  });
+
+  resetBtn.addEventListener('click', function() {
+    slider.value = '0';
+    shiftLabel.textContent = '0';
+    shiftLabel.style.color = 'var(--text)';
+  });
+})();
+
+// ── Time Entries ──────────────────────────────────────────────────────────
+(function() {
+  var wrap = document.getElementById('te-wrap');
+  if (!wrap) return;
+
+  var teamColors = {{ (db_team_colors or {})|tojson }};
+
+  fetch('/api/intakes/' + _intakeId + '/time-entries')
+    .then(r => r.json())
+    .then(function(entries) {
+      if (!entries.length) {
+        wrap.innerHTML = '<div class="subtle small">No time entries logged for this project yet.</div>';
         return;
       }
-      var totalBudget = 0, totalUsed = 0;
-      rows.forEach(r => { totalBudget += r.budgeted_hours; totalUsed += r.hours_used; });
-      var totalRemaining = totalBudget - totalUsed;
-      var totalPct = totalBudget > 0 ? (totalUsed / totalBudget * 100) : 0;
-
       var html = '<table class="table"><thead><tr>' +
-        '<th>Phase</th><th>Budgeted Hours</th><th>Hours Used</th><th>Remaining</th><th>% Used</th>' +
+        '<th>Date</th><th>Engineer</th><th>Phase</th><th>Hours</th><th>Notes</th>' +
         '</tr></thead><tbody>';
-
-      rows.forEach(r => {
-        var pc = pctColor(r.pct_used);
+      entries.forEach(function(e) {
+        var color = teamColors[e.engineer_initials] || '#888';
         html += '<tr class="table-row">' +
-          '<td style="font-family:var(--mono);font-weight:700">' + r.phase_code + '</td>' +
-          '<td class="budget-edit-cell" data-phase="' + r.phase_code + '" data-value="' + r.budgeted_hours + '" ' +
-              'style="font-family:var(--mono);cursor:pointer;text-decoration:underline dotted" ' +
-              'title="Click to edit" onclick="editBudgetCell(this)">' +
-            r.budgeted_hours.toFixed(1) + ' h</td>' +
-          '<td style="font-family:var(--mono)">' + r.hours_used.toFixed(1) + ' h</td>' +
-          '<td style="font-family:var(--mono);color:' + (r.remaining < 0 ? 'var(--bad)' : 'inherit') + '">' +
-            r.remaining.toFixed(1) + ' h</td>' +
-          '<td style="font-family:var(--mono);font-weight:700;color:' + pc + '">' +
-            (r.pct_used !== null ? r.pct_used.toFixed(0) + '%' : '—') + '</td>' +
+          '<td style="font-family:var(--mono);font-size:12px">' + e.entry_date + '</td>' +
+          '<td><span class="pm-eng-dot" style="background:' + color + '"></span>' + e.engineer_initials + '</td>' +
+          '<td style="font-family:var(--mono);font-weight:700">' + (e.phase_code||'—') + '</td>' +
+          '<td style="font-family:var(--mono)">' + parseFloat(e.hours).toFixed(1) + 'h</td>' +
+          '<td class="subtle">' + (e.notes || '') + '</td>' +
           '</tr>';
       });
-
-      html += '</tbody><tfoot><tr style="border-top:2px solid var(--border)">' +
-        '<td style="font-weight:800">Total</td>' +
-        '<td style="font-family:var(--mono);font-weight:700">' + totalBudget.toFixed(1) + ' h</td>' +
-        '<td style="font-family:var(--mono);font-weight:700">' + totalUsed.toFixed(1) + ' h</td>' +
-        '<td style="font-family:var(--mono);font-weight:700;color:' + (totalRemaining < 0 ? 'var(--bad)' : 'inherit') + '">' +
-          totalRemaining.toFixed(1) + ' h</td>' +
-        '<td style="font-family:var(--mono);font-weight:700;color:' + pctColor(totalPct) + '">' +
-          totalPct.toFixed(0) + '%</td>' +
-        '</tr></tfoot></table>';
-
-      document.getElementById('phase-budget-table-wrap').innerHTML = html;
-    }
-
-    window.editBudgetCell = function(cell) {
-      if (cell.querySelector('input')) return;
-      var phase = cell.dataset.phase;
-      var current = parseFloat(cell.dataset.value);
-      var orig = cell.innerHTML;
-      cell.innerHTML = '<input type="number" min="0" step="0.5" value="' + current + '" ' +
-        'style="width:80px;font-family:var(--mono);font-size:13px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px" />';
-      var inp = cell.querySelector('input');
-      inp.focus(); inp.select();
-
-      function save() {
-        var val = parseFloat(inp.value);
-        if (isNaN(val) || val < 0) { cell.innerHTML = orig; return; }
-        fetch('/api/intakes/' + intakeId + '/phase-budgets/' + encodeURIComponent(phase), {
-          method: 'PATCH',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({budgeted_hours: val}),
-        }).then(r => r.json()).then(() => {
-          var st = document.getElementById('pb-save-status');
-          if (st) { st.style.display = 'inline'; setTimeout(() => st.style.display = 'none', 1800); }
-          loadBudgets();
-        }).catch(() => { cell.innerHTML = orig; });
-      }
-
-      inp.addEventListener('blur', save);
-      inp.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') { inp.blur(); }
-        if (e.key === 'Escape') { cell.innerHTML = orig; }
-      });
-    };
-
-    loadBudgets();
-  })();
-  </script>
-  {% endif %}
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+    })
+    .catch(() => { wrap.innerHTML = '<div class="subtle small">Could not load time entries.</div>'; });
+})();
+</script>
 
 {% endblock %}

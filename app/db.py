@@ -403,6 +403,18 @@ TEAM_COLORS = {
     "RK": "#0d9488",  # teal-600
 }
 
+ENGINEER_ROLES = {
+    "MK": "Principal",
+    "NK": "Sr. Engineer",
+    "RS": "Engineer",
+    "RO": "Engineer",
+    "SW": "Engineer",
+    "JP": "Designer",
+    "JW": "Designer",
+    "JR": "Project Manager",
+    "RK": "Engineer",
+}
+
 VALID_PHASES = list(PHASE_COLORS.keys())
 
 
@@ -775,6 +787,29 @@ def update_phase_budget(intake_id: int, phase_code: str, budgeted_hours: float) 
         .eq("phase_code", phase_code)
         .execute()
     )
+
+
+def update_intake_ifp_date(intake_id: int, ifp_due_date: str) -> None:
+    (
+        _client()
+        .table("intakes")
+        .update({"ifp_due_date": ifp_due_date, "updated_at": _utc_now_iso()})
+        .eq("id", intake_id)
+        .execute()
+    )
+
+
+def list_time_entries_for_intake(intake_id: int) -> list[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("time_entries")
+        .select("*")
+        .eq("intake_id", intake_id)
+        .order("entry_date", desc=True)
+        .order("id", desc=True)
+        .execute()
+    )
+    return resp.data or []
 
 
 # ── Time Entries ─────────────────────────────────────────────────────────────

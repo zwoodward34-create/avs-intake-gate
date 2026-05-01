@@ -312,9 +312,11 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
     )
     # Default fee for proposal generation form
     proposal_fee_default: Optional[float] = None
+    approved_fee: Optional[float] = None
     if intake.mo_fee_decision == "OVERRIDE" and intake.mo_fee_override:
         try:
             proposal_fee_default = float(intake.mo_fee_override)
+            approved_fee = proposal_fee_default
         except (ValueError, TypeError):
             pass
     elif (
@@ -327,6 +329,56 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
         hi = fee_range.get("high") or 0
         if lo and hi:
             proposal_fee_default = round((lo + hi) / 2 / 500) * 500
+            approved_fee = proposal_fee_default
+
+    # Command header: hours burned % from phase budgets
+    phase_budgets = db.list_phase_budgets(intake_id) if intake.project_number else []
+    total_budget = sum(b["budgeted_hours"] for b in phase_budgets)
+    total_used = sum(b["hours_used"] for b in phase_budgets)
+    hours_burned_pct: Optional[float] = (
+        round(total_used / total_budget * 100, 1) if total_budget > 0 else None
+    )
+
+    # Days to IFP and schedule data
+    days_to_ifp: Optional[int] = None
+    schedule_data: dict = {}
+    today_d = date.today()
+    if intake.ifp_due_date:
+        try:
+            ifp_d = date.fromisoformat(intake.ifp_due_date)
+            days_to_ifp = (ifp_d - today_d).days
+            if intake.inquiry_date:
+                start_d = date.fromisoformat(intake.inquiry_date)
+                total_days = (ifp_d - start_d).days
+                elapsed = (today_d - start_d).days
+                pct = max(0, min(100, round(elapsed / total_days * 100, 1))) if total_days > 0 else 100
+                schedule_data = {
+                    "start": intake.inquiry_date,
+                    "end": intake.ifp_due_date,
+                    "today": today_d.isoformat(),
+                    "total_days": total_days,
+                    "elapsed_days": elapsed,
+                    "days_remaining": days_to_ifp,
+                    "pct": pct,
+                }
+        except (ValueError, AttributeError):
+            pass
+
+    # Default open accordion sections
+    c = intake.red_flag_counts
+    default_open: set[str] = set()
+    if not intake.mo_decision:
+        default_open.add("summary")
+    if c.get("critical", 0) > 0 or c.get("high", 0) > 0:
+        default_open.add("flags")
+    if intake.mo_decision:
+        default_open.add("mo")
+    if intake.status in ("PROCEED_TO_PROPOSAL", "PROCEED_WITH_CONDITIONS"):
+        default_open.add("proposal")
+        if intake.project_number:
+            default_open.add("budget")
+    if not default_open:
+        default_open.add("summary")
 
     return templates.TemplateResponse(
         "intake_view.html",
@@ -344,6 +396,13 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
             "checklist_keys": CHECKLIST_KEYS,
             "proposal_completed_at": intake.proposal_completed_at,
             "proposal_fee_default": proposal_fee_default,
+            "approved_fee": approved_fee,
+            "phase_budgets": phase_budgets,
+            "hours_burned_pct": hours_burned_pct,
+            "days_to_ifp": days_to_ifp,
+            "schedule_data": schedule_data,
+            "default_open": default_open,
+            "db_team_colors": db.TEAM_COLORS,
         },
     )
 
@@ -1304,6 +1363,79 @@ async def api_update_phase_budget(
         raise HTTPException(status_code=400, detail="budgeted_hours must be non-negative.")
     db.update_phase_budget(intake_id, phase_code, budgeted_hours)
     return {"success": True, "intake_id": intake_id, "phase_code": phase_code, "budgeted_hours": budgeted_hours}
+
+
+@app.get("/api/intakes/{intake_id}/phase-matrix")
+def api_phase_matrix(intake_id: int) -> dict[str, Any]:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    budgets = db.list_phase_budgets(intake_id)
+    entries = db.list_time_entries_for_intake(intake_id)
+
+    by_phase_eng: dict[str, dict[str, float]] = {}
+    for e in entries:
+        phase = e["phase_code"]
+        eng = e["engineer_initials"]
+        by_phase_eng.setdefault(phase, {})
+        by_phase_eng[phase][eng] = by_phase_eng[phase].get(eng, 0.0) + float(e["hours"])
+
+    total_budget = total_used = 0.0
+    phases = []
+    for b in budgets:
+        phase = b["phase_code"]
+        eng_map = by_phase_eng.get(phase, {})
+        engineers = [
+            {
+                "initials": eng,
+                "role": db.ENGINEER_ROLES.get(eng, ""),
+                "hours": round(hrs, 2),
+                "color": db.TEAM_COLORS.get(eng, "#888"),
+            }
+            for eng, hrs in sorted(eng_map.items(), key=lambda x: -x[1])
+        ]
+        total_budget += b["budgeted_hours"]
+        total_used += b["hours_used"]
+        phases.append({**b, "engineers": engineers})
+
+    total_remaining = round(total_budget - total_used, 2)
+    total_pct = round(total_used / total_budget * 100, 1) if total_budget > 0 else 0.0
+    return {
+        "phases": phases,
+        "totals": {
+            "budgeted_hours": round(total_budget, 2),
+            "hours_used": round(total_used, 2),
+            "remaining": total_remaining,
+            "pct_used": total_pct,
+        },
+    }
+
+
+@app.get("/api/intakes/{intake_id}/time-entries")
+def api_intake_time_entries(intake_id: int) -> list[dict[str, Any]]:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return db.list_time_entries_for_intake(intake_id)
+
+
+@app.patch("/api/intakes/{intake_id}/schedule")
+async def api_patch_schedule(request: Request, intake_id: int) -> dict[str, Any]:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    if not intake.ifp_due_date:
+        raise HTTPException(status_code=400, detail="No IFP due date set.")
+    body = await request.json()
+    try:
+        shift_days = int(body.get("shift_days", 0))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="shift_days must be an integer.")
+    if not (-14 <= shift_days <= 14):
+        raise HTTPException(status_code=400, detail="shift_days must be between -14 and 14.")
+    new_date = date.fromisoformat(intake.ifp_due_date) + timedelta(days=shift_days)
+    db.update_intake_ifp_date(intake_id, new_date.isoformat())
+    return {"success": True, "ifp_due_date": new_date.isoformat()}
 
 
 # ── Time Entries ──────────────────────────────────────────────────────────────
