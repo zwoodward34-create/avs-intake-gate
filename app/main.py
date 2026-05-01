@@ -167,6 +167,16 @@ def _pending_invoice_count() -> int:
 templates.env.globals["pending_invoice_count"] = _pending_invoice_count
 
 
+def _upcoming_ooo_count() -> int:
+    try:
+        return db.count_upcoming_ooo(30)
+    except Exception:
+        return 0
+
+
+templates.env.globals["upcoming_ooo_count"] = _upcoming_ooo_count
+
+
 app = FastAPI(title="AVS Intake Gate")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
@@ -1246,6 +1256,142 @@ def api_calendar_events_delete(event_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Not found.")
     db.delete_calendar_event(event_id)
     return {"deleted": event_id}
+
+
+# ── Projected Capacity ────────────────────────────────────────────────────────
+
+@app.get("/api/capacity/projected")
+def api_projected_capacity(start: str, end: str) -> dict[str, Any]:
+    try:
+        ws = date.fromisoformat(start)
+        we = date.fromisoformat(end)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="start and end must be YYYY-MM-DD.")
+    if we < ws:
+        raise HTTPException(status_code=400, detail="end must be >= start.")
+    return db.get_all_projected_capacity(ws, we)
+
+
+# ── Schedule Generator ────────────────────────────────────────────────────────
+
+@app.post("/api/calendar/preview-schedule")
+async def api_preview_schedule(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    start_str = (body.get("start_date") or "")[:10]
+    end_str   = (body.get("end_date") or "")[:10]
+    project_type = body.get("project_type") or "new_construction"
+    try:
+        ws = date.fromisoformat(start_str)
+        we = date.fromisoformat(end_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="start_date and end_date required (YYYY-MM-DD).")
+    if we <= ws:
+        raise HTTPException(status_code=400, detail="end_date must be after start_date.")
+    phases = db.calculate_phase_schedule(ws, we, project_type)
+    capacity = db.get_all_projected_capacity(ws, we)
+    return {"phases": phases, "capacity": capacity}
+
+
+@app.post("/api/calendar/create-schedule")
+async def api_create_schedule(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    phases = body.get("phases") or []
+    if not phases:
+        raise HTTPException(status_code=400, detail="phases array required.")
+    project_number = body.get("project_number") or ""
+    client_name    = body.get("client") or ""
+    project_type   = body.get("project_type") or ""
+    tier_raw       = body.get("tier")
+    tier = int(tier_raw) if tier_raw and str(tier_raw).isdigit() and 1 <= int(tier_raw) <= 5 else None
+    team = body.get("team") or []
+    created_ids = []
+    for phase in phases:
+        phase_code = phase.get("phase_code") or phase.get("phase") or ""
+        start_d    = (phase.get("start_date") or "")[:10]
+        end_d      = (phase.get("end_date") or "")[:10]
+        if not phase_code or not start_d or not end_d:
+            continue
+        event_id = db.create_calendar_event(
+            project_number=project_number,
+            client=client_name,
+            location=body.get("location") or "",
+            phase=phase_code,
+            team=team,
+            project_type=project_type,
+            start_date=start_d + "T00:00:00Z",
+            end_date=end_d + "T23:59:59Z",
+            is_ooo=False,
+            tier=tier,
+            phase_jump=False,
+        )
+        created_ids.append(event_id)
+    return {"created_event_ids": created_ids, "count": len(created_ids)}
+
+
+# ── Time-Off Management ───────────────────────────────────────────────────────
+
+@app.get("/time-off", response_class=HTMLResponse)
+def timeoff_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "timeoff.html",
+        {
+            "request":       request,
+            "now_local":     _now_local_iso(),
+            "team_members":  db.TEAM_MEMBERS,
+            "reasons":       db.TIME_OFF_REASONS,
+            "team_colors":   _json.dumps(db.TEAM_COLORS),
+        },
+    )
+
+
+@app.get("/api/time-off")
+def api_list_time_off(
+    engineer: Optional[str] = None,
+    start:    Optional[str] = None,
+    end:      Optional[str] = None,
+) -> list[dict[str, Any]]:
+    return db.list_time_off(engineer=engineer, start=start, end=end)
+
+
+@app.post("/api/time-off")
+async def api_create_time_off(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    engineer = (body.get("engineer_initials") or "").strip().upper()
+    start_d  = (body.get("start_date") or "").strip()
+    end_d    = (body.get("end_date") or "").strip()
+    reason   = (body.get("reason") or "Vacation").strip()
+    notes    = _as_str(str(body.get("notes") or ""))
+    created_by = _as_str(str(body.get("created_by") or ""))
+    if not engineer:
+        raise HTTPException(status_code=400, detail="engineer_initials required.")
+    if not start_d or not end_d:
+        raise HTTPException(status_code=400, detail="start_date and end_date required.")
+    try:
+        s = date.fromisoformat(start_d)
+        e = date.fromisoformat(end_d)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Dates must be YYYY-MM-DD.")
+    if e < s:
+        raise HTTPException(status_code=400, detail="end_date must be >= start_date.")
+    if reason not in db.TIME_OFF_REASONS:
+        reason = "Other"
+    time_off_id = db.create_time_off(
+        engineer_initials=engineer,
+        start_date=start_d,
+        end_date=end_d,
+        reason=reason,
+        notes=notes,
+        created_by=created_by,
+    )
+    entries = db.list_time_off(engineer=engineer, start=start_d, end=end_d)
+    created = next((r for r in entries if r["id"] == time_off_id), {"id": time_off_id})
+    return created
+
+
+@app.delete("/api/time-off/{time_off_id}")
+def api_delete_time_off(time_off_id: int) -> dict[str, Any]:
+    db.delete_time_off(time_off_id)
+    return {"deleted": time_off_id}
 
 
 @app.get("/api/intakes/{intake_id}/fee-estimate")

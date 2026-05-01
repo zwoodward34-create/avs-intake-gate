@@ -31,6 +31,13 @@
               <span class="mo-badge" style="background:rgba(37,99,235,.12);border-color:rgba(37,99,235,.40);color:#2563eb">{{ _tc }}</span>
             {% endif %}
           </a>
+          <a class="btn" href="/time-off">
+            Time Off
+            {% set _oc = upcoming_ooo_count() %}
+            {% if _oc > 0 %}
+              <span class="mo-badge" style="background:rgba(0,229,255,.10);border-color:rgba(0,229,255,.35);color:var(--accent)">{{ _oc }}</span>
+            {% endif %}
+          </a>
           <a class="btn" href="/calendar">Calendar</a>
           <a class="btn" href="/capacity">Capacity</a>
           <a class="btn" href="/payroll-export">Payroll</a>

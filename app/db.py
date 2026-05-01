@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 from supabase import create_client, Client
@@ -1636,3 +1636,261 @@ def _empty_pipeline() -> dict[str, Any]:
         },
         "stats": {"active_projects": 0, "pending_invoices": 0, "total_pipeline": 0},
     }
+
+
+# ── Time-Off CRUD ─────────────────────────────────────────────────────────────
+
+TIME_OFF_REASONS = ["Vacation", "Sick Leave", "Company Holiday", "Conference/PD", "Personal", "Other"]
+
+
+def create_time_off(
+    *,
+    engineer_initials: str,
+    start_date: str,
+    end_date: str,
+    reason: str = "Vacation",
+    notes: Optional[str] = None,
+    created_by: Optional[str] = None,
+) -> int:
+    now = _utc_now_iso()
+    resp = (
+        _client()
+        .table("time_off")
+        .insert({
+            "engineer_initials": engineer_initials.strip().upper(),
+            "start_date":        start_date,
+            "end_date":          end_date,
+            "reason":            reason,
+            "notes":             notes,
+            "created_by":        created_by,
+            "created_at":        now,
+            "updated_at":        now,
+        })
+        .execute()
+    )
+    return int(resp.data[0]["id"])
+
+
+def list_time_off(
+    *,
+    engineer: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    q = (
+        _client()
+        .table("time_off")
+        .select("*")
+        .order("start_date", desc=False)
+        .order("id", desc=False)
+    )
+    if engineer:
+        q = q.eq("engineer_initials", engineer.strip().upper())
+    if start:
+        q = q.gte("end_date", start)
+    if end:
+        q = q.lte("start_date", end)
+    resp = q.execute()
+    rows = resp.data or []
+    # Annotate with working_days count
+    for r in rows:
+        try:
+            s = date.fromisoformat(r["start_date"])
+            e = date.fromisoformat(r["end_date"])
+            r["working_days"] = count_working_days(s, e)
+        except (ValueError, KeyError):
+            r["working_days"] = 0
+    return rows
+
+
+def delete_time_off(time_off_id: int) -> None:
+    _client().table("time_off").delete().eq("id", time_off_id).execute()
+
+
+def count_upcoming_ooo(days: int = 30) -> int:
+    today = date.today()
+    future = today + timedelta(days=days)
+    resp = (
+        _client()
+        .table("time_off")
+        .select("id", count="exact")
+        .lte("start_date", future.isoformat())
+        .gte("end_date", today.isoformat())
+        .execute()
+    )
+    return resp.count or 0
+
+
+# ── Projected Capacity Engine ─────────────────────────────────────────────────
+
+# WEU constants (mirrors weu.py to avoid circular import)
+_PHASE_COEFF: dict[str, float] = {
+    "50%": 1.0, "75%": 1.2, "90%": 1.5, "IFP": 0.4,
+    "RFP": 0.3, "DD": 0.6, "CA": 0.8, "CD": 1.0, "REV": 0.5, "SD": 0.2,
+}
+_CAPACITY_BASE = 10.0
+_TEAM_MULTIPLIER: dict[str, float] = {
+    "MK": 0.2, "NK": 1.0, "RO": 1.0, "JW": 1.0,
+    "RS": 1.0, "SW": 1.0, "JP": 0.8, "JR": 0.8, "JK": 0.8,
+}
+ENGINEERING_POOL = ["MK", "NK", "RO", "JW", "JR", "JK"]
+DRAFTING_POOL    = ["RS", "SW", "JP"]
+
+
+def count_working_days(start: date, end: date) -> int:
+    total = 0
+    current = start
+    while current <= end:
+        if current.weekday() < 5:
+            total += 1
+        current += timedelta(days=1)
+    return total
+
+
+def _count_ooo_days(engineer_initials: str, window_start: date, window_end: date) -> int:
+    resp = (
+        _client()
+        .table("time_off")
+        .select("start_date,end_date")
+        .eq("engineer_initials", engineer_initials)
+        .lte("start_date", window_end.isoformat())
+        .gte("end_date", window_start.isoformat())
+        .execute()
+    )
+    ooo_days = 0
+    for entry in (resp.data or []):
+        try:
+            overlap_start = max(date.fromisoformat(entry["start_date"]), window_start)
+            overlap_end   = min(date.fromisoformat(entry["end_date"]),   window_end)
+            ooo_days += count_working_days(overlap_start, overlap_end)
+        except (ValueError, KeyError):
+            pass
+    return ooo_days
+
+
+def _get_existing_load_hours(engineer_initials: str, window_start: date, window_end: date) -> float:
+    resp = (
+        _client()
+        .table("calendar_events")
+        .select("start_date,end_date,phase,tier,team,phase_jump,is_ooo")
+        .lte("start_date", window_end.isoformat() + "T23:59:59Z")
+        .gte("end_date",   window_start.isoformat())
+        .execute()
+    )
+    total = 0.0
+    for event in (resp.data or []):
+        if event.get("is_ooo"):
+            continue
+        team = event.get("team") or []
+        if isinstance(team, str):
+            try:
+                team = json.loads(team)
+            except Exception:
+                team = [t.strip() for t in team.split(",")]
+        if engineer_initials not in team:
+            continue
+        try:
+            ev_start = date.fromisoformat(event["start_date"][:10])
+            ev_end   = date.fromisoformat(event["end_date"][:10])
+        except (ValueError, KeyError):
+            continue
+        overlap_start = max(ev_start, window_start)
+        overlap_end   = min(ev_end,   window_end)
+        ev_working   = max(count_working_days(ev_start, ev_end), 1)
+        ov_working   = count_working_days(overlap_start, overlap_end)
+        if ov_working <= 0:
+            continue
+        fraction = ov_working / ev_working
+        tier = event.get("tier") or 0
+        phase_coeff = _PHASE_COEFF.get(event.get("phase") or "", 0.5)
+        person_mult = _TEAM_MULTIPLIER.get(engineer_initials, 1.0)
+        qa = 1.15 if event.get("phase_jump") else 1.0
+        weu_rate = tier * phase_coeff * person_mult * qa / _CAPACITY_BASE
+        total += weu_rate * ov_working * 8.0
+    return total
+
+
+def get_projected_capacity(
+    engineer_initials: str, window_start: date, window_end: date
+) -> dict[str, Any]:
+    working_days  = count_working_days(window_start, window_end)
+    ooo_days      = _count_ooo_days(engineer_initials, window_start, window_end)
+    available_days = max(working_days - ooo_days, 0)
+    available_hours = available_days * 8.0
+    committed_hours = _get_existing_load_hours(engineer_initials, window_start, window_end)
+    if available_hours > 0:
+        utilization_pct = round(committed_hours / available_hours * 100, 1)
+    else:
+        utilization_pct = 100.0
+    ooo_bar_pct = round(ooo_days / working_days * 100, 1) if working_days > 0 else 0.0
+    return {
+        "engineer_initials": engineer_initials,
+        "window_start":      window_start.isoformat(),
+        "window_end":        window_end.isoformat(),
+        "working_days":      working_days,
+        "ooo_days":          ooo_days,
+        "available_days":    available_days,
+        "available_hours":   available_hours,
+        "committed_hours":   round(committed_hours, 1),
+        "utilization_pct":   utilization_pct,
+        "has_ooo":           ooo_days > 0,
+        "ooo_bar_pct":       ooo_bar_pct,
+        "role":              {
+            "MK": "President, PE", "NK": "Principal, PE", "RO": "Eng/PM, PE",
+            "JW": "Project Eng",   "RS": "CAD Mgr",       "SW": "Sr CAD",
+            "JP": "CAD Designer",  "JR": "EIT",           "JK": "EIT",
+        }.get(engineer_initials, ""),
+    }
+
+
+def get_all_projected_capacity(window_start: date, window_end: date) -> dict[str, Any]:
+    return {
+        "window_start":      window_start.isoformat(),
+        "window_end":        window_end.isoformat(),
+        "window_days":       count_working_days(window_start, window_end),
+        "engineering_pool":  [get_projected_capacity(m, window_start, window_end) for m in ENGINEERING_POOL],
+        "drafting_pool":     [get_projected_capacity(m, window_start, window_end) for m in DRAFTING_POOL],
+    }
+
+
+# ── Schedule Generator ────────────────────────────────────────────────────────
+
+PHASE_WEIGHTS: dict[str, dict[str, float]] = {
+    "new_construction":      {"SD": 0.15, "DD": 0.20, "IFP": 0.40, "CA": 0.25},
+    "tenant_improvement":    {"SD": 0.10, "DD": 0.20, "IFP": 0.50, "CA": 0.20},
+    "addition_expansion":    {"SD": 0.15, "DD": 0.20, "IFP": 0.40, "CA": 0.25},
+    "build_to_suit_retrofit": {"SD": 0.10, "DD": 0.25, "IFP": 0.45, "CA": 0.20},
+    "repeating_program":     {"SD": 0.10, "DD": 0.20, "IFP": 0.50, "CA": 0.20},
+    "one_off_unique":        {"SD": 0.15, "DD": 0.25, "IFP": 0.40, "CA": 0.20},
+}
+DEFAULT_PHASE_WEIGHTS: dict[str, float] = {"SD": 0.15, "DD": 0.20, "IFP": 0.45, "CA": 0.20}
+
+
+def calculate_phase_schedule(
+    project_start: date, project_end: date, project_type: str
+) -> list[dict[str, Any]]:
+    weights = PHASE_WEIGHTS.get(project_type, DEFAULT_PHASE_WEIGHTS)
+    total_days = (project_end - project_start).days
+    if total_days <= 0:
+        raise ValueError("project_end must be after project_start")
+    phases = []
+    current = project_start
+    phase_list = list(weights.items())
+    for i, (code, weight) in enumerate(phase_list):
+        is_last = i == len(phase_list) - 1
+        if is_last:
+            phase_end = project_end
+        else:
+            duration = max(round(total_days * weight), 1)
+            phase_end = current + timedelta(days=duration - 1)
+            # Ensure remaining phases each get at least 1 day
+            remaining = len(phase_list) - i - 1
+            phase_end = min(phase_end, project_end - timedelta(days=remaining))
+        phases.append({
+            "phase_code":    code,
+            "start_date":    current.isoformat(),
+            "end_date":      phase_end.isoformat(),
+            "duration_days": (phase_end - current).days + 1,
+        })
+        current = phase_end + timedelta(days=1)
+    return phases

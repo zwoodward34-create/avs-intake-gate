@@ -371,6 +371,91 @@
   color: #fff;
 }
 .btn-danger:hover { background: #6b1a1a; border-color: #6b1a1a; color: #fff; }
+
+/* ── Projected capacity bars in form ─────────────────────────────────────── */
+.cap-form-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.cap-form-header {
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--muted); margin-bottom: 10px;
+}
+.cap-form-pool-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted); margin: 8px 0 4px;
+}
+.cap-form-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 0;
+}
+.cap-form-dot {
+  width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 800; color: #fff;
+  flex-shrink: 0;
+}
+.cap-form-bar-track {
+  flex: 1; height: 6px; border-radius: 3px;
+  background: var(--card-bg-deeper); border: 1px solid var(--border);
+  position: relative; overflow: hidden;
+}
+.cap-form-bar-fill {
+  position: absolute; left: 0; top: 0; height: 100%;
+  border-radius: 3px; transition: width .25s;
+}
+.cap-form-ooo-stripe {
+  position: absolute; top: 0; height: 100%; right: 0;
+  background: repeating-linear-gradient(
+    45deg, rgba(220,38,38,.28), rgba(220,38,38,.28) 2px, transparent 2px, transparent 6px
+  );
+  border-radius: 0 3px 3px 0;
+  pointer-events: none;
+}
+.cap-form-pct {
+  font-size: 11px; font-weight: 700; font-family: var(--mono);
+  width: 36px; text-align: right; flex-shrink: 0;
+}
+.cap-form-ooo-badge {
+  font-size: 10px; padding: 1px 5px; border-radius: 999px;
+  background: var(--bad); color: #fff; flex-shrink: 0;
+}
+#conflict-warnings {
+  display: none; margin-top: 10px; padding: 10px 14px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: rgba(255,215,64,.07);
+}
+.conflict-warning-item {
+  display: flex; gap: 6px; font-size: 12px;
+  line-height: 1.5; margin-bottom: 6px;
+}
+.conflict-warning-item:last-child { margin-bottom: 0; }
+.conflict-icon { color: var(--warn); flex-shrink: 0; }
+
+/* ── Schedule generator modal ─────────────────────────────────────────────── */
+.sched-gen-step { display: none; }
+.sched-gen-step.active { display: block; }
+.sched-phase-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+.sched-phase-table th {
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted); padding: 0 8px 6px; text-align: left;
+}
+.sched-phase-table td {
+  padding: 4px 8px; border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.sched-phase-table td input[type=date] {
+  padding: 4px 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--card-bg);
+  color: var(--text); font-size: 12px; font-family: var(--mono);
+}
+.sched-phase-code {
+  font-family: var(--mono); font-weight: 700; font-size: 13px;
+}
+.sched-duration-cell {
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+}
 </style>
 
 <div class="cal-header">
@@ -380,7 +465,10 @@
     <button class="cal-nav-btn" id="next-month">&#8594;</button>
   </div>
   <div class="cal-phase-filters" id="phase-filters"></div>
-  <button class="btn btn-primary" id="add-event-btn" style="flex-shrink:0">+ Add Event</button>
+  <div style="display:flex;gap:8px;flex-shrink:0">
+    <button class="btn" id="gen-schedule-btn">&#9654; Generate Schedule</button>
+    <button class="btn btn-primary" id="add-event-btn">+ Add Event</button>
+  </div>
 </div>
 
 <div class="cal-grid-wrapper">
@@ -514,6 +602,38 @@
       </div>
     </div>
 
+    <!-- Projected capacity bars -->
+    <div class="cap-form-section" id="cap-section">
+      <div class="cap-form-header" id="capacity-header-label">ASSIGN TEAM — LIVE CAPACITY</div>
+      <div id="capacity-bars-container">
+        <div class="cap-form-pool-label">Engineering Pool</div>
+        <div id="engineering-pool-container">
+          {% for m in team_members %}{% if m in ['MK','NK','RO','JW','JR','JK'] %}
+          <div class="cap-form-row" data-engineer="{{ m }}">
+            <div class="cap-form-dot" style="background:{{ '#2563eb' }}">{{ m }}</div>
+            <div class="cap-form-bar-track">
+              <div class="cap-form-bar-fill" style="width:0%;background:var(--good)"></div>
+            </div>
+            <span class="cap-form-pct" style="color:var(--good)">—</span>
+          </div>
+          {% endif %}{% endfor %}
+        </div>
+        <div class="cap-form-pool-label">Drafting Pool</div>
+        <div id="drafting-pool-container">
+          {% for m in team_members %}{% if m in ['RS','SW','JP'] %}
+          <div class="cap-form-row" data-engineer="{{ m }}">
+            <div class="cap-form-dot" style="background:{{ '#2563eb' }}">{{ m }}</div>
+            <div class="cap-form-bar-track">
+              <div class="cap-form-bar-fill" style="width:0%;background:var(--good)"></div>
+            </div>
+            <span class="cap-form-pct" style="color:var(--good)">—</span>
+          </div>
+          {% endif %}{% endfor %}
+        </div>
+      </div>
+      <div id="conflict-warnings"></div>
+    </div>
+
     <div class="two-col">
       <div class="field">
         <label for="f-start">Start Date</label>
@@ -533,12 +653,108 @@
   </div>
 </div>
 
+<!-- Schedule Generator Modal -->
+<div class="modal-overlay" id="sched-gen-modal">
+  <div class="modal" style="max-width:680px;width:95%">
+    <button class="modal-close" id="sched-gen-close">✕</button>
+    <h3>Generate Project Schedule</h3>
+
+    <!-- Step 1: Project details -->
+    <div class="sched-gen-step active" id="step-1">
+      <div class="two-col">
+        <div class="field">
+          <label>Project #</label>
+          <input type="text" id="sg-project-number" placeholder="e.g. 9771">
+        </div>
+        <div class="field">
+          <label>Client</label>
+          <input type="text" id="sg-client" placeholder="e.g. Irongate Industrial">
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="field">
+          <label>Project Type</label>
+          <select id="sg-type">
+            <option value="new_construction">New Construction</option>
+            <option value="tenant_improvement">Tenant Improvement</option>
+            <option value="addition_expansion">Addition / Expansion</option>
+            <option value="build_to_suit_retrofit">Build-to-Suit / Retrofit</option>
+            <option value="repeating_program">Repeating Program</option>
+            <option value="one_off_unique">One-Off / Unique</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Tier (1–5)</label>
+          <select id="sg-tier">
+            <option value="">— No tier —</option>
+            <option value="1">1 — Minor</option>
+            <option value="2">2 — Small</option>
+            <option value="3">3 — Standard</option>
+            <option value="4">4 — Large</option>
+            <option value="5">5 — Major</option>
+          </select>
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="field">
+          <label>Project Start</label>
+          <input type="date" id="sg-start">
+        </div>
+        <div class="field">
+          <label>Project End (IFP target)</label>
+          <input type="date" id="sg-end">
+        </div>
+      </div>
+      <div id="step1-err" style="font-size:12px;color:var(--bad);margin-bottom:8px;display:none"></div>
+      <div class="modal-actions">
+        <button class="btn" id="sg-cancel-1">Cancel</button>
+        <button class="btn btn-primary" id="sg-preview-btn">Preview Schedule &#8594;</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Review phase dates + capacity -->
+    <div class="sched-gen-step" id="step-2">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Adjust phase dates as needed. Phases must remain sequential.</div>
+      <table class="sched-phase-table" id="sg-phase-table">
+        <thead><tr><th>Phase</th><th>Start</th><th>End</th><th>Duration</th></tr></thead>
+        <tbody id="sg-phase-tbody"></tbody>
+      </table>
+      <div class="cap-form-section" style="margin-top:10px">
+        <div class="cap-form-header" id="sg-cap-header">PROJECTED CAPACITY</div>
+        <div id="sg-cap-bars" style="font-size:12px;color:var(--muted)">Loading…</div>
+      </div>
+      <div class="modal-actions" style="margin-top:12px">
+        <button class="btn" id="sg-back-1">&#8592; Back</button>
+        <button class="btn btn-primary" id="sg-assign-btn">Assign Team &amp; Create &#8594;</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Assign team + confirm -->
+    <div class="sched-gen-step" id="step-3">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Select engineers for all phases in this schedule.</div>
+      <div class="cap-form-pool-label">Engineering Pool</div>
+      <div id="sg-eng-pool"></div>
+      <div class="cap-form-pool-label" style="margin-top:10px">Drafting Pool</div>
+      <div id="sg-draft-pool"></div>
+      <div id="sg-conflict-warnings" style="display:none;margin-top:10px;padding:10px 14px;border:1px solid var(--warn);border-radius:var(--radius-sm);background:rgba(255,215,64,.07)"></div>
+      <div id="step3-err" style="font-size:12px;color:var(--bad);margin-top:8px;display:none"></div>
+      <div class="modal-actions" style="margin-top:12px">
+        <button class="btn" id="sg-back-2">&#8592; Back</button>
+        <button class="btn btn-primary" id="sg-create-btn" disabled>&#10003; Create Schedule</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <script>
 (function () {
   const PHASE_COLORS  = {{ phase_colors | safe }};
   const TEAM_COLORS   = {{ team_colors | safe }};
   const PHASES        = {{ valid_phases | tojson }};
   const TEAM_MEMBERS  = {{ team_members | tojson }};
+  const ENG_POOL  = ['MK','NK','RO','JW','JR','JK'];
+  const DRAFT_POOL = ['RS','SW','JP'];
 
   let year = new Date().getFullYear();
   let month = new Date().getMonth();
@@ -776,6 +992,7 @@
       syncDropdownChecks();
       renderTeamTrigger();
       checkAllConflicts();
+      updateConflictWarnings([...selectedTeam], _lastCapData);
     });
   });
 
@@ -1067,6 +1284,373 @@
       closeModal();
       await fetchEvents();
     } catch (e) { alert('Network error.'); }
+  });
+
+  // ── Fix capacity dot colors ──────────────────────────────────
+  document.querySelectorAll('.cap-form-dot').forEach(dot => {
+    const m = dot.textContent.trim();
+    dot.style.background = TEAM_COLORS[m] || '#9ca3af';
+  });
+
+  // ── Projected capacity in event form ─────────────────────────
+  let _lastCapData = null;
+  let _capFetchTimer = null;
+
+  function formatDateRangeLabel(start, end) {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const [sy,sm,sd] = start.split('-').map(Number);
+    const [ey,em,ed] = end.split('-').map(Number);
+    if (start === end) return `${months[sm-1]} ${sd}`;
+    if (sm === em && sy === ey) return `${months[sm-1]} ${sd}–${ed}`;
+    return `${months[sm-1]} ${sd} – ${months[em-1]} ${ed}`;
+  }
+
+  function colorForPct(pct) {
+    if (pct >= 90) return 'var(--bad)';
+    if (pct >= 70) return 'var(--warn)';
+    return 'var(--good)';
+  }
+
+  function renderPool(containerId, engineers, capData) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll('.cap-form-row').forEach(row => {
+      const initials = row.dataset.engineer;
+      const eng = (engineers || []).find(e => e.engineer_initials === initials);
+      const track = row.querySelector('.cap-form-bar-track');
+      const fill  = row.querySelector('.cap-form-bar-fill');
+      const pctEl = row.querySelector('.cap-form-pct');
+      const oldStripe = track.querySelector('.cap-form-ooo-stripe');
+      if (oldStripe) oldStripe.remove();
+      const oldBadge = row.querySelector('.cap-form-ooo-badge');
+      if (oldBadge) oldBadge.remove();
+      if (!eng || !capData) {
+        fill.style.width = '0%';
+        pctEl.textContent = '—';
+        pctEl.style.color = 'var(--muted)';
+        return;
+      }
+      const pct   = Math.min(eng.utilization_pct, 100);
+      const color = colorForPct(eng.utilization_pct);
+      fill.style.width = pct + '%';
+      fill.style.background = color;
+      pctEl.textContent = Math.round(eng.utilization_pct) + '%';
+      pctEl.style.color  = color;
+      if (eng.has_ooo && eng.ooo_bar_pct > 0) {
+        const stripe = document.createElement('div');
+        stripe.className = 'cap-form-ooo-stripe';
+        stripe.style.width = Math.min(eng.ooo_bar_pct, 100) + '%';
+        stripe.title = `${eng.ooo_days} OOO day(s) in this window`;
+        track.appendChild(stripe);
+        const badge = document.createElement('span');
+        badge.className = 'cap-form-ooo-badge';
+        badge.textContent = 'OOO';
+        badge.title = `${eng.ooo_days} OOO day(s)`;
+        row.appendChild(badge);
+      }
+    });
+  }
+
+  function updateConflictWarnings(selectedEngineers, capData) {
+    const panel = document.getElementById('conflict-warnings');
+    if (!panel) return;
+    if (!capData || !selectedEngineers.length) {
+      panel.style.display = 'none'; panel.innerHTML = ''; return;
+    }
+    const allEng = [...(capData.engineering_pool || []), ...(capData.drafting_pool || [])];
+    const warnings = [];
+    selectedEngineers.forEach(initials => {
+      const eng = allEng.find(e => e.engineer_initials === initials);
+      if (!eng) return;
+      if (eng.utilization_pct >= 90) {
+        warnings.push({ initials, msg: `${initials} is at ${Math.round(eng.utilization_pct)}% capacity${eng.has_ooo ? ' (includes OOO)' : ''} — may be overcommitted` });
+      } else if (eng.has_ooo) {
+        warnings.push({ initials, msg: `${initials} has time off in this window` });
+      }
+    });
+    if (!warnings.length) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+    panel.style.display = 'block';
+    panel.innerHTML = warnings.map(w => {
+      const c = TEAM_COLORS[w.initials] || '#9ca3af';
+      const dot = `<span style="display:inline-flex;width:16px;height:16px;border-radius:50%;background:${c};align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff;flex-shrink:0">${w.initials}</span>`;
+      return `<div class="conflict-warning-item">${dot}<span class="conflict-icon">⚠</span><span>${w.msg}</span></div>`;
+    }).join('');
+  }
+
+  function renderCapacityBars(capData) {
+    _lastCapData = capData;
+    renderPool('engineering-pool-container', capData ? capData.engineering_pool : null, capData);
+    renderPool('drafting-pool-container',    capData ? capData.drafting_pool    : null, capData);
+    updateConflictWarnings([...selectedTeam], capData);
+  }
+
+  async function fetchProjectedCapacity(startDate, endDate) {
+    try {
+      const r = await fetch(`/api/capacity/projected?start=${startDate}&end=${endDate}`);
+      if (!r.ok) return;
+      renderCapacityBars(await r.json());
+    } catch (e) { /* silent */ }
+  }
+
+  function onFormDateChange() {
+    const startDate = document.getElementById('f-start').value;
+    const endDate   = document.getElementById('f-end').value;
+    if (!startDate || !endDate || startDate > endDate) return;
+    document.getElementById('capacity-header-label').textContent =
+      `ASSIGN TEAM — PROJECTED CAPACITY (${formatDateRangeLabel(startDate, endDate)})`;
+    clearTimeout(_capFetchTimer);
+    _capFetchTimer = setTimeout(() => fetchProjectedCapacity(startDate, endDate), 400);
+  }
+
+  document.getElementById('f-start').addEventListener('change', onFormDateChange);
+  document.getElementById('f-end').addEventListener('change', onFormDateChange);
+
+  // ── Schedule generator ────────────────────────────────────────
+  const sgModal = document.getElementById('sched-gen-modal');
+  let sgPhases = [];
+  let sgSelectedTeam = new Set();
+
+  function sgShowStep(n) {
+    document.querySelectorAll('.sched-gen-step').forEach((el, i) => {
+      el.classList.toggle('active', i + 1 === n);
+    });
+  }
+
+  document.getElementById('gen-schedule-btn').addEventListener('click', () => {
+    sgShowStep(1);
+    sgSelectedTeam.clear();
+    ['sg-project-number','sg-client'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('sg-type').value = 'new_construction';
+    document.getElementById('sg-tier').value = '';
+    document.getElementById('sg-start').value = '';
+    document.getElementById('sg-end').value   = '';
+    document.getElementById('step1-err').style.display = 'none';
+    sgModal.classList.add('open');
+  });
+
+  document.getElementById('sched-gen-close').addEventListener('click', () => sgModal.classList.remove('open'));
+  sgModal.addEventListener('click', e => { if (e.target === sgModal) sgModal.classList.remove('open'); });
+  document.getElementById('sg-cancel-1').addEventListener('click', () => sgModal.classList.remove('open'));
+  document.getElementById('sg-back-1').addEventListener('click', () => sgShowStep(1));
+  document.getElementById('sg-back-2').addEventListener('click', () => sgShowStep(2));
+
+  function countWDs(start, end) {
+    const s = new Date(start + 'T00:00:00'), e = new Date(end + 'T00:00:00');
+    let n = 0; const cur = new Date(s);
+    while (cur <= e) { const d = cur.getDay(); if (d >= 1 && d <= 5) n++; cur.setDate(cur.getDate() + 1); }
+    return n;
+  }
+
+  function renderPhaseTable(phases) {
+    sgPhases = phases.map(p => ({ ...p }));
+    const tbody = document.getElementById('sg-phase-tbody');
+    tbody.innerHTML = '';
+    sgPhases.forEach((p, idx) => {
+      const dur = countWDs(p.start_date, p.end_date);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span class="sched-phase-code" style="color:${PHASE_COLORS[p.phase_code]||'#9ca3af'}">${p.phase_code}</span></td>
+        <td><input type="date" class="sg-phase-start" data-idx="${idx}" value="${p.start_date}" style="padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:12px;font-family:var(--mono)"></td>
+        <td><input type="date" class="sg-phase-end" data-idx="${idx}" value="${p.end_date}" style="padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:12px;font-family:var(--mono)"></td>
+        <td class="sched-duration-cell" id="sg-dur-${idx}">${dur}d</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll('.sg-phase-start').forEach(inp => {
+      inp.addEventListener('change', () => {
+        sgPhases[parseInt(inp.dataset.idx)].start_date = inp.value;
+        syncPhaseDur(parseInt(inp.dataset.idx));
+      });
+    });
+    tbody.querySelectorAll('.sg-phase-end').forEach(inp => {
+      inp.addEventListener('change', () => {
+        sgPhases[parseInt(inp.dataset.idx)].end_date = inp.value;
+        syncPhaseDur(parseInt(inp.dataset.idx));
+      });
+    });
+  }
+
+  function syncPhaseDur(idx) {
+    const p = sgPhases[idx];
+    if (p.start_date && p.end_date && p.end_date >= p.start_date) {
+      const el = document.getElementById(`sg-dur-${idx}`);
+      if (el) el.textContent = countWDs(p.start_date, p.end_date) + 'd';
+    }
+  }
+
+  function renderSgCapBars(capData, containerId) {
+    const c = document.getElementById(containerId);
+    if (!c) return;
+    c.innerHTML = '';
+    if (!capData) { c.innerHTML = '<div style="font-size:12px;color:var(--muted)">No capacity data</div>'; return; }
+    [{ lbl: 'Engineering', list: capData.engineering_pool }, { lbl: 'Drafting', list: capData.drafting_pool }].forEach(pool => {
+      const lbl = document.createElement('div');
+      lbl.className = 'cap-form-pool-label'; lbl.textContent = pool.lbl + ' Pool';
+      c.appendChild(lbl);
+      (pool.list || []).forEach(eng => {
+        const pct = Math.min(eng.utilization_pct, 100);
+        const col = colorForPct(eng.utilization_pct);
+        const row = document.createElement('div');
+        row.className = 'cap-form-row';
+        const dot = document.createElement('div');
+        dot.className = 'cap-form-dot';
+        dot.style.background = TEAM_COLORS[eng.engineer_initials] || '#9ca3af';
+        dot.textContent = eng.engineer_initials;
+        const track = document.createElement('div'); track.className = 'cap-form-bar-track';
+        const fill = document.createElement('div');
+        fill.className = 'cap-form-bar-fill'; fill.style.width = pct + '%'; fill.style.background = col;
+        track.appendChild(fill);
+        if (eng.has_ooo && eng.ooo_bar_pct > 0) {
+          const stripe = document.createElement('div');
+          stripe.className = 'cap-form-ooo-stripe';
+          stripe.style.width = Math.min(eng.ooo_bar_pct, 100) + '%';
+          track.appendChild(stripe);
+        }
+        const pctEl = document.createElement('span');
+        pctEl.className = 'cap-form-pct'; pctEl.style.color = col;
+        pctEl.textContent = Math.round(eng.utilization_pct) + '%';
+        row.appendChild(dot); row.appendChild(track); row.appendChild(pctEl);
+        if (eng.has_ooo) {
+          const badge = document.createElement('span'); badge.className = 'cap-form-ooo-badge'; badge.textContent = 'OOO';
+          row.appendChild(badge);
+        }
+        c.appendChild(row);
+      });
+    });
+  }
+
+  function renderStep3Checkboxes(capData) {
+    const engEl   = document.getElementById('sg-eng-pool');
+    const draftEl = document.getElementById('sg-draft-pool');
+    engEl.innerHTML = ''; draftEl.innerHTML = '';
+    const engList   = capData ? capData.engineering_pool : ENG_POOL.map(i => ({ engineer_initials: i, utilization_pct: 0, has_ooo: false, role: '' }));
+    const draftList = capData ? capData.drafting_pool : DRAFT_POOL.map(i => ({ engineer_initials: i, utilization_pct: 0, has_ooo: false, role: '' }));
+    function makeRow(eng, targetEl) {
+      const col = TEAM_COLORS[eng.engineer_initials] || '#9ca3af';
+      const pct = Math.round(eng.utilization_pct);
+      const pctCol = colorForPct(eng.utilization_pct);
+      const label = document.createElement('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer;border-bottom:1px solid var(--border)';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = eng.engineer_initials; cb.style.cssText = 'width:auto;flex-shrink:0';
+      cb.addEventListener('change', () => {
+        if (cb.checked) sgSelectedTeam.add(eng.engineer_initials); else sgSelectedTeam.delete(eng.engineer_initials);
+        updateSgCreateBtn(); renderSgConflicts(capData);
+      });
+      const dot = document.createElement('div');
+      dot.style.cssText = `width:22px;height:22px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0`;
+      dot.textContent = eng.engineer_initials;
+      const name = document.createElement('span'); name.style.cssText = 'font-size:13px;font-weight:600;flex:1';
+      name.textContent = eng.engineer_initials + (eng.role ? ` — ${eng.role}` : '');
+      const pctEl = document.createElement('span'); pctEl.style.cssText = `font-size:11px;font-weight:700;font-family:var(--mono);color:${pctCol}`;
+      pctEl.textContent = pct + '%';
+      label.appendChild(cb); label.appendChild(dot); label.appendChild(name); label.appendChild(pctEl);
+      if (eng.has_ooo) {
+        const b = document.createElement('span'); b.className = 'cap-form-ooo-badge'; b.textContent = 'OOO'; label.appendChild(b);
+      }
+      targetEl.appendChild(label);
+    }
+    engList.forEach(e => makeRow(e, engEl));
+    draftList.forEach(e => makeRow(e, draftEl));
+  }
+
+  function renderSgConflicts(capData) {
+    const panel = document.getElementById('sg-conflict-warnings');
+    if (!capData || !sgSelectedTeam.size) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+    const allEng = [...(capData.engineering_pool || []), ...(capData.drafting_pool || [])];
+    const warnings = [];
+    sgSelectedTeam.forEach(initials => {
+      const eng = allEng.find(e => e.engineer_initials === initials);
+      if (!eng) return;
+      if (eng.utilization_pct >= 90) warnings.push(`⚠ ${initials} is at ${Math.round(eng.utilization_pct)}% capacity — may be overcommitted`);
+      else if (eng.has_ooo) warnings.push(`⚠ ${initials} has time off during this schedule window`);
+    });
+    if (!warnings.length) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+    panel.style.display = 'block';
+    panel.innerHTML = warnings.map(w => `<div style="font-size:12px;color:var(--warn);margin-bottom:4px">${w}</div>`).join('');
+  }
+
+  function updateSgCreateBtn() {
+    document.getElementById('sg-create-btn').disabled = sgSelectedTeam.size === 0;
+  }
+
+  document.getElementById('sg-preview-btn').addEventListener('click', async () => {
+    const start  = document.getElementById('sg-start').value;
+    const end    = document.getElementById('sg-end').value;
+    const type   = document.getElementById('sg-type').value;
+    const errEl  = document.getElementById('step1-err');
+    errEl.style.display = 'none';
+    if (!start || !end) { errEl.textContent = 'Start and end dates are required.'; errEl.style.display = 'block'; return; }
+    if (end <= start)   { errEl.textContent = 'End date must be after start date.'; errEl.style.display = 'block'; return; }
+    const btn = document.getElementById('sg-preview-btn');
+    btn.disabled = true; btn.textContent = 'Previewing…';
+    try {
+      const r = await fetch('/api/calendar/preview-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start_date: start, end_date: end, project_type: type }),
+      });
+      if (!r.ok) { const err = await r.json().catch(() => ({})); errEl.textContent = err.detail || 'Preview failed.'; errEl.style.display = 'block'; return; }
+      const data = await r.json();
+      renderPhaseTable(data.phases || []);
+      document.getElementById('sg-cap-header').textContent = `PROJECTED CAPACITY (${formatDateRangeLabel(start, end)})`;
+      const capEl = document.getElementById('sg-cap-bars');
+      capEl.innerHTML = '<div style="font-size:12px;color:var(--muted)">Loading…</div>';
+      let sgCapData = null;
+      try {
+        const cr = await fetch(`/api/capacity/projected?start=${start}&end=${end}`);
+        if (cr.ok) { sgCapData = await cr.json(); renderSgCapBars(sgCapData, 'sg-cap-bars'); }
+      } catch (e) { capEl.innerHTML = '<div style="font-size:12px;color:var(--muted)">Capacity unavailable</div>'; }
+      sgModal._capData = sgCapData;
+      sgModal._projectNumber = document.getElementById('sg-project-number').value.trim();
+      sgModal._client = document.getElementById('sg-client').value.trim();
+      sgModal._tier   = document.getElementById('sg-tier').value || null;
+      sgShowStep(2);
+    } catch (e) { errEl.textContent = 'Network error.'; errEl.style.display = 'block'; }
+    finally { btn.disabled = false; btn.textContent = 'Preview Schedule →'; }
+  });
+
+  document.getElementById('sg-assign-btn').addEventListener('click', () => {
+    sgSelectedTeam.clear(); updateSgCreateBtn();
+    const capData = sgModal._capData || null;
+    renderStep3Checkboxes(capData);
+    renderSgConflicts(capData);
+    sgShowStep(3);
+  });
+
+  document.getElementById('sg-create-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('sg-create-btn');
+    const errEl = document.getElementById('step3-err');
+    errEl.style.display = 'none';
+    btn.disabled = true; btn.textContent = 'Creating…';
+    try {
+      const r = await fetch('/api/calendar/create-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_number: sgModal._projectNumber || '',
+          client:         sgModal._client || '',
+          tier:           sgModal._tier,
+          team:           [...sgSelectedTeam],
+          phases:         sgPhases,
+        }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        errEl.textContent = err.detail || 'Create failed.'; errEl.style.display = 'block';
+        btn.disabled = false; btn.textContent = '✓ Create Schedule'; return;
+      }
+      const result = await r.json();
+      sgModal.classList.remove('open');
+      await fetchEvents();
+      const toast = document.createElement('div');
+      toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--good);color:#fff;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:700;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.2)';
+      toast.textContent = `✓ ${result.count || sgPhases.length} phase event(s) created`;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    } catch (e) {
+      errEl.textContent = 'Network error.'; errEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = '✓ Create Schedule';
+    }
   });
 
   // ── Init ─────────────────────────────────────────────────────
