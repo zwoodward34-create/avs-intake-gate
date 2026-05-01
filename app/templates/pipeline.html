@@ -186,6 +186,10 @@
   </div>
 </div>
 
+{% macro _render_card(p, idx) %}
+{# This macro is only used at page-load; JS re-renders cards dynamically #}
+{% endmacro %}
+
 <!-- Kanban board -->
 <div class="pl-board" id="pl-board">
   {% for col_key, col in pipeline.columns.items() %}
@@ -206,10 +210,6 @@
   </div>
   {% endfor %}
 </div>
-
-{% macro _render_card(p, idx) %}
-{# This macro is only used at page-load; JS re-renders cards dynamically #}
-{% endmacro %}
 
 <script>
 (function () {
