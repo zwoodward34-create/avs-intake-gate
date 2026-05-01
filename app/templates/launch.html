@@ -1,78 +1,97 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="launch-hero">
-  <div class="launch-eyebrow">AVS Structural Engineers</div>
-  <div class="launch-title">Project Intake Gate</div>
-  <div class="launch-sub">Submit and track project proposals from inquiry through proposal delivery</div>
+<div class="home-date">{{ now_local[:10] }}</div>
+<div class="home-title">Good {{ time_of_day }}, Mo.</div>
+
+<div class="home-grid">
+  <!-- Mo's Queue alert -->
+  {% set _mc = pending_mo_count() %}
+  {% if _mc > 0 %}
+  <div class="queue-alert">
+    <div class="panel-label">Mo's Queue — {{ _mc }} pending decision{{ 's' if _mc != 1 }}</div>
+    {% for intake in mo_queue_intakes %}
+    <a class="queue-alert-item" href="/intakes/{{ intake.id }}">
+      <div class="queue-alert-name">{{ intake.project_name }}</div>
+      <div class="queue-alert-meta">
+        {% if intake.red_flag_critical_count %}
+          <span class="badge badge-critical">C {{ intake.red_flag_critical_count }}</span>
+        {% endif %}
+        {% if intake.red_flag_high_count %}
+          <span class="badge badge-high">H {{ intake.red_flag_high_count }}</span>
+        {% endif %}
+        <span>{{ intake.recommendation or 'Awaiting review' }}</span>
+      </div>
+    </a>
+    {% endfor %}
+    <a class="btn btn-sm" href="/mo-queue">Review queue →</a>
+  </div>
+  {% else %}
+  <div class="queue-alert">
+    <div class="panel-label">Mo's Queue</div>
+    <div style="padding:20px 0;color:var(--muted);font-size:13px">No intakes pending your review.</div>
+    <a class="btn btn-sm" href="/mo-queue">View queue</a>
+  </div>
+  {% endif %}
+
+  <!-- New RFP CTA -->
+  <div class="cta-card">
+    <div class="panel-label">New project</div>
+    <a class="cta-primary" href="/intakes/new">
+      Submit new RFP
+      <span class="cta-primary-sub">Begin the intake screening process</span>
+    </a>
+    <a class="cta-secondary" href="/intake/upload">Upload document — AI pre-fill →</a>
+  </div>
 </div>
 
-<div class="launch-grid">
-
-  <a class="launch-btn launch-btn-primary" href="/intakes/new">
-    <div class="launch-btn-title">New Project Proposal</div>
-    <div class="launch-btn-desc">Submit a new intake for screening and fee estimation</div>
-  </a>
-
-  <a class="launch-btn" href="/intake/upload">
-    <div class="launch-btn-title">Upload RFP</div>
-    <div class="launch-btn-desc">Upload a document and let AI pre-fill the intake form</div>
-  </a>
-
-  <a class="launch-btn" href="/dashboard">
-    <div class="launch-btn-title">View All Intakes</div>
-    <div class="launch-btn-desc">Browse and search the full intake pipeline</div>
-  </a>
-
-  <a class="launch-btn" href="/pipeline">
-    <div class="launch-btn-title">Pipeline Board</div>
-    <div class="launch-btn-desc">Kanban view of active projects by billing phase</div>
-  </a>
-
-  <a class="launch-btn" href="/past-projects">
-    <div class="launch-btn-title">Past Projects</div>
-    <div class="launch-btn-desc">Search completed projects by type, wall system, and structure</div>
-  </a>
-
-  <a class="launch-btn" href="/reports">
-    <div class="launch-btn-title">Reports</div>
-    <div class="launch-btn-desc">Pipeline metrics, intake trends, and turnaround stats</div>
-  </a>
-
-  <a class="launch-btn" href="/calendar">
-    <div class="launch-btn-title">Project Calendar</div>
-    <div class="launch-btn-desc">Shared phase schedule with IFP conflict tracking</div>
-  </a>
-
-  <a class="launch-btn" href="/capacity">
-    <div class="launch-btn-title">Capacity &amp; WEU</div>
-    <div class="launch-btn-desc">Live engineer workload heatmap and effort tracking</div>
-  </a>
-
-  <a class="launch-btn" href="/mo-queue">
-    <div class="launch-btn-title">
-      Mo's Queue
-      {% set _mc = pending_mo_count() %}
-      {% if _mc > 0 %}<span class="mo-badge" style="margin-left:8px">{{ _mc }}</span>{% endif %}
+<!-- Stat panels -->
+<div class="home-grid-3">
+  <div class="panel">
+    <div class="panel-label">Pipeline</div>
+    <div class="stat-val">{{ total_intakes }}</div>
+    <div class="stat-label-sm">total intakes</div>
+    <div class="inline-row">
+      <span class="inline-row-label">Proceed to proposal</span>
+      <span class="inline-row-val" style="color:var(--good)">{{ proceed_count }}</span>
     </div>
-    <div class="launch-btn-desc">Review intakes pending Mo's decision and sign-off</div>
-  </a>
+    <div class="inline-row">
+      <span class="inline-row-label">Pending Mo's review</span>
+      <span class="inline-row-val">{{ pending_mo_count() }}</span>
+    </div>
+    <div class="inline-row">
+      <span class="inline-row-label">Declined this month</span>
+      <span class="inline-row-val">{{ declined_count }}</span>
+    </div>
+  </div>
 
-  <a class="launch-btn" href="/timesheet">
-    <div class="launch-btn-title">Timesheet</div>
-    <div class="launch-btn-desc">Log hours by project and phase for payroll</div>
-  </a>
+  <div class="panel">
+    <div class="panel-label">Schedule</div>
+    <div class="stat-val">{{ active_project_count }}</div>
+    <div class="stat-label-sm">calendar events this month</div>
+    <div class="inline-row">
+      <span class="inline-row-label">IFP conflicts</span>
+      <span class="inline-row-val" {% if ifp_conflict_count > 0 %}style="color:var(--bad)"{% endif %}>{{ ifp_conflict_count }}</span>
+    </div>
+    <div class="inline-row">
+      <span class="inline-row-label">OOO this week</span>
+      <span class="inline-row-val">{{ ooo_this_week }}</span>
+    </div>
+  </div>
 
-  <a class="launch-btn" href="/payroll-export">
-    <div class="launch-btn-title">Payroll Export</div>
-    <div class="launch-btn-desc">Preview time entries by period and download CSV</div>
-  </a>
-
-  <a class="launch-btn" href="/settings">
-    <div class="launch-btn-title">Settings</div>
-    <div class="launch-btn-desc">Configure project number sequence and system defaults</div>
-  </a>
-
+  <div class="panel">
+    <div class="panel-label">Time</div>
+    <div class="stat-val">{{ timesheet_period_count() }}</div>
+    <div class="stat-label-sm">entries this pay period</div>
+    <div class="inline-row">
+      <span class="inline-row-label">Upcoming OOO (30d)</span>
+      <span class="inline-row-val">{{ upcoming_ooo_count() }}</span>
+    </div>
+    <div class="inline-row">
+      <span class="inline-row-label">Pending invoices</span>
+      <span class="inline-row-val" {% if pending_invoice_count() > 0 %}style="color:var(--warn)"{% endif %}>{{ pending_invoice_count() }}</span>
+    </div>
+  </div>
 </div>
 
 {% endblock %}

@@ -6,57 +6,86 @@
     <title>{{ title or "AVS Intake Gate" }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/app.css?v=7" />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/app.css?v=8" />
     <script defer src="/static/app.js"></script>
   </head>
   <body>
-    <div class="container">
-      <div class="topbar">
-        <div>
-          <div class="title"><a href="/">AVS Intake Gate</a></div>
-          <div class="subtle">Live intake dashboard • {{ now_local }}</div>
+
+    {% if not hide_nav_actions %}
+    <!-- ── Sidebar nav ──────────────────────────────────────────── -->
+    <nav class="sidebar">
+      <div class="sidebar-logo">
+        <a class="sidebar-logo-mark" href="/">AVS</a>
+        <div class="sidebar-logo-sub">Structural Engineers</div>
+      </div>
+
+      <div class="sidebar-nav">
+        <div class="nav-group">
+          <div class="nav-group-label">Intake</div>
+          <a class="nav-item {% if request.url.path == '/' %}active{% endif %}" href="/">Home</a>
+          <a class="nav-item {% if request.url.path == '/dashboard' %}active{% endif %}" href="/dashboard">All Intakes</a>
+          <a class="nav-item {% if request.url.path == '/intake/upload' %}active{% endif %}" href="/intake/upload">Upload RFP</a>
         </div>
-        {% if not hide_nav_actions %}
-        <div class="actions">
-          <a class="btn" href="/">Home</a>
-          <a class="btn btn-primary" href="/intakes/new">New Intake</a>
-          <a class="btn" href="/intake/upload">Upload RFP</a>
-          <a class="btn" href="/dashboard">All Intakes</a>
-          <a class="btn" href="/pipeline">Pipeline</a>
-          <a class="btn" href="/timesheet">
+
+        <div class="nav-group">
+          <div class="nav-group-label">Projects</div>
+          <a class="nav-item {% if request.url.path == '/pipeline' %}active{% endif %}" href="/pipeline">Pipeline</a>
+          <a class="nav-item {% if request.url.path == '/calendar' %}active{% endif %}" href="/calendar">Calendar</a>
+          <a class="nav-item {% if request.url.path == '/capacity' %}active{% endif %}" href="/capacity">Capacity &amp; WEU</a>
+          <a class="nav-item {% if request.url.path == '/time-off' %}active{% endif %}" href="/time-off">Time Off</a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-group-label">People</div>
+          <a class="nav-item {% if request.url.path == '/timesheet' %}active{% endif %}" href="/timesheet">
             Timesheet
             {% set _tc = timesheet_period_count() %}
             {% if _tc > 0 %}
-              <span class="mo-badge" style="background:rgba(37,99,235,.12);border-color:rgba(37,99,235,.40);color:#2563eb">{{ _tc }}</span>
+              <span class="nav-badge">{{ _tc }}</span>
             {% endif %}
           </a>
-          <a class="btn" href="/time-off">
-            Time Off
-            {% set _oc = upcoming_ooo_count() %}
-            {% if _oc > 0 %}
-              <span class="mo-badge" style="background:rgba(0,229,255,.10);border-color:rgba(0,229,255,.35);color:var(--accent)">{{ _oc }}</span>
-            {% endif %}
-          </a>
-          <a class="btn" href="/calendar">Calendar</a>
-          <a class="btn" href="/capacity">Capacity</a>
-          <a class="btn" href="/payroll-export">Payroll</a>
-          <a class="btn" href="/reports">Reports</a>
-          <a class="btn" href="/mo-queue">
+          <a class="nav-item {% if request.url.path == '/mo-queue' %}active{% endif %}" href="/mo-queue">
             Mo's Queue
             {% set _mc = pending_mo_count() %}
             {% set _ic = pending_invoice_count() %}
             {% set _total = _mc + _ic %}
             {% if _total > 0 %}
-              <span class="mo-badge">{{ _total }}</span>
+              <span class="nav-badge">{{ _total }}</span>
             {% endif %}
           </a>
-          <a class="btn" href="/past-projects">Past Projects</a>
-          <a class="btn" href="/settings">Settings</a>
+          <a class="nav-item {% if request.url.path == '/payroll-export' %}active{% endif %}" href="/payroll-export">Payroll Export</a>
         </div>
-        {% endif %}
+
+        <div class="nav-group">
+          <div class="nav-group-label">Admin</div>
+          <a class="nav-item {% if request.url.path == '/reports' %}active{% endif %}" href="/reports">Reports</a>
+          <a class="nav-item {% if request.url.path == '/past-projects' %}active{% endif %}" href="/past-projects">Past Projects</a>
+          <a class="nav-item {% if request.url.path == '/settings' %}active{% endif %}" href="/settings">Settings</a>
+        </div>
       </div>
-      {% block content %}{% endblock %}
+
+      <div class="sidebar-footer" id="sidebar-clock"></div>
+    </nav>
+    {% endif %}
+
+    <!-- ── Main content ─────────────────────────────────────────── -->
+    <div class="main-content" {% if hide_nav_actions %}style="margin-left:0"{% endif %}>
+      <div class="container">
+        {% block content %}{% endblock %}
+      </div>
     </div>
+
+    <script>
+      (function tick() {
+        var el = document.getElementById('sidebar-clock');
+        if (el) {
+          var now = new Date();
+          el.textContent = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+            + ' · ' + now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
+        setTimeout(tick, 30000);
+      })();
+    </script>
   </body>
 </html>

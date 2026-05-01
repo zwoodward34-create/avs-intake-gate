@@ -188,9 +188,81 @@ def _startup() -> None:
 
 @app.get("/", response_class=HTMLResponse)
 def launch(request: Request) -> HTMLResponse:
+    now = datetime.now()
+    hour = now.hour
+    time_of_day = "morning" if hour < 12 else "afternoon" if hour < 17 else "evening"
+
+    all_intakes = db.list_intakes()
+    proceed_count  = sum(1 for i in all_intakes if i.status == "PROCEED_TO_PROPOSAL")
+    declined_count = sum(1 for i in all_intakes if i.status == "DECLINED")
+
+    mo_queue_raw = db.list_pending_mo()[:3]
+    mo_queue_intakes = []
+    for intake in mo_queue_raw:
+        flags = []
+        try:
+            flags = _json.loads(intake.red_flags or "[]") if intake.red_flags else []
+        except Exception:
+            pass
+        high_count     = sum(1 for f in flags if (f.get("severity") or "").lower() == "high")
+        critical_count = sum(1 for f in flags if (f.get("severity") or "").lower() == "critical")
+        mo_queue_intakes.append({
+            "id": intake.id,
+            "project_name": intake.project_name,
+            "recommendation": intake.recommendation,
+            "red_flag_high_count": high_count,
+            "red_flag_critical_count": critical_count,
+        })
+
+    # Calendar stats
+    active_project_count = 0
+    ifp_conflict_count   = 0
+    ooo_this_week        = 0
+    try:
+        today = date.today()
+        week_start = (today - timedelta(days=today.weekday())).isoformat()
+        week_end   = (today + timedelta(days=6 - today.weekday())).isoformat()
+        cal_events = db._client().table("calendar_events") \
+            .select("id,phase,is_ooo,start_date,end_date") \
+            .gte("end_date", (today.replace(day=1)).isoformat()) \
+            .execute()
+        rows = cal_events.data or []
+        active_project_count = len(rows)
+        ifp_days: dict[str, int] = {}
+        for ev in rows:
+            if ev.get("phase") == "IFP" and not ev.get("is_ooo"):
+                s = (ev.get("start_date") or "")[:10]
+                e = (ev.get("end_date") or "")[:10]
+                if s and e:
+                    cur = date.fromisoformat(s)
+                    end = date.fromisoformat(e)
+                    while cur <= end:
+                        k = cur.isoformat()
+                        ifp_days[k] = ifp_days.get(k, 0) + 1
+                        cur += timedelta(days=1)
+            if ev.get("is_ooo"):
+                s = (ev.get("start_date") or "")[:10]
+                e = (ev.get("end_date") or "")[:10]
+                if s and e and s <= week_end and e >= week_start:
+                    ooo_this_week += 1
+        ifp_conflict_count = sum(1 for v in ifp_days.values() if v >= 2)
+    except Exception:
+        pass
+
     return templates.TemplateResponse(
         "launch.html",
-        {"request": request, "now_local": _now_local_iso(), "hide_nav_actions": True},
+        {
+            "request": request,
+            "now_local": _now_local_iso(),
+            "time_of_day": time_of_day,
+            "total_intakes": len(all_intakes),
+            "proceed_count": proceed_count,
+            "declined_count": declined_count,
+            "mo_queue_intakes": mo_queue_intakes,
+            "active_project_count": active_project_count,
+            "ifp_conflict_count": ifp_conflict_count,
+            "ooo_this_week": ooo_this_week,
+        },
     )
 
 
