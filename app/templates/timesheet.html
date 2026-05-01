@@ -1,25 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-  body {
-    --bg:             #020617;
-    --card-bg:        rgba(30,41,59,0.55);
-    --card-bg-deeper: rgba(15,23,42,0.65);
-    --border:         rgba(255,255,255,0.08);
-    --text:           #F8FAFC;
-    --muted:          #64748B;
-    --subtle:         #475569;
-    background: #020617;
-    background-image:
-      repeating-linear-gradient(rgba(255,255,255,0.015) 0,rgba(255,255,255,0.015) 1px,transparent 1px,transparent 40px),
-      repeating-linear-gradient(90deg,rgba(255,255,255,0.015) 0,rgba(255,255,255,0.015) 1px,transparent 1px,transparent 40px);
-  }
-  .topbar { border-bottom: 1px solid rgba(255,255,255,0.06) }
-  .title a { color: var(--text) }
-  .btn { background:var(--card-bg); border-color:var(--border); color:var(--text) }
-  .btn:hover { background:rgba(255,255,255,0.09); border-color:rgba(255,255,255,0.15) }
-  .btn-primary { background:rgba(37,99,235,.18); border-color:rgba(37,99,235,.45); color:#93c5fd }
-  .btn-primary:hover { background:rgba(37,99,235,.28); border-color:rgba(37,99,235,.65) }
 
   .ts-header { font-size:22px; font-weight:900; letter-spacing:-.3px; color:var(--text); margin-bottom:6px }
   .ts-sub { font-size:13px; color:var(--muted) }
@@ -33,10 +14,10 @@
   .ts-controls .field { margin:0; flex:1; min-width:140px; max-width:200px }
   .ts-controls label { color:var(--muted); font-size:10px }
   .ts-controls input, .ts-controls select {
-    background:rgba(15,23,42,0.7); border-color:rgba(255,255,255,0.1); color:var(--text);
+    background:rgba(0,0,0,0.25); border-color:rgba(255,255,255,0.1); color:var(--text);
     font-size:13px;
   }
-  .ts-controls input:focus, .ts-controls select:focus { border-color:rgba(37,99,235,.6) }
+  .ts-controls input:focus, .ts-controls select:focus { border-color:rgba(0,230,118,.45) }
 
   /* Entry table */
   .ts-card {
@@ -47,14 +28,14 @@
   .ts-table th {
     padding:10px 12px; text-align:left; font-size:10px; font-weight:700;
     text-transform:uppercase; letter-spacing:.6px; color:var(--muted);
-    background:rgba(15,23,42,0.5); border-bottom:1px solid var(--border);
+    background:var(--card-bg-deeper); border-bottom:1px solid var(--border);
   }
   .ts-table td { padding:10px 12px; border-bottom:1px solid rgba(255,255,255,0.04); vertical-align:middle }
   .ts-table tr:last-child td { border-bottom:none }
-  .ts-table tr:hover td { background:rgba(37,99,235,0.05) }
+  .ts-table tr:hover td { background:rgba(255,255,255,0.03) }
 
   .date-group-row td {
-    background:rgba(15,23,42,0.4); color:var(--muted); font-size:11px;
+    background:var(--card-bg-deeper); color:var(--muted); font-size:11px;
     font-weight:700; text-transform:uppercase; letter-spacing:.5px;
     padding:6px 12px; border-bottom:1px solid rgba(255,255,255,0.04);
   }
@@ -84,15 +65,15 @@
   .ts-add-form .field { margin:0; flex:1; min-width:110px }
   .ts-add-form label { color:var(--muted); font-size:10px }
   .ts-add-form input, .ts-add-form select {
-    background:rgba(15,23,42,0.7); border-color:rgba(255,255,255,0.1); color:var(--text);
+    background:rgba(0,0,0,0.25); border-color:rgba(255,255,255,0.1); color:var(--text);
     font-size:13px;
   }
-  .ts-add-form input:focus, .ts-add-form select:focus { border-color:rgba(37,99,235,.6) }
+  .ts-add-form input:focus, .ts-add-form select:focus { border-color:rgba(0,230,118,.45) }
 
   /* Edit row */
-  .edit-row td { background:rgba(37,99,235,0.07) !important }
+  .edit-row td { background:rgba(0,230,118,0.05) !important }
   .edit-row input {
-    background:rgba(15,23,42,0.7); border:1px solid rgba(37,99,235,.45); color:var(--text);
+    background:rgba(0,0,0,0.25); border:1px solid rgba(0,230,118,.35); color:var(--text);
     border-radius:3px; padding:4px 8px; font-size:12px; font-family:'JetBrains Mono',monospace;
   }
 

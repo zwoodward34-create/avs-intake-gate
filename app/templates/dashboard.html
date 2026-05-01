@@ -267,7 +267,7 @@
               {% set c = i.red_flag_counts %}
               {% set has_flags = c.get("critical", 0) > 0 or c.get("high", 0) > 0 or c.get("medium", 0) > 0 or c.get("low", 0) > 0 %}
               {% if has_flags %}
-                <div class="flag-badge-group" data-flags="{{ i.red_flags | tojson | e }}" style="cursor:pointer; display:flex; flex-wrap:wrap; gap:4px" title="Click to view flag details">
+                <div class="flag-badge-group" data-flags='{{ i.red_flags | tojson }}' style="cursor:pointer; display:flex; flex-wrap:wrap; gap:4px" title="Click to view flag details">
                   {% if c.get("critical", 0) > 0 %}<span class="badge badge-critical">C {{ c.get("critical", 0) }}</span>{% endif %}
                   {% if c.get("high", 0) > 0 %}<span class="badge badge-high">H {{ c.get("high", 0) }}</span>{% endif %}
                   {% if c.get("medium", 0) > 0 %}<span class="badge badge-medium">M {{ c.get("medium", 0) }}</span>{% endif %}
