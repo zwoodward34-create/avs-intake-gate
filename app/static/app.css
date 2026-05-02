@@ -759,6 +759,8 @@ input[type="checkbox"] {
 .cta-primary { display: block; width: 100%; padding: 16px 18px; background: var(--accent); color: oklch(99% 0 0); border: none; border-radius: var(--radius); font-family: var(--font); font-size: 15px; font-weight: 700; cursor: pointer; text-align: left; margin-bottom: 10px; letter-spacing: -0.2px; transition: background 0.10s; text-decoration: none; }
 .cta-primary:hover { background: var(--accent-hover); text-decoration: none; color: oklch(99% 0 0); }
 .cta-primary-sub { font-size: 12px; font-weight: 400; opacity: 0.72; margin-top: 3px; display: block; }
+.cta-primary-ai { background: var(--good); }
+.cta-primary-ai:hover { background: oklch(40% 0.140 145); }
 .cta-secondary { display: block; width: 100%; padding: 11px 14px; background: var(--card-bg-deeper); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); font-family: var(--font); font-size: 13.5px; font-weight: 600; cursor: pointer; text-align: left; transition: border-color 0.10s, background 0.10s; text-decoration: none; }
 .cta-secondary:hover { border-color: var(--border-hover); background: var(--surface-3); text-decoration: none; color: var(--text); }
 

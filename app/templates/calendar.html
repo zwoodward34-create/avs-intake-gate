@@ -1152,6 +1152,7 @@
     document.getElementById('f-start').value = dateStr;
     document.getElementById('f-end').value = dateStr;
     modal.classList.add('open');
+    onFormDateChange();
   }
 
   function openEdit(ev) {
@@ -1175,6 +1176,7 @@
     deleteBtn.style.display = '';
     modal.classList.add('open');
     checkAllConflicts();
+    onFormDateChange();
   }
 
   function closeModal() { modal.classList.remove('open'); }
