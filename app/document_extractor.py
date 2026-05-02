@@ -551,6 +551,7 @@ def _word_count(text: str) -> int:
 
 
 def extract_intake_fields(text: str) -> dict[str, Any]:
+    from datetime import date as _date
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured.")
@@ -558,12 +559,19 @@ def extract_intake_fields(text: str) -> dict[str, Any]:
     import anthropic
     client = anthropic.Anthropic(api_key=api_key)
 
+    today_str = _date.today().isoformat()
+
     # Chunking: only truncate large documents (>3000 words / ~15k chars)
     words = _word_count(text)
     doc_text = text if words <= 3000 else text[:15000]
 
     def _call(extra: str = "") -> str:
-        content = f"Document text:\n\n{doc_text}"
+        content = (
+            f"Today's date is {today_str}. When inferring or calculating any dates "
+            f"(inquiry_date, ifp_due_date, weeks_to_permit), use {today_str[:4]} as the "
+            f"current year unless the document explicitly states otherwise.\n\n"
+            f"Document text:\n\n{doc_text}"
+        )
         if extra:
             content += f"\n\n{extra}"
         resp = client.messages.create(

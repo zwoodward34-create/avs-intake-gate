@@ -1152,7 +1152,7 @@
     document.getElementById('f-start').value = dateStr;
     document.getElementById('f-end').value = dateStr;
     modal.classList.add('open');
-    onFormDateChange();
+    triggerCapacityLoad();
   }
 
   function openEdit(ev) {
@@ -1176,7 +1176,7 @@
     deleteBtn.style.display = '';
     modal.classList.add('open');
     checkAllConflicts();
-    onFormDateChange();
+    triggerCapacityLoad();
   }
 
   function closeModal() { modal.classList.remove('open'); }
@@ -1424,9 +1424,14 @@
   async function fetchProjectedCapacity(startDate, endDate) {
     try {
       const r = await fetch(`/api/capacity/projected?start=${startDate}&end=${endDate}`);
-      if (!r.ok) return;
+      if (!r.ok) {
+        console.error('Capacity API error:', r.status, await r.text());
+        return;
+      }
       renderCapacityBars(await r.json());
-    } catch (e) { /* silent */ }
+    } catch (e) {
+      console.error('Capacity fetch failed:', e);
+    }
   }
 
   function onFormDateChange() {
@@ -1436,7 +1441,17 @@
     document.getElementById('capacity-header-label').textContent =
       `ASSIGN TEAM — PROJECTED CAPACITY (${formatDateRangeLabel(startDate, endDate)})`;
     clearTimeout(_capFetchTimer);
-    _capFetchTimer = setTimeout(() => fetchProjectedCapacity(startDate, endDate), 400);
+    _capFetchTimer = setTimeout(() => fetchProjectedCapacity(startDate, endDate), 300);
+  }
+
+  function triggerCapacityLoad() {
+    const startDate = document.getElementById('f-start').value;
+    const endDate   = document.getElementById('f-end').value;
+    if (!startDate) return;
+    const end = endDate || startDate;
+    document.getElementById('capacity-header-label').textContent =
+      `ASSIGN TEAM — PROJECTED CAPACITY (${formatDateRangeLabel(startDate, end)})`;
+    fetchProjectedCapacity(startDate, end);
   }
 
   document.getElementById('f-start').addEventListener('change', onFormDateChange);
