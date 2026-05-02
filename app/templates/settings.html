@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="page-project-title">Settings</div>
+<div style="margin-bottom:24px">
+  <div class="page-eyebrow">Admin</div>
+  <div class="page-title">Settings</div>
+</div>
 
 <div class="card" style="max-width:560px">
   <h2 style="margin-top:0">Project Number Sequence</h2>
@@ -104,7 +107,7 @@
   <button class="btn btn-primary" type="button" onclick="saveBpDistribution()">Save Distribution</button>
 
   <div class="hr"></div>
-  <div style="background:rgba(255,215,64,.06); border:1px solid rgba(255,215,64,.25); border-radius:var(--radius); padding:12px 14px; font-size:13px; color:rgba(255,255,255,.7); line-height:1.55">
+  <div style="background:var(--warn-surface); border:1px solid oklch(56% 0.140 68 / 30%); border-radius:var(--radius); padding:12px 14px; font-size:13px; color:var(--text); line-height:1.55">
     ⚠ Changing these values only affects <strong>new projects</strong> — existing projects keep their original fee split.
   </div>
 </div>

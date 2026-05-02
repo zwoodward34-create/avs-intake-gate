@@ -106,10 +106,11 @@
   .pl-advance-key   { color:var(--muted); min-width:90px; flex-shrink:0 }
   .pl-advance-val   { color:var(--text); font-weight:700 }
   .pl-advance-note  {
-    width:100%; margin-top:8px; margin-bottom:10px;
-    background:var(--card-bg); border:1px solid var(--border);
+    width:100%; box-sizing:border-box; margin-top:8px; margin-bottom:10px;
+    background:var(--card-bg-deeper); border:1px solid var(--border);
     color:var(--text); border-radius:var(--radius-sm); padding:9px 11px;
-    font-size:12px; resize:vertical; font-family:var(--font); min-height:56px;
+    font-size:12px; resize:none; font-family:var(--font);
+    height:56px; overflow-y:auto;
   }
   .pl-advance-note:focus { outline:none; border-color:var(--accent) }
   .pl-advance-actions { display:flex; gap:8px }

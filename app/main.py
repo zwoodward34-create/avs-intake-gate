@@ -1962,3 +1962,17 @@ def api_intakes(status: Optional[str] = None) -> list[dict[str, Any]]:
             "review_reason": fee_review_reason,
         })
     return result
+
+
+@app.get("/api/intakes/by-project-number/{project_number}")
+def api_intake_by_project_number(project_number: str) -> dict[str, Any]:
+    rows = db.list_intakes()
+    for r in rows:
+        if str(r.project_number or "").strip() == project_number.strip():
+            return {
+                "id": r.id,
+                "project_name": r.project_name,
+                "client_name": r.client_name,
+                "ifp_due_date": r.ifp_due_date,
+            }
+    raise HTTPException(status_code=404, detail="No intake found for that project number.")

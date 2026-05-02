@@ -538,7 +538,8 @@
     <div id="project-section">
       <div class="field">
         <label for="f-project-number">Project #</label>
-        <input type="text" id="f-project-number" placeholder="e.g. 9771">
+        <input type="text" id="f-project-number" placeholder="e.g. 9771" oninput="onProjectNumberInput(this.value)">
+        <div id="f-ifp-hint" style="display:none;font-size:11px;color:var(--good);margin-top:4px;font-weight:600"></div>
       </div>
       <div class="two-col">
         <div class="field">
@@ -634,15 +635,15 @@
       <div id="conflict-warnings"></div>
     </div>
 
-    <div class="two-col">
+    <div id="f-start-row">
       <div class="field">
         <label for="f-start">Start Date</label>
         <input type="date" id="f-start">
       </div>
-      <div class="field">
-        <label for="f-end">End Date</label>
-        <input type="date" id="f-end">
-      </div>
+    </div>
+    <div class="field">
+      <label for="f-end" id="f-end-label">IFP Due Date</label>
+      <input type="date" id="f-end">
     </div>
 
     <div class="modal-actions">
@@ -1085,11 +1086,40 @@
 
   function toggleOOO(on) {
     document.getElementById('project-section').style.display = on ? 'none' : 'block';
+    document.getElementById('f-start-row').style.display = on ? 'block' : 'none';
+    document.getElementById('f-end-label').textContent = on ? 'End Date' : 'IFP Due Date';
   }
   document.getElementById('is-ooo').addEventListener('change', function () {
     toggleOOO(this.checked);
     checkAllConflicts();
   });
+
+  var _pnTimer = null;
+  window.onProjectNumberInput = function(val) {
+    clearTimeout(_pnTimer);
+    var hint = document.getElementById('f-ifp-hint');
+    hint.style.display = 'none';
+    if (!val || val.length < 3) return;
+    _pnTimer = setTimeout(function() {
+      fetch('/api/intakes/by-project-number/' + encodeURIComponent(val.trim()))
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) {
+          if (!d) return;
+          if (d.client_name) document.getElementById('f-client').value = d.client_name;
+          if (d.ifp_due_date) {
+            var ifpDate = d.ifp_due_date.slice(0, 10);
+            document.getElementById('f-end').value = ifpDate;
+            if (!document.getElementById('f-start').value) {
+              document.getElementById('f-start').value = new Date().toISOString().slice(0, 10);
+            }
+            hint.textContent = '✓ IFP date autofilled from intake (' + ifpDate + ')';
+            hint.style.display = 'block';
+            onFormDateChange();
+          }
+        })
+        .catch(function() {});
+    }, 500);
+  };
 
   function resetModal() {
     editingId = null;
@@ -1102,9 +1132,13 @@
     document.getElementById('f-tier').value = '';
     document.getElementById('f-type').value = '';
     document.getElementById('f-phase-jump').checked = false;
-    document.getElementById('f-start').value = '';
+    document.getElementById('f-start').value = new Date().toISOString().slice(0, 10);
     document.getElementById('f-end').value = '';
+    var hint = document.getElementById('f-ifp-hint');
+    if (hint) hint.style.display = 'none';
     document.getElementById('is-ooo').checked = false;
+    document.getElementById('f-start-row').style.display = 'none';
+    document.getElementById('f-end-label').textContent = 'IFP Due Date';
     toggleOOO(false);
     conflictBanner.classList.remove('visible');
     teamWarning.classList.remove('visible');
@@ -1239,8 +1273,9 @@
     const endDate   = document.getElementById('f-end').value;
 
     if (!team.length)            { alert('Please select at least one team member.'); return; }
-    if (!startDate || !endDate)  { alert('Start and end dates are required.'); return; }
-    if (endDate < startDate)     { alert('End date must be on or after start date.'); return; }
+    if (!startDate)              { document.getElementById('f-start').value = new Date().toISOString().slice(0,10); }
+    if (!endDate)                { alert('IFP Due Date is required.'); return; }
+    if (endDate < startDate)     { alert('IFP Due Date must be on or after start date.'); return; }
 
     const payload = {
       project_number: isOOO ? '' : document.getElementById('f-project-number').value.trim(),
@@ -1657,6 +1692,22 @@
   renderTeamTrigger();
   fetchEvents();
   setInterval(fetchEvents, 30000);
+
+  // Auto-open new-event modal from URL params (e.g., from Mo Review)
+  (function() {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('new') === '1') {
+      var today = new Date().toISOString().slice(0, 10);
+      openAdd(today);
+      var pn = params.get('project_number');
+      var cl = params.get('client');
+      if (pn) {
+        document.getElementById('f-project-number').value = pn;
+        onProjectNumberInput(pn);
+      }
+      if (cl) document.getElementById('f-client').value = cl;
+    }
+  })();
 })();
 </script>
 {% endblock %}
