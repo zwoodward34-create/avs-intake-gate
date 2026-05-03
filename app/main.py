@@ -708,17 +708,41 @@ def mo_queue(request: Request) -> HTMLResponse:
         fee_midpoint: Optional[float] = None
         fee_low: Optional[float] = None
         fee_high: Optional[float] = None
+        fee_analysis: Optional[dict] = None
         try:
             dec = compute_decision(answers)
             enriched_ans = {**answers, "_complexity": dec["complexity_estimate"]}
             est = cognasync_estimate_from_answers(intake.project_name, enriched_ans)
-            if est and not est.get("needs_manual_review"):
-                fr = est.get("suggested_fee_range") or {}
-                lo = fr.get("low") or 0
-                hi = fr.get("high") or 0
-                if lo and hi:
-                    fee_midpoint = round((lo + hi) / 2 / 500) * 500
-                    fee_low, fee_high = lo, hi
+            if est:
+                if not est.get("needs_manual_review"):
+                    fr = est.get("suggested_fee_range") or {}
+                    lo = fr.get("low") or 0
+                    hi = fr.get("high") or 0
+                    if lo and hi:
+                        fee_midpoint = round((lo + hi) / 2 / 500) * 500
+                        fee_low, fee_high = lo, hi
+                fee_analysis = {
+                    "needs_review":  est.get("needs_manual_review") or est.get("fee_requires_review"),
+                    "review_reason": est.get("review_reason"),
+                    "sq_ft":         est.get("sq_ft") or 0,
+                    "complexity":    dec["complexity_estimate"],
+                    "delivery":      est.get("delivery_bucket"),
+                    "building_type": est.get("building_type"),
+                    "rate_low":      est.get("effective_rate_low"),
+                    "rate_high":     est.get("effective_rate_high"),
+                    "base_low":      (est.get("base_fee_range") or {}).get("low"),
+                    "base_high":     (est.get("base_fee_range") or {}).get("high"),
+                    "cx_mult":       est.get("complexity_multiplier"),
+                    "cx_low":        (est.get("complexity_adjusted_range") or {}).get("low"),
+                    "cx_high":       (est.get("complexity_adjusted_range") or {}).get("high"),
+                    "risk_mult":     est.get("risk_multiplier"),
+                    "flag_count":    est.get("flag_count") or 0,
+                    "floor":         est.get("floor_fee"),
+                    "floor_applied": est.get("floor_applied"),
+                    "range_low":     fee_low,
+                    "range_high":    fee_high,
+                    "midpoint":      fee_midpoint,
+                }
         except Exception:
             pass
 
@@ -743,6 +767,7 @@ def mo_queue(request: Request) -> HTMLResponse:
             "fee_midpoint":         fee_midpoint,
             "fee_low":              fee_low,
             "fee_high":             fee_high,
+            "fee_analysis":         fee_analysis,
         })
 
     pending_invoices = db.get_pending_invoice_approvals()

@@ -988,3 +988,19 @@ dialog::backdrop { background: oklch(16% 0.02 252 / 50%); }
   .mo-action-btn { width: 100%; }
   .mo-date-pair { flex-direction: column; align-items: flex-start; }
 }
+
+/* ─── Mo Queue — AI Fee Analysis breakdown ───────────────────────────────── */
+.mo-fee-analysis { background: var(--card-bg-deeper); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+.mo-fee-analysis-warn { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: oklch(45% 0.15 80); background: oklch(from var(--warn) l c h / 0.08); border: 1px solid oklch(from var(--warn) l c h / 0.25); border-radius: 6px; padding: 8px 10px; }
+.mo-fee-breakdown-meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.mo-fee-breakdown-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.mo-fee-breakdown-table tr + tr td { border-top: 1px solid var(--border); }
+.mo-fbt-label { color: var(--muted); padding: 4px 0; font-weight: 500; width: 48%; }
+.mo-fbt-rate { color: var(--muted); font-family: var(--mono); font-size: 11px; padding: 4px 8px; white-space: nowrap; }
+.mo-fbt-range { color: var(--text); font-family: var(--mono); font-size: 12px; padding: 4px 0; text-align: right; white-space: nowrap; }
+.mo-fbt-floor-row { color: var(--accent); }
+.mo-fee-breakdown-result { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1.5px solid var(--border); }
+.mo-fee-breakdown-range { font-family: var(--mono); font-weight: 700; font-size: 14px; color: var(--text); }
+.mo-fee-breakdown-mid { font-size: 12px; color: var(--muted); flex: 1; }
+.mo-fee-use-btn { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 5px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; white-space: nowrap; }
+.mo-fee-use-btn:hover { opacity: 0.82; }

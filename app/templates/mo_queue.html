@@ -121,6 +121,56 @@
   <div class="mo-proceed-panel" id="proceed-panel-{{ intake.id }}" style="display:none;">
     <div class="mo-proceed-inner">
 
+      {# AI Fee Analysis #}
+      {% if intake.fee_analysis %}{% set fa = intake.fee_analysis %}
+      <div class="mo-fee-analysis">
+        <div class="mo-section-label" style="margin-bottom:8px">AI FEE ANALYSIS</div>
+        {% if fa.needs_review %}
+        <div class="mo-fee-analysis-warn">
+          <span>⚠</span>
+          <span>{{ fa.review_reason or "Manual review required — fee cannot be reliably estimated." }}</span>
+        </div>
+        {% else %}
+        <div class="mo-fee-breakdown-meta">
+          {{ "{:,}".format(fa.sq_ft) }} SF &middot;
+          {{ (fa.building_type or "") | replace("_", " ") | title }}
+          {% if fa.delivery == "new" %}New Construction{% elif fa.delivery == "bts" %}Build-to-Suit{% else %}Tenant Improvement{% endif %}
+          &middot; {{ (fa.complexity or "") | title }} complexity
+        </div>
+        <table class="mo-fee-breakdown-table">
+          <tr>
+            <td class="mo-fbt-label">Base rate</td>
+            <td class="mo-fbt-rate">${{ fa.rate_low }}–${{ fa.rate_high }}/SF</td>
+            <td class="mo-fbt-range">${{ "{:,.0f}".format(fa.base_low) }} – ${{ "{:,.0f}".format(fa.base_high) }}</td>
+          </tr>
+          <tr>
+            <td class="mo-fbt-label">Complexity ×{{ fa.cx_mult }}</td>
+            <td class="mo-fbt-rate"></td>
+            <td class="mo-fbt-range">${{ "{:,.0f}".format(fa.cx_low) }} – ${{ "{:,.0f}".format(fa.cx_high) }}</td>
+          </tr>
+          <tr>
+            <td class="mo-fbt-label">Risk ({{ fa.flag_count }} flag{{ "s" if fa.flag_count != 1 else "" }}) ×{{ fa.risk_mult }}</td>
+            <td class="mo-fbt-rate"></td>
+            <td class="mo-fbt-range">${{ "{:,.0f}".format(fa.range_low) }} – ${{ "{:,.0f}".format(fa.range_high) }}</td>
+          </tr>
+          {% if fa.floor_applied %}
+          <tr>
+            <td class="mo-fbt-label mo-fbt-floor-row">Floor applied</td>
+            <td class="mo-fbt-rate"></td>
+            <td class="mo-fbt-range mo-fbt-floor-row">min ${{ "{:,.0f}".format(fa.floor) }}</td>
+          </tr>
+          {% endif %}
+        </table>
+        <div class="mo-fee-breakdown-result">
+          <span class="mo-fee-breakdown-range">${{ "{:,.0f}".format(fa.range_low) }} – ${{ "{:,.0f}".format(fa.range_high) }}</span>
+          <span class="mo-fee-breakdown-mid">midpoint <strong>${{ "{:,.0f}".format(fa.midpoint) }}</strong></span>
+          <button class="mo-fee-use-btn" type="button"
+                  onclick="(function(){ var el=document.getElementById('fee-input-{{ intake.id }}'); el.value={{ fa.midpoint | int }}; el.dispatchEvent(new Event('input')); })()">Use midpoint →</button>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
       {# Approved Fee #}
       <div class="mo-proceed-fee-row">
         <label class="mo-field-label">APPROVED FEE</label>
@@ -132,9 +182,6 @@
                    placeholder="{{ intake.fee_midpoint | int if intake.fee_midpoint else '0' }}"
                    min="0" step="500">
           </div>
-          {% if intake.fee_low and intake.fee_high %}
-          <span class="mo-fee-ai-hint">AI est: ${{ "{:,.0f}".format(intake.fee_low) }}–${{ "{:,.0f}".format(intake.fee_high) }}</span>
-          {% endif %}
         </div>
       </div>
 
