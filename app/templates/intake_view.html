@@ -42,6 +42,43 @@
 
 {# ── Panels 2 + 3: Phase Matrix + Schedule ───────────────────────────────── #}
 {% if intake.project_number or intake.ifp_due_date %}
+
+{# ── Budget Health / Projected Burn ── #}
+{% if has_budget %}
+<div class="card burn-panel" id="burn-panel-{{ intake.id }}" data-intake-id="{{ intake.id }}">
+  <div class="burn-panel-header">
+    <span class="burn-panel-title">Budget Health</span>
+    <span class="burn-panel-fee">Approved Fee: <strong>${{ "{:,.0f}".format(budget_fee) }}</strong></span>
+  </div>
+  <div class="burn-kpi-row">
+    <div class="burn-kpi">
+      <div class="burn-kpi-label">Current Burn</div>
+      <div class="burn-kpi-value" id="burn-current-value-{{ intake.id }}">—</div>
+      <div class="burn-kpi-pct"   id="burn-current-pct-{{ intake.id }}"></div>
+    </div>
+    <div class="burn-kpi burn-kpi-projected">
+      <div class="burn-kpi-label">Projected Burn</div>
+      <div class="burn-kpi-value" id="burn-projected-value-{{ intake.id }}">—</div>
+      <div class="burn-kpi-pct"   id="burn-projected-pct-{{ intake.id }}"></div>
+    </div>
+    <div class="burn-kpi">
+      <div class="burn-kpi-label">Remaining Budget</div>
+      <div class="burn-kpi-value" id="burn-remaining-value-{{ intake.id }}">—</div>
+      <div class="burn-kpi-pct"   id="burn-resourced-hours-{{ intake.id }}"></div>
+    </div>
+  </div>
+  <div class="burn-track" id="burn-track-{{ intake.id }}" title="">
+    <div class="burn-fill-current"   id="burn-fill-current-{{ intake.id }}"   style="width:0%"></div>
+    <div class="burn-fill-projected" id="burn-fill-projected-{{ intake.id }}" style="width:0%"></div>
+  </div>
+  <div class="burn-track-labels">
+    <span class="burn-track-label-today">Today</span>
+    <span class="burn-track-label-approved">Approved Fee</span>
+  </div>
+  <div class="burn-alert" id="burn-alert-{{ intake.id }}" style="display:none;"></div>
+</div>
+{% endif %}
+
 <div class="cmd-panels">
 
   {# Panel 2: Phase / Resource Matrix #}
@@ -805,6 +842,7 @@ function copyProposal() {
       if (noteEl)  noteEl.value  = '';
       if (btn) { btn.textContent = '+ Log'; btn.disabled = false; }
       loadMatrix();
+      if (window.loadProjectedBurn) window.loadProjectedBurn(_intakeId);
     })
     .catch(err => {
       if (btn) { btn.textContent = '+ Log'; btn.disabled = false; }
@@ -848,6 +886,65 @@ function copyProposal() {
 
   loadMatrix();
 })();
+
+// ── Projected Burn Panel ──────────────────────────────────────────────────
+window.loadProjectedBurn = async function(intakeId) {
+  try {
+    var res = await fetch('/api/intakes/' + intakeId + '/projected-burn');
+    if (!res.ok) return;
+    renderProjectedBurn(intakeId, await res.json());
+  } catch(e) { /* silent — panel stays in skeleton state */ }
+};
+
+function renderProjectedBurn(intakeId, data) {
+  var fmt = function(n) {
+    return new Intl.NumberFormat('en-US', {style:'currency', currency:'USD', maximumFractionDigits:0}).format(n);
+  };
+  var $ = function(id) { return document.getElementById(id + '-' + intakeId); };
+
+  var cv = $('burn-current-value');   if (cv) cv.textContent  = fmt(data.current_burn_value);
+  var cp = $('burn-current-pct');     if (cp) cp.textContent  = data.current_burn_pct + '% of fee';
+  var pv = $('burn-projected-value'); if (pv) pv.textContent  = fmt(data.projected_burn_value);
+  var pp = $('burn-projected-pct');   if (pp) pp.textContent  = data.projected_burn_pct + '% of fee';
+  var rv = $('burn-remaining-value'); if (rv) {
+    rv.textContent = data.remaining_budget >= 0 ? fmt(data.remaining_budget) : '–' + fmt(Math.abs(data.remaining_budget));
+    rv.style.color = data.is_over_budget ? 'var(--bad)' : '';
+  }
+  var rh = $('burn-resourced-hours'); if (rh) rh.textContent = data.remaining_resourced_hours + 'h scheduled';
+
+  var track = $('burn-track');
+  var fc    = $('burn-fill-current');
+  var fp    = $('burn-fill-projected');
+  if (track && fc && fp) {
+    fc.style.width = Math.min(data.current_burn_pct, 100) + '%';
+    fp.style.width = Math.min(data.projected_burn_pct, 100) + '%';
+    track.title = 'Current: ' + data.current_burn_pct + '% | Projected: ' + data.projected_burn_pct + '%';
+    track.classList.remove('burn-warn', 'burn-bad');
+    if (data.is_over_budget)   track.classList.add('burn-bad');
+    else if (data.is_at_risk)  track.classList.add('burn-warn');
+  }
+
+  var alert = $('burn-alert');
+  if (alert) {
+    if (data.is_over_budget) {
+      var over = fmt(data.projected_burn_value - data.approved_fee);
+      alert.textContent = '⚠ Projected burn exceeds approved fee by ' + over + '. Review resourced hours or request a fee adjustment.';
+      alert.className = 'burn-alert burn-alert-bad';
+      alert.style.display = 'block';
+    } else if (data.is_at_risk) {
+      alert.textContent = 'Projected burn is at ' + data.projected_burn_pct + '% of the approved fee. ' + fmt(data.remaining_budget) + ' of budget remains.';
+      alert.className = 'burn-alert burn-alert-warn';
+      alert.style.display = 'block';
+    } else {
+      alert.style.display = 'none';
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var panel = document.querySelector('.burn-panel[data-intake-id]');
+  if (panel) window.loadProjectedBurn(panel.dataset.intakeId);
+});
 
 // ── Schedule slider ───────────────────────────────────────────────────────
 (function() {

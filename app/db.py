@@ -1831,6 +1831,53 @@ def _get_existing_load_hours(engineer_initials: str, window_start: date, window_
     return total
 
 
+def get_remaining_resourced_hours(project_number: str, from_date: date) -> float:
+    """
+    Total team-hours from future calendar events for this project, pro-rated from from_date.
+    Uses the same WEU formula as _get_existing_load_hours, summed across all team members.
+    """
+    resp = (
+        _client()
+        .table("calendar_events")
+        .select("start_date,end_date,phase,tier,team,phase_jump,is_ooo")
+        .eq("project_number", project_number)
+        .gte("end_date", from_date.isoformat())
+        .execute()
+    )
+    total = 0.0
+    for event in (resp.data or []):
+        if event.get("is_ooo"):
+            continue
+        tier = event.get("tier") or 0
+        if not tier:
+            continue
+        phase_coeff = _PHASE_COEFF.get(event.get("phase") or "", 0.5)
+        qa = 1.15 if event.get("phase_jump") else 1.0
+        try:
+            ev_start = date.fromisoformat(event["start_date"][:10])
+            ev_end   = date.fromisoformat(event["end_date"][:10])
+        except (ValueError, KeyError):
+            continue
+        effective_start = max(ev_start, from_date)
+        if effective_start > ev_end:
+            continue
+        ev_working  = max(count_working_days(ev_start, ev_end), 1)
+        rem_working = count_working_days(effective_start, ev_end)
+        if rem_working <= 0:
+            continue
+        team = event.get("team") or []
+        if isinstance(team, str):
+            try:
+                team = json.loads(team)
+            except Exception:
+                team = [t.strip() for t in team.split(",") if t.strip()]
+        for eng in team:
+            person_mult = _TEAM_MULTIPLIER.get(eng, 1.0)
+            weu_rate = tier * phase_coeff * person_mult * qa / _CAPACITY_BASE
+            total += weu_rate * rem_working * 8.0
+    return total
+
+
 def get_projected_capacity(
     engineer_initials: str, window_start: date, window_end: date
 ) -> dict[str, Any]:

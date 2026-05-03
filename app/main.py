@@ -486,6 +486,8 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
             "default_open": default_open,
             "db_team_colors":   db.TEAM_COLORS,
             "db_team_members":  db.TEAM_MEMBERS,
+            "has_budget":       bool(phase_budgets),
+            "budget_fee":       phase_budgets[0]["approved_fee"] if phase_budgets else 0.0,
         },
     )
 
@@ -1758,6 +1760,59 @@ def api_time_summary(intake_id: int) -> dict[str, Any]:
         result[phase] = {"total_hours": d["total_hours"], "engineers": engs}
         total_logged = round(total_logged + d["total_hours"], 1)
     return {"intake_id": intake_id, "total_logged": total_logged, "by_phase": result}
+
+
+@app.get("/api/intakes/{intake_id}/projected-burn")
+def api_projected_burn(intake_id: int) -> dict[str, Any]:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    _zero = {
+        "intake_id": intake_id, "approved_fee": 0.0,
+        "current_burn_hours": 0.0, "current_burn_value": 0.0, "current_burn_pct": 0.0,
+        "remaining_resourced_hours": 0.0, "remaining_resourced_value": 0.0,
+        "projected_burn_value": 0.0, "projected_burn_pct": 0.0,
+        "remaining_budget": 0.0, "is_over_budget": False, "is_at_risk": False,
+    }
+
+    budgets = db.list_phase_budgets(intake_id)
+    if not budgets:
+        return _zero
+    approved_fee = float(budgets[0]["approved_fee"])
+    if approved_fee <= 0:
+        return _zero
+
+    entries = db.list_time_entries_for_intake(intake_id)
+    current_burn_hours = sum(float(e["hours"]) for e in entries)
+    current_burn_value = round(current_burn_hours * db.BILLING_RATE, 2)
+
+    remaining_resourced_hours = 0.0
+    if intake.project_number:
+        remaining_resourced_hours = db.get_remaining_resourced_hours(
+            intake.project_number, date.today()
+        )
+    remaining_resourced_value = round(remaining_resourced_hours * db.BILLING_RATE, 2)
+
+    projected_burn_value = round(current_burn_value + remaining_resourced_value, 2)
+
+    def _pct(value: float) -> float:
+        return round(value / approved_fee * 100, 1)
+
+    return {
+        "intake_id":                intake_id,
+        "approved_fee":             approved_fee,
+        "current_burn_hours":       round(current_burn_hours, 1),
+        "current_burn_value":       current_burn_value,
+        "current_burn_pct":         _pct(current_burn_value),
+        "remaining_resourced_hours": round(remaining_resourced_hours, 1),
+        "remaining_resourced_value": remaining_resourced_value,
+        "projected_burn_value":     projected_burn_value,
+        "projected_burn_pct":       _pct(projected_burn_value),
+        "remaining_budget":         round(approved_fee - projected_burn_value, 2),
+        "is_over_budget":           projected_burn_value > approved_fee,
+        "is_at_risk":               _pct(projected_burn_value) >= 85,
+    }
 
 
 @app.get("/api/intakes/{intake_id}/time-entries")

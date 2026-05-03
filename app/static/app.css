@@ -1080,3 +1080,34 @@ dialog::backdrop { background: oklch(16% 0.02 252 / 50%); }
   .matrix-expand-inner { flex-direction: column; gap: 1rem; }
   .matrix-log-form { border-left: none; border-top: 1px solid var(--border); padding-left: 0; padding-top: 0.75rem; min-width: 0; width: 100%; }
 }
+
+/* ─── Projected Burn Panel ───────────────────────────────────────────────── */
+.burn-panel { padding: 1rem 1.25rem 0.875rem; margin-bottom: 14px; }
+.burn-panel-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.875rem; flex-wrap: wrap; gap: 6px; }
+.burn-panel-title { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.burn-panel-fee { font-size: 0.8rem; color: var(--muted); }
+.burn-panel-fee strong { color: var(--text); font-family: var(--mono); }
+
+.burn-kpi-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 0.875rem; }
+.burn-kpi { display: flex; flex-direction: column; gap: 0.1rem; }
+.burn-kpi-label { font-size: 0.675rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.burn-kpi-value { font-family: var(--mono); font-size: 1.1rem; font-weight: 600; color: var(--text); line-height: 1.2; }
+.burn-kpi-pct   { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+.burn-kpi-projected .burn-kpi-value { color: var(--accent); }
+
+.burn-track { position: relative; height: 6px; background: var(--border); border-radius: 999px; overflow: hidden; margin-bottom: 0.25rem; }
+.burn-fill-current   { position: absolute; left: 0; top: 0; height: 100%; border-radius: 999px; background: var(--good); transition: width 0.4s ease, background-color 0.3s ease; z-index: 2; }
+.burn-fill-projected { position: absolute; left: 0; top: 0; height: 100%; border-radius: 999px; background: color-mix(in oklch, var(--good) 38%, transparent); transition: width 0.4s ease, background-color 0.3s ease; z-index: 1; }
+.burn-track.burn-warn .burn-fill-current   { background: var(--warn); }
+.burn-track.burn-warn .burn-fill-projected { background: color-mix(in oklch, var(--warn) 35%, transparent); }
+.burn-track.burn-bad  .burn-fill-current   { background: var(--bad); }
+.burn-track.burn-bad  .burn-fill-projected { background: color-mix(in oklch, var(--bad) 35%, transparent); }
+
+.burn-track-labels { display: flex; justify-content: space-between; margin-bottom: 0.6rem; }
+.burn-track-label-today, .burn-track-label-approved { font-size: 0.6rem; color: var(--muted); font-family: var(--mono); }
+
+.burn-alert { padding: 0.45rem 0.75rem; border-radius: 6px; font-size: 0.78rem; font-weight: 500; line-height: 1.4; margin-top: 0.25rem; }
+.burn-alert.burn-alert-warn { background: color-mix(in oklch, var(--warn) 10%, transparent); color: oklch(45% 0.15 80); border: 1px solid color-mix(in oklch, var(--warn) 28%, transparent); }
+.burn-alert.burn-alert-bad  { background: color-mix(in oklch, var(--bad)  10%, transparent); color: var(--bad); border: 1px solid color-mix(in oklch, var(--bad)  28%, transparent); }
+
+@media (max-width: 640px) { .burn-kpi-row { grid-template-columns: 1fr 1fr; } }
