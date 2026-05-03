@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/app.css?v=8" />
+    <link rel="stylesheet" href="/static/app.css?v=9" />
     <script defer src="/static/app.js"></script>
   </head>
   <body>
@@ -43,6 +43,13 @@
             {% set _tc = timesheet_period_count() %}
             {% if _tc > 0 %}
               <span class="nav-badge">{{ _tc }}</span>
+            {% endif %}
+          </a>
+          <a class="nav-item {% if request.url.path == '/burn-health' %}active{% endif %}" href="/burn-health">
+            Burn Health
+            {% set _bh = burn_nav_badge_count() %}
+            {% if _bh > 0 %}
+              <span class="nav-badge">{{ _bh }}</span>
             {% endif %}
           </a>
           <a class="nav-item {% if request.url.path == '/mo-queue' %}active{% endif %}" href="/mo-queue">

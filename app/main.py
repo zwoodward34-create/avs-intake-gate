@@ -187,6 +187,16 @@ def _upcoming_ooo_count() -> int:
 templates.env.globals["upcoming_ooo_count"] = _upcoming_ooo_count
 
 
+def _burn_nav_badge_count() -> int:
+    try:
+        return db.count_burn_at_risk(date.today())
+    except Exception:
+        return 0
+
+
+templates.env.globals["burn_nav_badge_count"] = _burn_nav_badge_count
+
+
 app = FastAPI(title="AVS Intake Gate")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
@@ -1823,6 +1833,20 @@ def api_projected_burn(intake_id: int) -> dict[str, Any]:
         "is_over_budget":           projected_burn_value > approved_fee,
         "is_at_risk":               _pct(projected_burn_value) >= 85,
     }
+
+
+@app.get("/api/burn-health")
+def api_burn_health() -> list[dict[str, Any]]:
+    return db.get_burn_health_data(date.today())
+
+
+@app.get("/burn-health")
+def burn_health_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse("burn_health.html", {
+        "request":    request,
+        "page_title": "Burn Health",
+        "title":      "Burn Health — AVS",
+    })
 
 
 @app.get("/api/intakes/{intake_id}/time-entries")

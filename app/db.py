@@ -2104,3 +2104,216 @@ def calculate_phase_schedule(
         })
         current = phase_end + timedelta(days=1)
     return phases
+
+
+# ── Burn Health Batch Engine ──────────────────────────────────────────────────
+
+_TERMINAL_STATUSES = {"DECLINED", "COMPLETED", "ARCHIVED"}
+
+
+def get_burn_health_data(today: date) -> list[dict[str, Any]]:
+    """
+    Batch projected burn for all active projects.
+    Makes 4 Supabase calls (vs N per-project calls) by fetching all data up front.
+    Returns list sorted by projected_burn_pct descending (highest risk first).
+    """
+    all_intakes = list_intakes()
+    active = [
+        i for i in all_intakes
+        if i.project_number and i.status not in _TERMINAL_STATUSES
+    ]
+    if not active:
+        return []
+
+    intake_ids  = [i.id           for i in active]
+    project_nums = [i.project_number for i in active]
+
+    # Approved fee — first phase_budget row per intake (same fee on all rows)
+    pb_resp = (
+        _client()
+        .table("phase_budgets")
+        .select("intake_id,approved_fee")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    approved_fee_by_intake: dict[int, float] = {}
+    for row in (pb_resp.data or []):
+        iid = row["intake_id"]
+        if iid not in approved_fee_by_intake:
+            approved_fee_by_intake[iid] = float(row["approved_fee"] or 0)
+
+    # Keep only intakes that have a positive approved fee
+    active = [i for i in active if approved_fee_by_intake.get(i.id, 0) > 0]
+    if not active:
+        return []
+
+    intake_ids   = [i.id             for i in active]
+    project_nums = [i.project_number for i in active]
+
+    # Sum of logged hours per intake
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("intake_id,hours")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    hours_by_intake: dict[int, float] = {}
+    for e in (te_resp.data or []):
+        iid = e["intake_id"]
+        hours_by_intake[iid] = hours_by_intake.get(iid, 0.0) + float(e["hours"] or 0)
+
+    # Future calendar events for all project numbers — apply WEU formula
+    ce_resp = (
+        _client()
+        .table("calendar_events")
+        .select("project_number,start_date,end_date,phase,tier,team,phase_jump,is_ooo")
+        .in_("project_number", project_nums)
+        .gte("end_date", today.isoformat())
+        .execute()
+    )
+    remaining_by_project: dict[str, float] = {}
+    for event in (ce_resp.data or []):
+        if event.get("is_ooo"):
+            continue
+        tier = event.get("tier") or 0
+        if not tier:
+            continue
+        pnum = event.get("project_number")
+        if not pnum:
+            continue
+        phase_coeff = _PHASE_COEFF.get(event.get("phase") or "", 0.5)
+        qa = 1.15 if event.get("phase_jump") else 1.0
+        try:
+            ev_start = date.fromisoformat(event["start_date"][:10])
+            ev_end   = date.fromisoformat(event["end_date"][:10])
+        except (ValueError, KeyError):
+            continue
+        effective_start = max(ev_start, today)
+        if effective_start > ev_end:
+            continue
+        ev_working  = max(count_working_days(ev_start, ev_end), 1)
+        rem_working = count_working_days(effective_start, ev_end)
+        if rem_working <= 0:
+            continue
+        team = event.get("team") or []
+        if isinstance(team, str):
+            try:
+                team = json.loads(team)
+            except Exception:
+                team = [t.strip() for t in team.split(",") if t.strip()]
+        for eng in team:
+            person_mult = _TEAM_MULTIPLIER.get(eng, 1.0)
+            weu_rate = tier * phase_coeff * person_mult * qa / _CAPACITY_BASE
+            remaining_by_project[pnum] = (
+                remaining_by_project.get(pnum, 0.0) + weu_rate * rem_working * 8.0
+            )
+
+    results: list[dict[str, Any]] = []
+    for i in active:
+        approved_fee    = approved_fee_by_intake.get(i.id, 0.0)
+        current_hours   = hours_by_intake.get(i.id, 0.0)
+        remaining_hours = remaining_by_project.get(i.project_number, 0.0)
+
+        current_burn_val   = round(current_hours   * BILLING_RATE, 2)
+        remaining_val      = round(remaining_hours * BILLING_RATE, 2)
+        projected_burn_val = round(current_burn_val + remaining_val, 2)
+
+        def _pct(v: float, total: float = approved_fee) -> float:
+            return round(v / total * 100, 1) if total > 0 else 0.0
+
+        current_pct   = _pct(current_burn_val)
+        projected_pct = _pct(projected_burn_val)
+
+        if projected_pct > 100:
+            risk = "over_budget"
+        elif projected_pct >= 85:
+            risk = "at_risk"
+        elif projected_pct >= 70:
+            risk = "watch"
+        else:
+            risk = "on_track"
+
+        days_remaining = None
+        if i.proposed_end_date:
+            try:
+                end = date.fromisoformat(i.proposed_end_date[:10])
+                days_remaining = (end - today).days
+            except ValueError:
+                pass
+
+        results.append({
+            "intake_id":                 i.id,
+            "project_number":            i.project_number,
+            "project_name":              i.project_name,
+            "client":                    i.client_name,
+            "status":                    i.status,
+            "approved_fee":              approved_fee,
+            "current_burn_hours":        round(current_hours, 1),
+            "current_burn_value":        current_burn_val,
+            "current_burn_pct":          current_pct,
+            "remaining_resourced_hours": round(remaining_hours, 1),
+            "projected_burn_value":      projected_burn_val,
+            "projected_burn_pct":        projected_pct,
+            "remaining_budget":          round(approved_fee - projected_burn_val, 2),
+            "risk":                      risk,
+            "days_remaining":            days_remaining,
+        })
+
+    results.sort(key=lambda x: x["projected_burn_pct"], reverse=True)
+    return results
+
+
+def count_burn_at_risk(today: date) -> int:
+    """
+    Lightweight proxy for the nav badge: count active projects where current
+    logged burn already exceeds 70% of approved fee, without the WEU calendar scan.
+    """
+    all_intakes = list_intakes()
+    active = [
+        i for i in all_intakes
+        if i.project_number and i.status not in _TERMINAL_STATUSES
+    ]
+    if not active:
+        return 0
+
+    intake_ids = [i.id for i in active]
+
+    pb_resp = (
+        _client()
+        .table("phase_budgets")
+        .select("intake_id,approved_fee")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    approved_fee_by_intake: dict[int, float] = {}
+    for row in (pb_resp.data or []):
+        iid = row["intake_id"]
+        if iid not in approved_fee_by_intake:
+            approved_fee_by_intake[iid] = float(row["approved_fee"] or 0)
+
+    active = [i for i in active if approved_fee_by_intake.get(i.id, 0) > 0]
+    if not active:
+        return 0
+
+    intake_ids = [i.id for i in active]
+
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("intake_id,hours")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    hours_by_intake: dict[int, float] = {}
+    for e in (te_resp.data or []):
+        iid = e["intake_id"]
+        hours_by_intake[iid] = hours_by_intake.get(iid, 0.0) + float(e["hours"] or 0)
+
+    count = 0
+    for i in active:
+        fee = approved_fee_by_intake.get(i.id, 0.0)
+        burn = hours_by_intake.get(i.id, 0.0) * BILLING_RATE
+        if fee > 0 and burn >= fee * 0.70:
+            count += 1
+    return count

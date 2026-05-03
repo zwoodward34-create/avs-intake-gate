@@ -1111,3 +1111,164 @@ dialog::backdrop { background: oklch(16% 0.02 252 / 50%); }
 .burn-alert.burn-alert-bad  { background: color-mix(in oklch, var(--bad)  10%, transparent); color: var(--bad); border: 1px solid color-mix(in oklch, var(--bad)  28%, transparent); }
 
 @media (max-width: 640px) { .burn-kpi-row { grid-template-columns: 1fr 1fr; } }
+
+/* ── Burn Health Page ────────────────────────────────────── */
+
+.burn-health-summary {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.bh-kpi {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.bh-kpi-label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.bh-kpi-value {
+  font-family: var(--mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+
+.bh-kpi-bad   .bh-kpi-value { color: var(--bad);  }
+.bh-kpi-warn  .bh-kpi-value { color: var(--warn); }
+.bh-kpi-watch .bh-kpi-value { color: var(--accent); }
+.bh-kpi-good  .bh-kpi-value { color: var(--good); }
+
+.bh-card { padding: 0; overflow: hidden; }
+
+.bh-loading,
+.bh-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.bh-header-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 2fr 1fr;
+  gap: 1.25rem;
+  padding: 0.5rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--card-bg-deeper);
+}
+
+.bh-header-cell {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+.bh-header-cell:nth-child(2) { text-align: right; }
+.bh-header-cell:nth-child(4) { text-align: right; }
+
+.bh-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 2fr 1fr;
+  gap: 1.25rem;
+  align-items: center;
+  padding: 0.875rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.15s ease;
+}
+
+.bh-row:last-child { border-bottom: none; }
+.bh-row:hover      { background: var(--card-bg-deeper); }
+
+.bh-project-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.bh-project-num  { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
+.bh-project-name { font-size: 0.9rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bh-project-client { font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.bh-fee       { font-family: var(--mono); font-size: 0.875rem; color: var(--text); text-align: right; }
+.bh-fee-label { font-size: 0.65rem; color: var(--subtle); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.15rem; }
+
+.bh-burn-area  { display: flex; flex-direction: column; gap: 0.3rem; }
+.bh-burn-labels { display: flex; justify-content: space-between; }
+
+.bh-burn-current-label   { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
+.bh-burn-projected-label { font-family: var(--mono); font-size: 0.75rem; color: var(--text); font-weight: 600; }
+
+.bh-burn-track {
+  position: relative;
+  height: 5px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bh-fill-current {
+  position: absolute;
+  left: 0; top: 0; height: 100%;
+  border-radius: 999px;
+  background: var(--good);
+  z-index: 2;
+  transition: width 0.5s ease;
+}
+
+.bh-fill-projected {
+  position: absolute;
+  left: 0; top: 0; height: 100%;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--good) 35%, transparent);
+  z-index: 1;
+  transition: width 0.5s ease;
+}
+
+.bh-burn-track.bh-watch       .bh-fill-current    { background: var(--accent); }
+.bh-burn-track.bh-watch       .bh-fill-projected   { background: color-mix(in oklch, var(--accent) 35%, transparent); }
+.bh-burn-track.bh-at-risk     .bh-fill-current    { background: var(--warn); }
+.bh-burn-track.bh-at-risk     .bh-fill-projected   { background: color-mix(in oklch, var(--warn) 35%, transparent); }
+.bh-burn-track.bh-over-budget .bh-fill-current    { background: var(--bad); }
+.bh-burn-track.bh-over-budget .bh-fill-projected   { background: color-mix(in oklch, var(--bad) 35%, transparent); }
+
+.bh-days-remaining { font-size: 0.65rem; color: var(--subtle); font-family: var(--mono); text-align: right; margin-top: 0.1rem; }
+.bh-days-remaining.bh-days-tight { color: var(--warn); }
+.bh-days-remaining.bh-days-past  { color: var(--bad);  }
+
+.bh-status-col { display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
+
+.bh-projected-pct { font-family: var(--mono); font-size: 1.125rem; font-weight: 700; color: var(--text); }
+
+.bh-risk-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+}
+
+.bh-risk-badge.on-track    { background: color-mix(in oklch, var(--good)   15%, transparent); color: var(--good); }
+.bh-risk-badge.watch       { background: color-mix(in oklch, var(--accent) 15%, transparent); color: var(--accent); }
+.bh-risk-badge.at-risk     { background: color-mix(in oklch, var(--warn)   15%, transparent); color: var(--warn); }
+.bh-risk-badge.over-budget { background: color-mix(in oklch, var(--bad)    15%, transparent); color: var(--bad); }

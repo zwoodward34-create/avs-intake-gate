@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Burn Health</h1>
+  <div class="page-header-actions">
+    <button class="btn btn-sm" id="refresh-btn" onclick="loadBurnHealth()">Refresh</button>
+  </div>
+</div>
+
+<div class="burn-health-summary" id="burn-health-summary" style="display: none;">
+  <div class="bh-kpi">
+    <div class="bh-kpi-label">Active Projects</div>
+    <div class="bh-kpi-value" id="bh-total-count">—</div>
+  </div>
+  <div class="bh-kpi bh-kpi-bad">
+    <div class="bh-kpi-label">Over Budget</div>
+    <div class="bh-kpi-value" id="bh-over-count">—</div>
+  </div>
+  <div class="bh-kpi bh-kpi-warn">
+    <div class="bh-kpi-label">At Risk (≥85%)</div>
+    <div class="bh-kpi-value" id="bh-risk-count">—</div>
+  </div>
+  <div class="bh-kpi bh-kpi-watch">
+    <div class="bh-kpi-label">Watch (70–84%)</div>
+    <div class="bh-kpi-value" id="bh-watch-count">—</div>
+  </div>
+  <div class="bh-kpi bh-kpi-good">
+    <div class="bh-kpi-label">On Track (&lt;70%)</div>
+    <div class="bh-kpi-value" id="bh-good-count">—</div>
+  </div>
+</div>
+
+<div class="card bh-card" id="bh-card">
+  <div class="bh-loading" id="bh-loading">Loading…</div>
+  <div id="bh-list" style="display: none;"></div>
+  <div class="bh-empty" id="bh-empty" style="display: none;">
+    No active projects with approved budgets found.
+  </div>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", loadBurnHealth);
+</script>
+{% endblock %}
