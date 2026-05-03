@@ -244,6 +244,28 @@
     </div>
   </div>
 
+  {# ── Proposal Output Panel ── #}
+  <div class="mo-proposal-panel" id="proposal-panel-{{ intake.id }}" style="display:none;">
+    <div class="mo-proposal-inner">
+      <div class="mo-proposal-header">
+        <div class="mo-proposal-badge">✓ Approved — Proposal Ready</div>
+        <div class="mo-proposal-sub">Copy the text below and paste it into the AVS proposal template.</div>
+      </div>
+      <textarea class="mo-proposal-textarea" id="proposal-text-{{ intake.id }}" readonly
+                spellcheck="false"></textarea>
+    </div>
+    <div class="mo-action-bar">
+      <button class="btn btn-primary" id="copy-proposal-btn-{{ intake.id }}"
+              onclick="moCopyProposal({{ intake.id }})">
+        📋 Copy to Clipboard
+      </button>
+      <button class="btn mo-cancel-btn"
+              onclick="moDismissCard({{ intake.id }})">
+        Dismiss ✓
+      </button>
+    </div>
+  </div>
+
 </div>
 {% endfor %}
 
@@ -436,13 +458,13 @@
       return;
     }
 
-    const startEl = document.getElementById('window-start-' + intakeId);
-    const endEl   = document.getElementById('window-end-'   + intakeId);
-    const card    = document.getElementById('mo-card-'      + intakeId);
+    const startEl  = document.getElementById('window-start-' + intakeId);
+    const endEl    = document.getElementById('window-end-'   + intakeId);
+    const card     = document.getElementById('mo-card-'      + intakeId);
     const assigned = Array.from(card.querySelectorAll('.mo-capacity-checkbox:checked')).map(cb => cb.value);
 
     const btn = document.getElementById('confirm-btn-' + intakeId);
-    if (btn) { btn.textContent = 'Processing…'; btn.disabled = true; }
+    if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
 
     fetch('/api/intakes/' + intakeId + '/mo-review', {
       method: 'POST',
@@ -458,30 +480,72 @@
       }),
     })
     .then(r => { if (!r.ok) throw new Error('Server error ' + r.status); return r.json(); })
-    .then(data => {
-      // Non-blocking proposal generation
-      fetch('/api/intakes/' + intakeId + '/generate-proposal', {
+    .then(() => {
+      if (btn) btn.textContent = 'Generating proposal…';
+      return fetch('/api/intakes/' + intakeId + '/generate-proposal', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ fee_amount: fee }),
-      }).catch(() => {});
-
-      // Remove card with fade
-      const c = document.getElementById('mo-card-' + intakeId);
-      if (c) {
-        c.style.transition = 'opacity 0.35s ease';
-        c.style.opacity = '0';
-        setTimeout(() => {
-          c.remove();
-          _decrementBadge();
-          _checkEmpty();
-        }, 380);
-      }
+      });
     })
+    .then(r => { if (!r.ok) throw new Error('Proposal generation failed (' + r.status + ')'); return r.json(); })
+    .then(data => { moShowProposal(intakeId, data.proposal_text || ''); })
     .catch(err => {
       if (btn) { btn.textContent = '✓ Proceed & Generate Proposal'; btn.disabled = false; }
       alert('Error: ' + err.message);
     });
+  };
+
+  // ─── Show generated proposal inline ──────────────────────────────────────────
+  window.moShowProposal = function (intakeId, text) {
+    const card = document.getElementById('mo-card-' + intakeId);
+    if (!card) return;
+
+    // Hide proceed panel and decision buttons
+    const proceedPanel = document.getElementById('proceed-panel-' + intakeId);
+    if (proceedPanel) proceedPanel.style.display = 'none';
+    const decisionRow = card.querySelector('.mo-decision-row');
+    if (decisionRow) decisionRow.style.display = 'none';
+
+    // Fill and reveal proposal panel
+    const proposalTextEl = document.getElementById('proposal-text-' + intakeId);
+    if (proposalTextEl) proposalTextEl.value = text;
+    const proposalPanel  = document.getElementById('proposal-panel-' + intakeId);
+    if (proposalPanel) {
+      proposalPanel.style.display = 'block';
+      if (proposalTextEl) { proposalTextEl.focus(); proposalTextEl.select(); }
+    }
+  };
+
+  // ─── Copy proposal to clipboard ──────────────────────────────────────────────
+  window.moCopyProposal = function (intakeId) {
+    const el = document.getElementById('proposal-text-' + intakeId);
+    if (!el) return;
+    const btn = document.getElementById('copy-proposal-btn-' + intakeId);
+    navigator.clipboard.writeText(el.value).then(() => {
+      if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 2200);
+      }
+    }).catch(() => {
+      el.select();
+      document.execCommand('copy');
+    });
+  };
+
+  // ─── Dismiss card (after proposal copied) ────────────────────────────────────
+  window.moDismissCard = function (intakeId) {
+    const c = document.getElementById('mo-card-' + intakeId);
+    if (c) {
+      c.style.transition = 'opacity 0.35s ease';
+      c.style.opacity = '0';
+      setTimeout(() => {
+        c.remove();
+        _decrementBadge();
+        _checkEmpty();
+      }, 380);
+    }
   };
 
   // ─── Submit: Text decisions (Needs Info / Conditions / Decline) ──────────────
