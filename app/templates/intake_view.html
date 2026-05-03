@@ -564,7 +564,9 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
 
 {# ── Scripts ─────────────────────────────────────────────────────────────── #}
 <script>
-var _intakeId = {{ intake.id }};
+var _intakeId      = {{ intake.id }};
+var _teamMembers   = {{ (db_team_members or [])|tojson }};
+var _teamColorsMap = {{ (db_team_colors or {})|tojson }};
 
 // ── Email copy ────────────────────────────────────────────────────────────
 function buildMoEmail() {
@@ -608,11 +610,61 @@ function copyProposal() {
   var wrap = document.getElementById('phase-matrix-wrap');
   if (!wrap) return;
 
-  function pctColor(p) {
-    if (p === null || p === undefined) return 'var(--muted)';
-    if (p > 100) return 'var(--bad)';
-    if (p >= 80)  return 'var(--warn)';
-    return 'var(--good)';
+  var _expanded = new Set();
+
+  function burnClass(pct) {
+    if (pct >= 100) return 'burn-over';
+    if (pct >= 70)  return 'burn-warn';
+    return 'burn-good';
+  }
+
+  function renderWhoChips(engineers) {
+    if (!engineers || !engineers.length)
+      return '<span class="matrix-no-eng">—</span>';
+    var html = '';
+    engineers.slice(0, 3).forEach(function(eng) {
+      var c = eng.color || '#64748b';
+      html += '<span class="matrix-eng-chip" style="background:' + c + '22;color:' + c + ';border-color:' + c + '44;" title="' + eng.initials + ': ' + eng.hours.toFixed(1) + 'h">' +
+        eng.initials + '<span class="matrix-eng-hrs">' + eng.hours.toFixed(1) + 'h</span></span>';
+    });
+    if (engineers.length > 3)
+      html += '<span class="matrix-eng-more">+' + (engineers.length - 3) + '</span>';
+    return html;
+  }
+
+  function renderBreakdown(engineers, totalLogged) {
+    var html = '<div class="matrix-breakdown-label">Hours logged by engineer</div>';
+    if (!engineers || !engineers.length)
+      return html + '<div class="matrix-breakdown-empty">No hours logged for this phase yet.</div>';
+    engineers.forEach(function(eng) {
+      var c = eng.color || '#64748b';
+      var barPct = totalLogged > 0 ? Math.min(eng.hours / totalLogged * 100, 100).toFixed(1) : 0;
+      html += '<div class="matrix-breakdown-row">' +
+        '<span class="matrix-breakdown-initials" style="color:' + c + '">' + eng.initials + '</span>' +
+        '<div class="matrix-breakdown-bar-track"><div class="matrix-breakdown-bar" style="width:' + barPct + '%;background:' + c + '"></div></div>' +
+        '<span class="matrix-breakdown-hrs">' + eng.hours.toFixed(1) + 'h</span>' +
+        '</div>';
+    });
+    return html;
+  }
+
+  function renderLogForm(phaseCode, projectNumber) {
+    var opts = '<option value="">Engineer</option>';
+    (_teamMembers || []).forEach(function(ini) {
+      opts += '<option value="' + ini + '">' + ini + '</option>';
+    });
+    var today = new Date().toISOString().split('T')[0];
+    return '<div class="matrix-log-form">' +
+      '<div class="matrix-log-form-label">LOG HOURS</div>' +
+      '<div class="matrix-log-fields">' +
+        '<select class="matrix-log-select" id="log-eng-' + phaseCode + '">' + opts + '</select>' +
+        '<input type="date" class="matrix-log-input" id="log-date-' + phaseCode + '" value="' + today + '">' +
+        '<input type="number" class="matrix-log-input matrix-log-hours" id="log-hours-' + phaseCode + '" placeholder="Hrs" min="0.5" max="24" step="0.5">' +
+        '<input type="text" class="matrix-log-input matrix-log-note" id="log-note-' + phaseCode + '" placeholder="Note (optional)">' +
+        '<button class="matrix-log-btn" onclick="matrixLogHours(\'' + phaseCode + '\',' + _intakeId + ',\'' + (projectNumber || '') + '\')">+ Log</button>' +
+      '</div>' +
+      '<div class="matrix-log-error" id="log-error-' + phaseCode + '" style="display:none"></div>' +
+      '</div>';
   }
 
   function loadMatrix() {
@@ -631,71 +683,145 @@ function copyProposal() {
     }
 
     var html = '<table class="table"><thead><tr>' +
-      '<th>Phase</th><th>Budget</th><th>Used</th><th>Remaining</th><th>%</th><th style="width:32px"></th>' +
+      '<th class="matrix-col-phase">PHASE</th>' +
+      '<th class="matrix-col-budget">BUDGET</th>' +
+      '<th class="matrix-col-used">LOGGED</th>' +
+      '<th class="matrix-col-remaining">REMAINING</th>' +
+      '<th class="matrix-col-who">WHO</th>' +
       '</tr></thead><tbody>';
 
-    phases.forEach(function(p, idx) {
-      var pc = pctColor(p.pct_used);
-      var engId = 'pm-eng-' + idx;
-      html += '<tr class="pm-phase-row table-row" onclick="toggleEngRows(\'' + engId + '\', this)">' +
-        '<td style="font-family:var(--mono);font-weight:700">' + p.phase_code + '</td>' +
-        '<td class="budget-edit-cell" data-phase="' + p.phase_code + '" data-value="' + p.budgeted_hours + '" ' +
-            'style="font-family:var(--mono);cursor:pointer;text-decoration:underline dotted" title="Click to edit" ' +
-            'onclick="event.stopPropagation();editBudgetCell(this)">' +
-          p.budgeted_hours.toFixed(1) + 'h</td>' +
-        '<td style="font-family:var(--mono)">' + p.hours_used.toFixed(1) + 'h</td>' +
-        '<td style="font-family:var(--mono);color:' + (p.remaining < 0 ? 'var(--bad)' : 'inherit') + '">' +
-          p.remaining.toFixed(1) + 'h</td>' +
-        '<td style="font-family:var(--mono);font-weight:700;color:' + pc + '">' +
-          (p.pct_used !== null ? p.pct_used.toFixed(0) + '%' : '—') + '</td>' +
-        '<td style="font-size:11px;color:var(--muted);text-align:center">' +
-          (p.engineers && p.engineers.length ? '▾' : '') + '</td>' +
-        '</tr>';
+    phases.forEach(function(p) {
+      var logged  = p.hours_used  || 0;
+      var budget  = p.budgeted_hours || 0;
+      var remain  = Math.max(budget - logged, 0);
+      var burnPct = budget > 0 ? Math.min(logged / budget * 100, 100) : 0;
+      var bc      = burnClass(burnPct);
+      var isOpen  = _expanded.has(p.phase_code);
+      var projNum = p.project_number || '';
 
-      if (p.engineers && p.engineers.length) {
-        html += '<tr id="' + engId + '" style="display:none"><td colspan="6" style="padding:0">' +
-          '<table style="width:100%;border-collapse:collapse">';
-        p.engineers.forEach(function(e) {
-          html += '<tr class="pm-eng-row">' +
-            '<td style="padding:4px 10px 4px 24px;font-family:var(--mono);font-size:12px">' +
-              '<span class="pm-eng-dot" style="background:' + e.color + '"></span>' +
-              e.initials + '</td>' +
-            '<td style="font-size:12px;color:var(--muted);padding:4px 10px">' + (e.role || '') + '</td>' +
-            '<td colspan="4" style="font-family:var(--mono);font-size:12px;padding:4px 10px">' + e.hours.toFixed(1) + 'h</td>' +
-            '</tr>';
-        });
-        html += '</table></td></tr>';
-      }
+      html += '<tr class="matrix-row' + (isOpen ? ' row-expanded' : '') + '" onclick="matrixToggleRow(\'' + p.phase_code + '\')">' +
+
+        '<td class="matrix-col-phase">' +
+          '<span class="matrix-phase-code">' + p.phase_code + '</span>' +
+          '<span class="matrix-expand-icon' + (isOpen ? ' open' : '') + '" id="expand-icon-' + p.phase_code + '">›</span>' +
+        '</td>' +
+
+        '<td class="matrix-col-budget budget-edit-cell" data-phase="' + p.phase_code + '" data-value="' + budget + '" onclick="event.stopPropagation();editBudgetCell(this)">' +
+          '<span id="budget-val-' + p.phase_code + '">' + budget.toFixed(1) + 'h</span>' +
+          '<div class="matrix-burn-track"><div class="matrix-burn-fill ' + bc + '" id="burn-fill-' + p.phase_code + '" style="width:' + burnPct.toFixed(1) + '%"></div></div>' +
+        '</td>' +
+
+        '<td class="matrix-col-used" id="logged-cell-' + p.phase_code + '">' + logged.toFixed(1) + 'h</td>' +
+
+        '<td class="matrix-col-remaining" id="remaining-cell-' + p.phase_code + '">' +
+          '<span' + (remain <= 0 && logged > 0 ? ' class="remaining-over"' : '') + '>' + remain.toFixed(1) + 'h</span>' +
+        '</td>' +
+
+        '<td class="matrix-col-who" id="who-cell-' + p.phase_code + '" onclick="event.stopPropagation()">' +
+          renderWhoChips(p.engineers) +
+        '</td></tr>';
+
+      html += '<tr class="matrix-expand-row" id="expand-row-' + p.phase_code + '" style="display:' + (isOpen ? 'table-row' : 'none') + '">' +
+        '<td colspan="5" class="matrix-expand-cell">' +
+          '<div class="matrix-expand-inner">' +
+            '<div class="matrix-eng-breakdown" id="breakdown-' + p.phase_code + '">' + renderBreakdown(p.engineers, logged) + '</div>' +
+            renderLogForm(p.phase_code, projNum) +
+          '</div>' +
+        '</td></tr>';
     });
 
-    html += '</tbody><tfoot><tr style="border-top:2px solid var(--border)">' +
-      '<td style="font-weight:800">Total</td>' +
-      '<td style="font-family:var(--mono);font-weight:700">' + (totals.budgeted_hours||0).toFixed(1) + 'h</td>' +
-      '<td style="font-family:var(--mono);font-weight:700">' + (totals.hours_used||0).toFixed(1) + 'h</td>' +
-      '<td style="font-family:var(--mono);font-weight:700;color:' + (totals.remaining < 0 ? 'var(--bad)' : 'inherit') + '">' +
-        (totals.remaining||0).toFixed(1) + 'h</td>' +
-      '<td style="font-family:var(--mono);font-weight:700;color:' + pctColor(totals.pct_used) + '">' +
-        (totals.pct_used||0).toFixed(0) + '%</td>' +
+    var totBudget = totals.budgeted_hours || 0;
+    var totLogged = totals.hours_used || 0;
+    var totRemain = Math.max(totBudget - totLogged, 0);
+
+    html += '</tbody><tfoot><tr class="matrix-total-row">' +
+      '<td>Total</td>' +
+      '<td class="matrix-col-budget"><span id="total-budget-val">' + totBudget.toFixed(1) + 'h</span></td>' +
+      '<td id="total-logged-val">' + totLogged.toFixed(1) + 'h</td>' +
+      '<td id="total-remaining-val">' + totRemain.toFixed(1) + 'h</td>' +
       '<td></td>' +
       '</tr></tfoot></table>';
 
     wrap.innerHTML = html;
   }
 
-  window.toggleEngRows = function(engId, phaseRow) {
-    var row = document.getElementById(engId);
-    if (!row) return;
-    var isOpen = row.style.display !== 'none';
-    row.style.display = isOpen ? 'none' : 'table-row';
-    var chevron = phaseRow.querySelector('td:last-child');
-    if (chevron) chevron.textContent = isOpen ? '▾' : '▴';
+  window.matrixToggleRow = function(phaseCode) {
+    var expandRow  = document.getElementById('expand-row-'  + phaseCode);
+    var expandIcon = document.getElementById('expand-icon-' + phaseCode);
+    var mainRow    = expandRow && expandRow.previousElementSibling;
+    if (!expandRow) return;
+    var isOpen = expandRow.style.display !== 'none';
+    if (isOpen) {
+      expandRow.style.display = 'none';
+      if (expandIcon) expandIcon.classList.remove('open');
+      if (mainRow)    mainRow.classList.remove('row-expanded');
+      _expanded.delete(phaseCode);
+    } else {
+      expandRow.style.display = 'table-row';
+      if (expandIcon) expandIcon.classList.add('open');
+      if (mainRow)    mainRow.classList.add('row-expanded');
+      _expanded.add(phaseCode);
+    }
+  };
+
+  window.matrixLogHours = function(phaseCode, intakeId, projectNumber) {
+    var engEl   = document.getElementById('log-eng-'   + phaseCode);
+    var dateEl  = document.getElementById('log-date-'  + phaseCode);
+    var hoursEl = document.getElementById('log-hours-' + phaseCode);
+    var noteEl  = document.getElementById('log-note-'  + phaseCode);
+    var errorEl = document.getElementById('log-error-' + phaseCode);
+    var btn     = document.querySelector('#expand-row-' + phaseCode + ' .matrix-log-btn');
+
+    if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
+
+    var eng   = engEl   ? engEl.value.trim()   : '';
+    var dt    = dateEl  ? dateEl.value.trim()  : '';
+    var hours = hoursEl ? parseFloat(hoursEl.value) : NaN;
+    var note  = noteEl  ? noteEl.value.trim()  : '';
+
+    if (!eng)                                     { showMatrixError(phaseCode, 'Select an engineer.');            if (engEl)   engEl.focus();   return; }
+    if (!dt)                                      { showMatrixError(phaseCode, 'Enter a date.');                  if (dateEl)  dateEl.focus();  return; }
+    if (isNaN(hours) || hours <= 0 || hours > 24) { showMatrixError(phaseCode, 'Enter hours between 0.5 and 24.'); if (hoursEl) hoursEl.focus(); return; }
+
+    if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+
+    fetch('/api/time-entries', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        engineer_initials: eng,
+        project_number:    projectNumber,
+        intake_id:         intakeId,
+        phase_code:        phaseCode,
+        entry_date:        dt,
+        hours:             hours,
+        notes:             note || null,
+      }),
+    })
+    .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.detail || 'Error ' + r.status); }); return r.json(); })
+    .then(() => {
+      if (engEl)   engEl.value   = '';
+      if (hoursEl) hoursEl.value = '';
+      if (noteEl)  noteEl.value  = '';
+      if (btn) { btn.textContent = '+ Log'; btn.disabled = false; }
+      loadMatrix();
+    })
+    .catch(err => {
+      if (btn) { btn.textContent = '+ Log'; btn.disabled = false; }
+      showMatrixError(phaseCode, err.message);
+    });
+  };
+
+  window.showMatrixError = function(phaseCode, msg) {
+    var el = document.getElementById('log-error-' + phaseCode);
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
   };
 
   window.editBudgetCell = function(cell) {
     if (cell.querySelector('input')) return;
-    var phase = cell.dataset.phase;
+    var phase   = cell.dataset.phase;
     var current = parseFloat(cell.dataset.value);
-    var orig = cell.innerHTML;
+    var orig    = cell.innerHTML;
     cell.innerHTML = '<input type="number" min="0" step="0.5" value="' + current + '" ' +
       'style="width:80px;font-family:var(--mono);font-size:13px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px" />';
     var inp = cell.querySelector('input');
@@ -716,7 +842,7 @@ function copyProposal() {
     inp.addEventListener('blur', save);
     inp.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') inp.blur();
-      if (e.key === 'Escape') cell.innerHTML = orig;
+      if (e.key === 'Escape') { cell.innerHTML = orig; }
     });
   };
 

@@ -484,7 +484,8 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
             "days_to_ifp": days_to_ifp,
             "schedule_data": schedule_data,
             "default_open": default_open,
-            "db_team_colors": db.TEAM_COLORS,
+            "db_team_colors":   db.TEAM_COLORS,
+            "db_team_members":  db.TEAM_MEMBERS,
         },
     )
 
@@ -1731,6 +1732,32 @@ def api_phase_matrix(intake_id: int) -> dict[str, Any]:
             "pct_used": total_pct,
         },
     }
+
+
+@app.get("/api/intakes/{intake_id}/time-summary")
+def api_time_summary(intake_id: int) -> dict[str, Any]:
+    entries = db.list_time_entries_for_intake(intake_id)
+    by_phase: dict[str, dict] = {}
+    for e in entries:
+        phase = e["phase_code"]
+        eng   = e["engineer_initials"]
+        hrs   = float(e["hours"])
+        if phase not in by_phase:
+            by_phase[phase] = {"total_hours": 0.0, "engineers": {}}
+        by_phase[phase]["total_hours"] = round(by_phase[phase]["total_hours"] + hrs, 1)
+        by_phase[phase]["engineers"][eng] = round(
+            by_phase[phase]["engineers"].get(eng, 0.0) + hrs, 1
+        )
+    result: dict[str, Any] = {}
+    total_logged = 0.0
+    for phase, d in by_phase.items():
+        engs = sorted(
+            [{"initials": k, "hours": v} for k, v in d["engineers"].items()],
+            key=lambda x: -x["hours"],
+        )
+        result[phase] = {"total_hours": d["total_hours"], "engineers": engs}
+        total_logged = round(total_logged + d["total_hours"], 1)
+    return {"intake_id": intake_id, "total_logged": total_logged, "by_phase": result}
 
 
 @app.get("/api/intakes/{intake_id}/time-entries")
