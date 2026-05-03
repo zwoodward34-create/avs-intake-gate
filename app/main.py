@@ -167,6 +167,16 @@ def _pending_invoice_count() -> int:
 templates.env.globals["pending_invoice_count"] = _pending_invoice_count
 
 
+def _pending_review_count() -> int:
+    try:
+        return db.count_pending_review()
+    except Exception:
+        return 0
+
+
+templates.env.globals["pending_review_count"] = _pending_review_count
+
+
 def _upcoming_ooo_count() -> int:
     try:
         return db.count_upcoming_ooo(30)
@@ -1875,6 +1885,8 @@ async def api_create_time_entry(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="hours must be a number.")
     if hours <= 0 or hours > 24:
         raise HTTPException(status_code=400, detail="hours must be between 0 and 24.")
+    if db.is_period_locked(engineer, entry_date):
+        raise HTTPException(status_code=403, detail="This pay period has been submitted for review and is locked.")
     intake_id_raw = body.get("intake_id")
     intake_id: Optional[int] = int(intake_id_raw) if intake_id_raw else None
     entry_id = db.create_time_entry(
@@ -1894,6 +1906,8 @@ async def api_update_time_entry(request: Request, entry_id: int) -> dict[str, An
     entry = db.get_time_entry(entry_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Not found.")
+    if db.is_period_locked(entry["engineer_initials"], entry["entry_date"]):
+        raise HTTPException(status_code=403, detail="This pay period has been submitted for review and is locked.")
     body = await request.json()
     try:
         hours = float(body.get("hours", entry["hours"]))
@@ -1911,8 +1925,55 @@ def api_delete_time_entry(entry_id: int) -> dict[str, Any]:
     entry = db.get_time_entry(entry_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Not found.")
+    if db.is_period_locked(entry["engineer_initials"], entry["entry_date"]):
+        raise HTTPException(status_code=403, detail="This pay period has been submitted for review and is locked.")
     db.delete_time_entry(entry_id)
     return {"deleted": entry_id}
+
+
+# ── Timesheet Submission API ───────────────────────────────────────────────────
+
+@app.get("/api/timesheet/submission")
+def api_get_submission(engineer: str, start: str, end: str) -> dict[str, Any]:
+    if not engineer or not start or not end:
+        raise HTTPException(status_code=400, detail="engineer, start, end required.")
+    sub = db.get_submission(engineer, start)
+    if not sub:
+        return {"status": "DRAFT", "engineer": engineer, "period_start": start, "period_end": end}
+    return sub
+
+
+@app.post("/api/timesheet/submit")
+async def api_submit_period(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    engineer = (body.get("engineer") or "").strip().upper()
+    period_start = (body.get("period_start") or "").strip()
+    period_end = (body.get("period_end") or "").strip()
+    if not engineer or not period_start or not period_end:
+        raise HTTPException(status_code=400, detail="engineer, period_start, period_end required.")
+    # Compute total hours for this engineer/period
+    entries = db.list_time_entries(start=period_start, end=period_end, engineer=engineer)
+    total_hours = round(sum(float(e["hours"]) for e in entries), 2)
+    if total_hours == 0:
+        raise HTTPException(status_code=400, detail="No hours logged for this period.")
+    sub = db.submit_period(engineer, period_start, period_end, total_hours)
+    return sub
+
+
+@app.post("/api/timesheet/review/{submission_id}")
+async def api_review_submission(request: Request, submission_id: int) -> dict[str, Any]:
+    body = await request.json()
+    action = (body.get("action") or "").strip().lower()
+    notes = _as_str(str(body.get("notes") or ""))
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="action must be 'approve' or 'reject'.")
+    result = db.review_submission(submission_id, action, notes or None)
+    return result
+
+
+@app.get("/api/timesheet/review-queue")
+def api_review_queue() -> list[dict[str, Any]]:
+    return db.get_review_queue()
 
 
 @app.get("/api/active-projects")
@@ -1953,6 +2014,7 @@ def payroll_export_page(request: Request) -> HTMLResponse:
         prev_start = date.fromisoformat(start) - timedelta(days=14)
         prev_end = date.fromisoformat(end) - timedelta(days=14)
         start, end = prev_start.isoformat(), prev_end.isoformat()
+    pending_submissions = db.get_review_queue()
     return templates.TemplateResponse(
         "payroll_export.html",
         {
@@ -1960,6 +2022,7 @@ def payroll_export_page(request: Request) -> HTMLResponse:
             "now_local": _now_local_iso(),
             "default_start": start,
             "default_end": end,
+            "pending_submissions": pending_submissions,
         },
     )
 
@@ -1970,7 +2033,16 @@ def api_payroll_export(start: Optional[str] = None, end: Optional[str] = None) -
         s, e = _current_pay_period()
         start = start or s
         end = end or e
-    return db.get_payroll_data(start, end)
+    data = db.get_payroll_data(start, end)
+    approved_engineers = db.get_approved_engineers_for_period(start, end)
+    entries = data.get("entries") or []
+    unapproved_count = sum(
+        1 for e in entries
+        if e.get("engineer_initials") not in approved_engineers
+    )
+    data["approved_engineers"] = list(approved_engineers)
+    data["unapproved_entry_count"] = unapproved_count
+    return data
 
 
 @app.get("/api/payroll-export/csv")

@@ -84,6 +84,30 @@
   .btn-ts-del:hover { background:rgba(248,113,113,.14) }
   .btn-ts-save { font-size:11px; padding:3px 8px; color:#4ade80; border-color:rgba(74,222,128,.3); background:rgba(74,222,128,.07) }
   .btn-ts-save:hover { background:rgba(74,222,128,.14) }
+
+  /* Submission banner */
+  .ts-submit-banner {
+    background:var(--card-bg); border:1px solid var(--border); border-radius:8px;
+    padding:14px 16px; margin-bottom:16px;
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  }
+  .ts-submit-banner.status-draft    { border-color:rgba(255,255,255,0.1) }
+  .ts-submit-banner.status-submitted { border-color:rgba(251,191,36,.5); background:rgba(251,191,36,.05) }
+  .ts-submit-banner.status-approved  { border-color:rgba(74,222,128,.5);  background:rgba(74,222,128,.05) }
+  .ts-submit-banner.status-rejected  { border-color:rgba(248,113,113,.5); background:rgba(248,113,113,.05) }
+  .ts-submit-info { flex:1; min-width:200px }
+  .ts-submit-status-badge {
+    display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase;
+    letter-spacing:.5px; padding:2px 8px; border-radius:20px; margin-left:8px;
+  }
+  .badge-draft     { background:rgba(156,163,175,.15); color:#9ca3af }
+  .badge-submitted { background:rgba(251,191,36,.15);  color:#fbbf24 }
+  .badge-approved  { background:rgba(74,222,128,.15);  color:#4ade80 }
+  .badge-rejected  { background:rgba(248,113,113,.15); color:#f87171 }
+  .ts-submit-label { font-size:13px; font-weight:700; color:var(--text) }
+  .ts-submit-meta  { font-size:11px; color:var(--muted); margin-top:2px }
+  .ts-lock-row td  { opacity:0.45 }
+  .ts-lock-icon    { font-size:11px; color:var(--muted); margin-left:4px }
 </style>
 
 <div class="ts-header">Timesheet</div>
@@ -112,6 +136,9 @@
     Load Entries
   </button>
 </div>
+
+<!-- Submission Banner -->
+<div id="ts-submit-banner" style="display:none"></div>
 
 <!-- Add Entry Form -->
 <div class="ts-add-form">
@@ -212,6 +239,74 @@
     if (list.length === 1) phSel.value = list[0];
   };
 
+  // ── Submission status ────────────────────────────────────────────────────────
+  var _lockedPeriod = false;
+
+  function loadSubmissionStatus(eng, start, end) {
+    var banner = document.getElementById('ts-submit-banner');
+    if (!eng) { banner.style.display = 'none'; _lockedPeriod = false; return; }
+    fetch('/api/timesheet/submission?engineer=' + eng + '&start=' + start + '&end=' + end)
+      .then(r => r.json())
+      .then(sub => renderSubmissionBanner(sub, eng, start, end))
+      .catch(() => { banner.style.display = 'none'; });
+  }
+
+  function renderSubmissionBanner(sub, eng, start, end) {
+    var banner = document.getElementById('ts-submit-banner');
+    var status = (sub.status || 'DRAFT').toUpperCase();
+    _lockedPeriod = (status === 'SUBMITTED' || status === 'APPROVED');
+
+    var badgeClass = { DRAFT:'badge-draft', SUBMITTED:'badge-submitted', APPROVED:'badge-approved', REJECTED:'badge-rejected' }[status] || 'badge-draft';
+    var statusClass = status.toLowerCase();
+
+    var metaLine = '';
+    if (status === 'SUBMITTED' && sub.submitted_at) {
+      metaLine = 'Submitted ' + new Date(sub.submitted_at).toLocaleDateString();
+    } else if (status === 'APPROVED' && sub.reviewed_at) {
+      metaLine = 'Approved ' + new Date(sub.reviewed_at).toLocaleDateString();
+      if (sub.reviewer_notes) metaLine += ' · ' + sub.reviewer_notes;
+    } else if (status === 'REJECTED' && sub.reviewer_notes) {
+      metaLine = 'Rejected · ' + sub.reviewer_notes;
+    } else if (status === 'DRAFT') {
+      metaLine = 'Not yet submitted for review';
+    }
+
+    var hoursLine = sub.total_hours != null ? sub.total_hours.toFixed(1) + ' h' : '';
+
+    var actionHtml = '';
+    if (status === 'DRAFT' || status === 'REJECTED') {
+      actionHtml = `<button class="btn btn-primary" type="button" onclick="submitPeriod('${eng}','${start}','${end}')" style="white-space:nowrap;font-size:12px">Submit for Review</button>`;
+    } else if (status === 'SUBMITTED') {
+      actionHtml = `<span style="font-size:12px;color:var(--warn)">⏳ Awaiting approval</span>`;
+    } else if (status === 'APPROVED') {
+      actionHtml = `<span style="font-size:12px;color:var(--good)">✓ Period locked</span>`;
+    }
+
+    banner.className = 'ts-submit-banner status-' + statusClass;
+    banner.innerHTML = `
+      <div class="ts-submit-info">
+        <div class="ts-submit-label">
+          Pay Period ${start} – ${end}
+          <span class="ts-submit-status-badge ${badgeClass}">${status}</span>
+          ${hoursLine ? '<span style="font-size:11px;color:var(--muted);margin-left:8px">' + hoursLine + '</span>' : ''}
+        </div>
+        <div class="ts-submit-meta">${metaLine}</div>
+      </div>
+      <div>${actionHtml}</div>`;
+    banner.style.display = 'flex';
+  }
+
+  window.submitPeriod = function(eng, start, end) {
+    fetch('/api/timesheet/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({engineer: eng, period_start: start, period_end: end}),
+    })
+    .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.detail || 'Submit failed'); }); return r.json(); })
+    .then(sub => { renderSubmissionBanner(sub, eng, start, end); loadEntries(); })
+    .catch(e => alert(e.message));
+  };
+
   // Load entries table
   window.loadEntries = function() {
     var eng   = document.getElementById('eng-select').value;
@@ -221,6 +316,8 @@
 
     document.getElementById('ts-table-wrap').innerHTML =
       '<div class="ts-empty">Loading…</div>';
+
+    loadSubmissionStatus(eng, start, end);
 
     var params = new URLSearchParams({start, end});
     if (eng) params.append('engineer', eng);
@@ -278,17 +375,22 @@
   }
 
   function entryRow(e) {
-    return `<tr class="ts-entry-row" id="row-${e.id}" data-entry='${JSON.stringify(e)}'>
+    var locked = _lockedPeriod;
+    var rowClass = locked ? 'ts-entry-row ts-lock-row' : 'ts-entry-row';
+    var actionCell = locked
+      ? `<td><span class="ts-lock-icon">🔒</span></td>`
+      : `<td style="white-space:nowrap">
+           <button class="btn btn-ts-edit" type="button" onclick="startEdit(${e.id})">Edit</button>
+           <button class="btn btn-ts-del" type="button" onclick="deleteEntry(${e.id})" style="margin-left:4px">Del</button>
+         </td>`;
+    return `<tr class="${rowClass}" id="row-${e.id}" data-entry='${JSON.stringify(e)}'>
       <td class="ts-date">${e.entry_date}</td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${e.engineer_initials}</td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${e.project_number}</td>
       <td>${phaseTag(e.phase_code)}</td>
       <td class="ts-hours">${parseFloat(e.hours).toFixed(1)} h</td>
       <td style="color:var(--muted);font-size:12px">${e.notes || ''}</td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-ts-edit" type="button" onclick="startEdit(${e.id})">Edit</button>
-        <button class="btn btn-ts-del" type="button" onclick="deleteEntry(${e.id})" style="margin-left:4px">Del</button>
-      </td></tr>`;
+      ${actionCell}</tr>`;
   }
 
   // Add entry

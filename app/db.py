@@ -1093,6 +1093,148 @@ def get_payroll_data(start: str, end: str) -> dict[str, Any]:
     }
 
 
+# ── Timesheet Submissions ─────────────────────────────────────────────────────
+
+def get_submission(engineer: str, period_start: str) -> Optional[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("timesheet_submissions")
+        .select("*")
+        .eq("engineer_initials", engineer)
+        .eq("period_start", period_start)
+        .maybe_single()
+        .execute()
+    )
+    return resp.data
+
+
+def get_or_create_submission(engineer: str, period_start: str, period_end: str) -> dict[str, Any]:
+    existing = get_submission(engineer, period_start)
+    if existing:
+        return existing
+    now = _utc_now_iso()
+    resp = (
+        _client()
+        .table("timesheet_submissions")
+        .insert({
+            "engineer_initials": engineer,
+            "period_start":      period_start,
+            "period_end":        period_end,
+            "status":            "DRAFT",
+            "created_at":        now,
+            "updated_at":        now,
+        })
+        .execute()
+    )
+    return resp.data[0]
+
+
+def is_period_locked(engineer: str, entry_date: str) -> bool:
+    """Return True if the pay period covering entry_date is SUBMITTED or APPROVED for this engineer."""
+    resp = (
+        _client()
+        .table("timesheet_submissions")
+        .select("id")
+        .eq("engineer_initials", engineer)
+        .lte("period_start", entry_date)
+        .gte("period_end", entry_date)
+        .in_("status", ["SUBMITTED", "APPROVED"])
+        .limit(1)
+        .execute()
+    )
+    return bool(resp.data)
+
+
+def submit_period(engineer: str, period_start: str, period_end: str, total_hours: float) -> dict[str, Any]:
+    now = _utc_now_iso()
+    existing = get_submission(engineer, period_start)
+    if existing:
+        resp = (
+            _client()
+            .table("timesheet_submissions")
+            .update({
+                "status":       "SUBMITTED",
+                "total_hours":  total_hours,
+                "submitted_at": now,
+                "updated_at":   now,
+            })
+            .eq("id", existing["id"])
+            .execute()
+        )
+        return resp.data[0]
+    resp = (
+        _client()
+        .table("timesheet_submissions")
+        .insert({
+            "engineer_initials": engineer,
+            "period_start":      period_start,
+            "period_end":        period_end,
+            "status":            "SUBMITTED",
+            "total_hours":       total_hours,
+            "submitted_at":      now,
+            "created_at":        now,
+            "updated_at":        now,
+        })
+        .execute()
+    )
+    return resp.data[0]
+
+
+def review_submission(submission_id: int, action: str, reviewer_notes: Optional[str] = None) -> dict[str, Any]:
+    """action must be 'approve' or 'reject'."""
+    status = "APPROVED" if action == "approve" else "REJECTED"
+    now = _utc_now_iso()
+    resp = (
+        _client()
+        .table("timesheet_submissions")
+        .update({
+            "status":          status,
+            "reviewed_at":     now,
+            "reviewer_notes":  reviewer_notes,
+            "updated_at":      now,
+        })
+        .eq("id", submission_id)
+        .execute()
+    )
+    return resp.data[0]
+
+
+def get_review_queue() -> list[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("timesheet_submissions")
+        .select("*")
+        .eq("status", "SUBMITTED")
+        .order("submitted_at", desc=False)
+        .execute()
+    )
+    return resp.data or []
+
+
+def count_pending_review() -> int:
+    resp = (
+        _client()
+        .table("timesheet_submissions")
+        .select("id", count="exact")
+        .eq("status", "SUBMITTED")
+        .execute()
+    )
+    return resp.count or 0
+
+
+def get_approved_engineers_for_period(period_start: str, period_end: str) -> set[str]:
+    """Return set of engineer_initials with APPROVED submissions covering this period."""
+    resp = (
+        _client()
+        .table("timesheet_submissions")
+        .select("engineer_initials")
+        .eq("status", "APPROVED")
+        .eq("period_start", period_start)
+        .execute()
+    )
+    return {row["engineer_initials"] for row in (resp.data or [])}
+
+
 # ── Pipeline / Billing Phase constants ───────────────────────────────────────
 
 PRODUCTION_PHASE_ORDER: list[str] = [

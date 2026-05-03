@@ -54,7 +54,13 @@
               <span class="nav-badge">{{ _total }}</span>
             {% endif %}
           </a>
-          <a class="nav-item {% if request.url.path == '/payroll-export' %}active{% endif %}" href="/payroll-export">Payroll Export</a>
+          <a class="nav-item {% if request.url.path == '/payroll-export' %}active{% endif %}" href="/payroll-export">
+            Payroll Export
+            {% set _rc = pending_review_count() %}
+            {% if _rc > 0 %}
+              <span class="nav-badge">{{ _rc }}</span>
+            {% endif %}
+          </a>
         </div>
 
         <div class="nav-group">

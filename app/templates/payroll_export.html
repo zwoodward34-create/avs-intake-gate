@@ -36,6 +36,37 @@
   .pct-good { color:var(--good); font-weight:700 }
   .pct-warn { color:var(--warn); font-weight:700 }
   .pct-bad  { color:var(--bad);  font-weight:700 }
+
+  /* Review queue */
+  .rq-card {
+    background:var(--card-bg); border:1px solid var(--border); border-radius:8px;
+    padding:16px 18px; margin-bottom:20px;
+  }
+  .rq-header {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:12px;
+  }
+  .rq-title { font-size:14px; font-weight:700; color:var(--text) }
+  .rq-empty { font-size:13px; color:var(--muted); padding:8px 0 }
+  .rq-table { width:100%; border-collapse:collapse; font-size:13px }
+  .rq-table th {
+    padding:8px 10px; text-align:left; font-size:10px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.6px; color:var(--muted);
+    background:var(--card-bg-deeper); border-bottom:1px solid var(--border);
+  }
+  .rq-table td { padding:9px 10px; border-bottom:1px solid rgba(255,255,255,0.04); vertical-align:middle }
+  .rq-table tr:last-child td { border-bottom:none }
+  .btn-approve { font-size:11px; padding:3px 8px; color:#4ade80; border-color:rgba(74,222,128,.3); background:rgba(74,222,128,.07) }
+  .btn-approve:hover { background:rgba(74,222,128,.14) }
+  .btn-reject  { font-size:11px; padding:3px 8px; color:#f87171; border-color:rgba(248,113,113,.3); background:rgba(248,113,113,.07); margin-left:4px }
+  .btn-reject:hover { background:rgba(248,113,113,.14) }
+
+  /* Unapproved warning */
+  .pr-unapproved-warn {
+    background:rgba(251,191,36,.08); border:1px solid rgba(251,191,36,.4);
+    border-radius:6px; padding:10px 14px; margin-bottom:12px;
+    font-size:13px; color:var(--warn); display:none;
+  }
 </style>
 
 <!-- Page header -->
@@ -46,6 +77,34 @@
   </div>
 </div>
 <div class="subtle" style="margin-bottom:18px">Preview time entries by period, then download CSV for accounting import</div>
+
+<!-- Review Queue -->
+{% if pending_submissions %}
+<div class="rq-card" id="rq-card">
+  <div class="rq-header">
+    <div class="rq-title">Pending Timesheet Approvals <span style="background:rgba(251,191,36,.15);color:#fbbf24;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:8px">{{ pending_submissions|length }}</span></div>
+  </div>
+  <table class="rq-table">
+    <thead><tr>
+      <th>Engineer</th><th>Period</th><th>Hours</th><th>Submitted</th><th>Actions</th>
+    </tr></thead>
+    <tbody id="rq-tbody">
+      {% for sub in pending_submissions %}
+      <tr id="rq-row-{{ sub.id }}">
+        <td style="font-family:var(--mono);font-weight:700">{{ sub.engineer_initials }}</td>
+        <td style="font-family:var(--mono);font-size:12px">{{ sub.period_start }} – {{ sub.period_end }}</td>
+        <td style="font-family:var(--mono)">{{ "%.1f"|format(sub.total_hours or 0) }} h</td>
+        <td style="color:var(--muted);font-size:12px">{{ sub.submitted_at[:10] if sub.submitted_at else '—' }}</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-approve" onclick="reviewSubmission({{ sub.id }}, 'approve')">Approve</button>
+          <button class="btn btn-reject"  onclick="reviewSubmission({{ sub.id }}, 'reject')">Reject</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 <!-- Control card -->
 <div class="card pr-controls">
@@ -60,6 +119,9 @@
   <button class="btn btn-primary" type="button" onclick="loadPreview()" style="flex:0 0 auto;white-space:nowrap">Preview</button>
   <button class="btn" type="button" onclick="downloadCsv()" style="flex:0 0 auto;white-space:nowrap">Export CSV</button>
 </div>
+
+<!-- Unapproved warning -->
+<div class="pr-unapproved-warn" id="pr-unapproved-warn"></div>
 
 <!-- Preview area -->
 <div id="pr-preview" style="display:none">
@@ -79,6 +141,29 @@
 
 <script>
 (function() {
+  window.reviewSubmission = function(id, action) {
+    var notes = '';
+    if (action === 'reject') {
+      notes = prompt('Rejection reason (optional):') || '';
+    }
+    fetch('/api/timesheet/review/' + id, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: action, notes: notes}),
+    })
+    .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.detail || 'Failed'); }); return r.json(); })
+    .then(() => {
+      var row = document.getElementById('rq-row-' + id);
+      if (row) row.remove();
+      var tbody = document.getElementById('rq-tbody');
+      if (tbody && !tbody.querySelector('tr')) {
+        var card = document.getElementById('rq-card');
+        if (card) card.style.display = 'none';
+      }
+    })
+    .catch(e => alert(e.message));
+  };
+
   window.loadPreview = function() {
     var start = document.getElementById('pr-start').value;
     var end   = document.getElementById('pr-end').value;
@@ -86,12 +171,20 @@
     document.getElementById('pr-preview').style.display = 'none';
     document.getElementById('pr-empty').style.display   = 'none';
     document.getElementById('pr-loading').style.display = 'block';
+    document.getElementById('pr-unapproved-warn').style.display = 'none';
     fetch('/api/payroll-export?start=' + start + '&end=' + end)
       .then(r => r.json())
       .then(data => {
         document.getElementById('pr-loading').style.display = 'none';
         if (!data.kpis || data.kpis.total_hours === 0) {
           document.getElementById('pr-empty').style.display = 'block'; return;
+        }
+        var unapproved = data.unapproved_entry_count || 0;
+        var warnEl = document.getElementById('pr-unapproved-warn');
+        if (unapproved > 0) {
+          warnEl.textContent = '⚠ ' + unapproved + ' entr' + (unapproved === 1 ? 'y' : 'ies') +
+            ' belong to engineers who have not yet been approved for this period. Review and approve all timesheets before exporting payroll.';
+          warnEl.style.display = 'block';
         }
         renderKpis(data.kpis);
         renderTable(data.summary_rows);
