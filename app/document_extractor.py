@@ -599,7 +599,9 @@ def extract_intake_fields(text: str) -> dict[str, Any]:
     if not _validate(data):
         raw = _call("Return only valid JSON, no other text.")
         data = _parse_raw(raw)
-        if data is None or not _validate(data):
+        if data is None:
+            return {"validation_failed": True}
+        if not _validate(data):
             data["validation_failed"] = True
 
     return data

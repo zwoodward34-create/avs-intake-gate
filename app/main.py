@@ -1341,7 +1341,16 @@ def api_projected_capacity(start: str, end: str) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="start and end must be YYYY-MM-DD.")
     if we < ws:
         raise HTTPException(status_code=400, detail="end must be >= start.")
-    return db.get_all_projected_capacity(ws, we)
+    try:
+        return db.get_all_projected_capacity(ws, we)
+    except Exception:
+        return {
+            "window_start": ws.isoformat(),
+            "window_end": we.isoformat(),
+            "window_days": db.count_working_days(ws, we),
+            "engineering_pool": [{"engineer_initials": m, "utilization_pct": 0.0, "has_ooo": False, "ooo_days": 0, "ooo_bar_pct": 0.0, "working_days": 0, "available_days": 0, "available_hours": 0.0, "committed_hours": 0.0} for m in db.ENGINEERING_POOL],
+            "drafting_pool":    [{"engineer_initials": m, "utilization_pct": 0.0, "has_ooo": False, "ooo_days": 0, "ooo_bar_pct": 0.0, "working_days": 0, "available_days": 0, "available_hours": 0.0, "committed_hours": 0.0} for m in db.DRAFTING_POOL],
+        }
 
 
 # ── Schedule Generator ────────────────────────────────────────────────────────
