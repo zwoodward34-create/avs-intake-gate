@@ -891,3 +891,100 @@ dialog::backdrop { background: oklch(16% 0.02 252 / 50%); }
 .to-add-form .field { margin: 0; }
 .to-add-form label { font-size: 11px; margin-bottom: 4px; }
 .to-days-preview { font-size: 11px; font-family: var(--mono); color: var(--accent); margin-top: 4px; height: 16px; }
+
+/* ─── Mo's Queue ─────────────────────────────────────────────────────────── */
+.mo-empty-state { text-align: center; padding: 64px 24px; color: var(--muted); }
+.mo-empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+.mo-empty-state h3 { font-size: 18px; font-weight: 600; color: var(--text); margin: 0 0 6px; }
+.mo-empty-state p { font-size: 14px; margin: 0; }
+
+.mo-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; transition: box-shadow 0.15s; }
+.mo-card:hover { box-shadow: 0 4px 16px oklch(16% 0.02 252 / 8%); }
+.mo-card-header { padding: 16px 20px 14px; border-bottom: 1px solid var(--border); }
+.mo-card-title-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+.mo-project-num { font-size: 11px; font-family: var(--mono); color: var(--muted); background: var(--card-bg-deeper); border: 1px solid var(--border); border-radius: 4px; padding: 2px 7px; white-space: nowrap; align-self: center; flex-shrink: 0; }
+.mo-project-name { font-size: 16px; font-weight: 700; color: var(--text); line-height: 1.3; flex: 1; }
+.mo-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.mo-meta-sep { opacity: 0.4; }
+.mo-days-queue { font-weight: 600; color: var(--accent); }
+.mo-flag-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: var(--bad); color: #fff; white-space: nowrap; flex-shrink: 0; }
+.mo-flag-badge.warn { background: var(--warn); color: oklch(20% 0.05 60); }
+.mo-flag-badge.info { background: var(--card-bg-deeper); color: var(--muted); border: 1px solid var(--border); }
+
+.mo-section { padding: 12px 20px; border-bottom: 1px solid var(--border); }
+.mo-section:last-of-type { border-bottom: none; }
+.mo-section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
+.mo-rec-text { font-size: 13px; color: var(--text); line-height: 1.5; }
+.mo-rec-reason { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+.mo-flags-list { display: flex; flex-direction: column; gap: 4px; }
+.mo-flag-item { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
+.mo-flag-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+.mo-flag-dot.critical { background: var(--bad); }
+.mo-flag-dot.high { background: oklch(60% 0.18 35); }
+.mo-flag-dot.medium { background: var(--warn); }
+.mo-flag-dot.low { background: var(--muted); }
+.mo-flag-severity { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--muted); flex-shrink: 0; width: 46px; padding-top: 1px; }
+.mo-flag-desc { color: var(--text); line-height: 1.4; }
+
+.mo-fee-hint { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: var(--card-bg-deeper); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.mo-fee-hint strong { color: var(--text); font-size: 14px; }
+
+.mo-decision-row { display: flex; gap: 8px; padding: 14px 20px; flex-wrap: wrap; }
+.mo-action-btn { flex: 1; min-width: 100px; padding: 9px 14px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--card-bg); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.mo-action-btn:hover { background: var(--card-bg-deeper); }
+.mo-action-btn.active-proceed { border-color: var(--good); background: oklch(from var(--good) l c h / 0.1); color: var(--good); }
+.mo-action-btn.active-info { border-color: var(--accent); background: oklch(from var(--accent) l c h / 0.1); color: var(--accent); }
+.mo-action-btn.active-conditions { border-color: var(--warn); background: oklch(from var(--warn) l c h / 0.1); color: oklch(45% 0.15 80); }
+.mo-action-btn.active-decline { border-color: var(--bad); background: oklch(from var(--bad) l c h / 0.1); color: var(--bad); }
+
+.mo-proceed-panel, .mo-text-panel { display: none; border-top: 1px solid var(--border); background: var(--card-bg-deeper); }
+.mo-proceed-inner { padding: 16px 20px; }
+.mo-field-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 6px; display: block; }
+
+.mo-fee-input-group { display: flex; align-items: center; gap: 8px; }
+.mo-fee-prefix { font-size: 14px; color: var(--muted); }
+.mo-fee-input { width: 140px; padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--card-bg); color: var(--text); font-size: 15px; font-weight: 600; font-family: var(--mono); }
+.mo-fee-input:focus { outline: none; border-color: var(--accent); }
+.mo-fee-range-hint { font-size: 11px; color: var(--muted); }
+
+.mo-date-pair { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.mo-date-pair label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.mo-date-input { padding: 7px 10px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--card-bg); color: var(--text); font-size: 13px; font-family: var(--mono); }
+.mo-date-input:focus { outline: none; border-color: var(--accent); }
+
+.mo-capacity-section { margin-top: 16px; }
+.mo-capacity-loading { font-size: 12px; color: var(--muted); padding: 8px 0; }
+.mo-capacity-pool-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 12px 0 6px; }
+.mo-capacity-bars { display: flex; flex-direction: column; gap: 6px; }
+.mo-capacity-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.mo-capacity-checkbox { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); flex-shrink: 0; }
+.mo-cap-initials { font-family: var(--mono); font-weight: 700; width: 28px; color: var(--text); flex-shrink: 0; }
+.mo-capacity-track { flex: 1; height: 10px; border-radius: 5px; background: var(--border); overflow: hidden; position: relative; }
+.mo-capacity-fill { height: 100%; border-radius: 5px; transition: width 0.3s ease; }
+.bar-good { background: var(--good); }
+.bar-warn { background: var(--warn); }
+.bar-high { background: oklch(60% 0.18 35); }
+.bar-over { background: var(--bad); }
+.mo-cap-pct { font-family: var(--mono); font-size: 11px; width: 36px; text-align: right; flex-shrink: 0; }
+.pct-good { color: var(--good); }
+.pct-warn { color: var(--warn); }
+.pct-high { color: oklch(60% 0.18 35); }
+.pct-over { color: var(--bad); }
+.mo-capacity-ooo-badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: oklch(from var(--warn) l c h / 0.15); color: oklch(45% 0.15 80); border: 1px solid oklch(from var(--warn) l c h / 0.3); flex-shrink: 0; }
+
+.mo-conflict-warnings { display: none; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: oklch(from var(--warn) l c h / 0.08); border: 1px solid oklch(from var(--warn) l c h / 0.25); font-size: 12px; color: oklch(40% 0.12 75); }
+.mo-conflict-warnings ul { margin: 4px 0 0 16px; padding: 0; }
+
+.mo-action-bar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 12px 20px; background: var(--card-bg); border-top: 1px solid var(--border); }
+.mo-cancel-btn { background: none; border: 1.5px solid var(--border); border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; transition: all 0.15s; }
+.mo-cancel-btn:hover { border-color: var(--text); color: var(--text); }
+
+.mo-notes-input { width: 100%; min-height: 90px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--card-bg); color: var(--text); font-size: 13px; line-height: 1.5; resize: vertical; box-sizing: border-box; margin: 14px 20px; width: calc(100% - 40px); }
+.mo-notes-input:focus { outline: none; border-color: var(--accent); }
+
+@media (max-width: 640px) {
+  .mo-decision-row { flex-direction: column; }
+  .mo-action-btn { width: 100%; }
+  .mo-date-pair { flex-direction: column; align-items: flex-start; }
+}

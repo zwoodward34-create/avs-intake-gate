@@ -687,20 +687,78 @@ def _require_mo_passcode_if_configured(passcode: Optional[str]) -> None:
 @app.get("/mo-queue", response_class=HTMLResponse)
 def mo_queue(request: Request) -> HTMLResponse:
     import json as _json
-    intakes = db.list_pending_mo()
+
+    raw_intakes = db.list_pending_mo()
+    enriched: list[dict[str, Any]] = []
+
+    for intake in raw_intakes:
+        flags = intake.red_flags
+        flag_critical = sum(1 for f in flags if (f.get("severity") or "").lower() == "critical")
+        flag_high     = sum(1 for f in flags if (f.get("severity") or "").lower() == "high")
+        flag_medium   = sum(1 for f in flags if (f.get("severity") or "").lower() == "medium")
+
+        days_in_queue: Optional[int] = None
+        try:
+            submitted_dt = datetime.fromisoformat(intake.created_at.replace("Z", "+00:00").split(".")[0])
+            days_in_queue = (datetime.now(timezone.utc) - submitted_dt).days
+        except Exception:
+            pass
+
+        answers = intake.answers
+        fee_midpoint: Optional[float] = None
+        fee_low: Optional[float] = None
+        fee_high: Optional[float] = None
+        try:
+            dec = compute_decision(answers)
+            enriched_ans = {**answers, "_complexity": dec["complexity_estimate"]}
+            est = cognasync_estimate_from_answers(intake.project_name, enriched_ans)
+            if est and not est.get("needs_manual_review"):
+                fr = est.get("suggested_fee_range") or {}
+                lo = fr.get("low") or 0
+                hi = fr.get("high") or 0
+                if lo and hi:
+                    fee_midpoint = round((lo + hi) / 2 / 500) * 500
+                    fee_low, fee_high = lo, hi
+        except Exception:
+            pass
+
+        enriched.append({
+            "id":                   intake.id,
+            "project_name":         intake.project_name,
+            "client_name":          intake.client_name,
+            "architect_name":       intake.architect_name,
+            "location_region":      intake.location_region,
+            "recommendation":       intake.recommendation,
+            "recommendation_reason": intake.recommendation_reason,
+            "red_flags":            flags,
+            "flag_critical":        flag_critical,
+            "flag_high":            flag_high,
+            "flag_medium":          flag_medium,
+            "project_number":       intake.project_number,
+            "inquiry_date":         intake.inquiry_date,
+            "created_at":           intake.created_at,
+            "days_in_queue":        days_in_queue,
+            "project_type":         answers.get("project_type", ""),
+            "answers":              answers,
+            "fee_midpoint":         fee_midpoint,
+            "fee_low":              fee_low,
+            "fee_high":             fee_high,
+        })
+
     pending_invoices = db.get_pending_invoice_approvals()
     return templates.TemplateResponse(
         "mo_queue.html",
         {
-            "request":            request,
-            "intakes":            intakes,
-            "pending_invoices":   pending_invoices,
-            "now_local":          _now_local_iso(),
-            "valid_phases":       db.VALID_PHASES,
-            "team_colors_json":   _json.dumps(db.TEAM_COLORS),
-            "phase_colors_json":  _json.dumps(db.PHASE_COLORS),
+            "request":             request,
+            "intakes":             enriched,
+            "has_items":           len(enriched) > 0,
+            "pending_invoices":    pending_invoices,
+            "now_local":           _now_local_iso(),
+            "valid_phases":        db.VALID_PHASES,
+            "team_colors_json":    _json.dumps(db.TEAM_COLORS),
+            "phase_colors_json":   _json.dumps(db.PHASE_COLORS),
             "billing_labels_json": _json.dumps(db.BILLING_PHASE_LABELS),
-            "billing_labels":     db.BILLING_PHASE_LABELS,
+            "billing_labels":      db.BILLING_PHASE_LABELS,
         },
     )
 
@@ -717,19 +775,31 @@ async def api_mo_review_json(request: Request, intake_id: int) -> dict:
         "PROCEED_WITH_CONDITIONS": "PROCEED_WITH_CONDITIONS",
         "REQUEST_CLARIFICATION":   "NEEDS_INFO",
         "DECLINE":                 "DECLINED",
+        # New decision values from the overhauled Mo Queue
+        "NEEDS_MORE_INFO":         "NEEDS_INFO",
+        "CONDITIONS":              "PROCEED_WITH_CONDITIONS",
+        "DECLINED":                "DECLINED",
     }.get(mo_decision)
     if not status:
         raise HTTPException(status_code=400, detail="Invalid decision.")
     mo_fee_decision = (body.get("mo_fee_decision") or "").strip().upper() or None
     fee_override = _as_str(str(body.get("mo_fee_override") or "")) if mo_fee_decision == "OVERRIDE" else None
+
+    assigned_engs = body.get("assigned_engineers") or []
+    mo_notes_val = _as_str(str(body.get("mo_notes") or body.get("mo_decision_notes") or ""))
+
     db.set_mo_review(
         intake_id,
         mo_decision=mo_decision,
-        mo_notes=_as_str(str(body.get("mo_notes") or "")),
+        mo_notes=mo_notes_val,
         mo_conditions=_as_str(str(body.get("mo_conditions") or "")),
         mo_fee_decision=mo_fee_decision,
         mo_fee_override=fee_override,
         status=status,
+        proposed_start_date=body.get("proposed_start_date") or None,
+        proposed_end_date=body.get("proposed_end_date") or None,
+        assigned_engineers=_json.dumps(assigned_engs) if assigned_engs else None,
+        mo_decision_notes=_as_str(str(body.get("mo_decision_notes") or "")),
     )
 
     project_number: Optional[str] = intake.project_number

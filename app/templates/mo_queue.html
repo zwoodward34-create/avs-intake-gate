@@ -1,667 +1,513 @@
 {% extends "base.html" %}
 {% block content %}
-  <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:18px; flex-wrap:wrap">
-    <div>
-      <div style="font-size:22px; font-weight:900; letter-spacing:-.3px">Mo's Queue</div>
-      <div class="subtle">Pending review — oldest first</div>
+
+{# ════ PAGE HEADER ════ #}
+<div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:20px; flex-wrap:wrap">
+  <div>
+    <div class="page-eyebrow">Review</div>
+    <div class="page-title">Mo's Queue</div>
+  </div>
+  {% if has_items %}
+    <span class="mo-badge" id="queue-badge" style="font-size:14px; padding:4px 12px; height:auto">{{ intakes|length }} pending</span>
+  {% endif %}
+</div>
+
+{# ════ INTAKE QUEUE ════ #}
+
+{% if not has_items %}
+<div class="mo-empty-state">
+  <div class="mo-empty-icon">✓</div>
+  <div class="mo-empty-title">Queue is clear</div>
+  <div class="mo-empty-sub">No intakes are pending Mo's review.</div>
+</div>
+{% endif %}
+
+{% for intake in intakes %}
+<div class="mo-card" id="mo-card-{{ intake.id }}" data-intake-id="{{ intake.id }}">
+
+  {# ── Card Header ── #}
+  <div class="mo-card-header">
+    <div class="mo-card-title-row">
+      <span class="mo-project-num">
+        {% if intake.project_number %}#{{ intake.project_number }}{% else %}#——{% endif %}
+      </span>
+      <span class="mo-project-name">{{ intake.project_name or intake.client_name or "Unnamed Project" }}</span>
     </div>
-    {% if intakes %}
-      <span class="mo-badge" id="queue-badge" style="font-size:14px; padding:4px 12px; height:auto">{{ intakes|length }} pending</span>
-    {% endif %}
+    <div class="mo-card-meta">
+      {% if intake.client_name %}<span>{{ intake.client_name }}</span>{% endif %}
+      {% if intake.project_type %}
+        <span class="mo-meta-sep">·</span>
+        <span>{{ intake.project_type | replace("_", " ") | title }}</span>
+      {% endif %}
+      {% if intake.days_in_queue is not none %}
+        <span class="mo-meta-sep">·</span>
+        <span class="mo-days-queue">{{ intake.days_in_queue }}d in queue</span>
+      {% endif %}
+      {% if intake.flag_critical > 0 %}
+        <span class="mo-flag-badge flag-critical">⚑ {{ intake.flag_critical }} critical</span>
+      {% elif intake.flag_high > 0 %}
+        <span class="mo-flag-badge flag-high">⚑ {{ intake.flag_high }} high</span>
+      {% endif %}
+    </div>
   </div>
 
-  {% if not intakes %}
-    <div class="card" style="text-align:center; padding:56px 20px">
-      <div class="empty-title">Queue is clear</div>
-      <div class="empty-sub">No intakes pending Mo's review</div>
-      <a class="btn" href="/">Back to dashboard</a>
+  {# ── AI Recommendation ── #}
+  {% if intake.recommendation %}
+  <div class="mo-section">
+    <div class="mo-section-label">AI RECOMMENDATION</div>
+    <div class="mo-rec-text">
+      <strong>{{ intake.recommendation }}</strong>
+      {% if intake.recommendation_reason %}
+        <div style="margin-top:3px; color:var(--muted); font-size:0.82rem">{{ intake.recommendation_reason }}</div>
+      {% endif %}
     </div>
+  </div>
   {% endif %}
 
-  {% for intake in intakes %}
-    {% set days = intake.inquiry_date | days_ago %}
-    {% if days is not none %}
-      {% if days > 10 %}{% set aging_border = "border-left: 4px solid #ef4444;" %}
-      {% elif days > 5 %}{% set aging_border = "border-left: 4px solid #f59e0b;" %}
-      {% else %}{% set aging_border = "" %}{% endif %}
-    {% else %}{% set aging_border = "" %}{% endif %}
+  {# ── Red Flags ── #}
+  {% if intake.red_flags %}
+  <div class="mo-section">
+    <div class="mo-section-label">RED FLAGS</div>
+    <ul class="mo-flags-list">
+      {% for flag in intake.red_flags %}
+      <li class="mo-flag-item flag-{{ (flag.severity or 'medium') | lower }}">
+        <span class="mo-flag-dot"></span>
+        <span class="mo-flag-severity">{{ (flag.severity or 'MEDIUM') | upper }}</span>
+        <span class="mo-flag-desc">{{ flag.title or flag.description or flag }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
 
-    <div class="card mo-queue-card" id="card-{{ intake.id }}" style="{{ aging_border }}">
+  {# ── AI Fee Estimate ── #}
+  {% if intake.fee_midpoint %}
+  <div class="mo-fee-hint">
+    AI fee estimate:
+    {% if intake.fee_low and intake.fee_high %}
+      <strong>${{ "{:,.0f}".format(intake.fee_low) }} – ${{ "{:,.0f}".format(intake.fee_high) }}</strong>
+      <span style="color:var(--muted)"> · midpoint <strong>${{ "{:,.0f}".format(intake.fee_midpoint) }}</strong></span>
+    {% else %}
+      <strong>${{ "{:,.0f}".format(intake.fee_midpoint) }}</strong>
+    {% endif %}
+  </div>
+  {% endif %}
 
-      <!-- Header row -->
-      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap">
-        <div>
-          <span style="display:flex; align-items:center; gap:6px">
-            {% if intake.project_number %}
-              <span style="font-size:13px;font-weight:700;font-family:var(--mono);color:var(--muted)">#{{ intake.project_number }}</span>
-            {% endif %}
-            <a class="mo-queue-title" href="/intakes/{{ intake.id }}" style="color:var(--text)">{{ intake.project_name }}</a>
-            {% if days is not none and days > 10 %}
-              <span style="font-size:10px; font-weight:700; padding:1px 6px; border-radius:3px; background:#fca5a5; color:#7f1d1d; text-transform:uppercase; letter-spacing:.5px">Aging</span>
-            {% endif %}
-          </span>
-          <div class="mo-queue-meta">{{ intake.client_name or "—" }}{% if intake.architect_name %} · {{ intake.architect_name }}{% endif %}</div>
-          {% if intake.location_region %}<div class="mo-queue-meta">{{ intake.location_region }}</div>{% endif %}
-          <div class="mo-queue-meta">
-            Inquiry: {{ intake.inquiry_date or "—" }}
-            {% if days is not none %}
-              <span style="color:{% if days > 14 %}#fca5a5{% elif days > 7 %}#fde68a{% else %}var(--muted){% endif %}">({{ days }}d ago)</span>
-            {% endif %}
+  {# ── Decision Row ── #}
+  <div class="mo-decision-row">
+    <button class="mo-action-btn mo-action-proceed"
+            onclick="moSelectAction({{ intake.id }}, 'proceed')"
+            data-action="proceed">
+      Proceed ✓
+    </button>
+    <button class="mo-action-btn mo-action-info"
+            onclick="moSelectAction({{ intake.id }}, 'info')"
+            data-action="info">
+      Needs Info
+    </button>
+    <button class="mo-action-btn mo-action-conditions"
+            onclick="moSelectAction({{ intake.id }}, 'conditions')"
+            data-action="conditions">
+      Conditions
+    </button>
+    <button class="mo-action-btn mo-action-decline"
+            onclick="moSelectAction({{ intake.id }}, 'decline')"
+            data-action="decline">
+      Decline
+    </button>
+  </div>
+
+  {# ── Proceed Panel ── #}
+  <div class="mo-proceed-panel" id="proceed-panel-{{ intake.id }}" style="display:none;">
+    <div class="mo-proceed-inner">
+
+      {# Approved Fee #}
+      <div class="mo-proceed-fee-row">
+        <label class="mo-field-label">APPROVED FEE</label>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+          <div class="mo-fee-input-group">
+            <span class="mo-fee-prefix">$</span>
+            <input type="number" class="mo-fee-input" id="fee-input-{{ intake.id }}"
+                   value="{{ intake.fee_midpoint | int if intake.fee_midpoint else '' }}"
+                   placeholder="{{ intake.fee_midpoint | int if intake.fee_midpoint else '0' }}"
+                   min="0" step="500">
           </div>
+          {% if intake.fee_low and intake.fee_high %}
+          <span class="mo-fee-ai-hint">AI est: ${{ "{:,.0f}".format(intake.fee_low) }}–${{ "{:,.0f}".format(intake.fee_high) }}</span>
+          {% endif %}
         </div>
-        <div style="text-align:right; font-size:12px; color:var(--muted); font-family:var(--mono)">#{{ intake.id }}</div>
       </div>
 
-      {% if intake.red_flags %}
-        <div class="mo-queue-flags">
-          {% for flag in intake.red_flags %}
-            <span class="{{ flag.severity | badge_class }}">{{ flag.severity | upper }} {{ flag.title }}</span>
-          {% endfor %}
+      {# Project Window #}
+      <div class="mo-proceed-window-row">
+        <label class="mo-field-label">PROJECT WINDOW <span class="mo-field-optional">(optional — for capacity planning)</span></label>
+        <div class="mo-date-pair">
+          <input type="date" class="mo-date-input" id="window-start-{{ intake.id }}"
+                 onchange="moUpdateCapacity({{ intake.id }})">
+          <span class="mo-date-sep">→</span>
+          <input type="date" class="mo-date-input" id="window-end-{{ intake.id }}"
+                 onchange="moUpdateCapacity({{ intake.id }})">
         </div>
-      {% endif %}
-
-      <div class="hr"></div>
-
-      <div style="margin-bottom:12px">
-        <div style="font-size:12px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); margin-bottom:4px">Auto recommendation</div>
-        <div style="font-weight:800; font-size:15px">{{ intake.recommendation or "—" }}</div>
-        {% if intake.recommendation_reason %}
-          <div class="subtle" style="margin-top:3px">{{ intake.recommendation_reason }}</div>
-        {% endif %}
       </div>
 
-      <!-- Action buttons (Decline / NMI use standard form; Proceed is AJAX) -->
-      <form method="post" action="/intakes/{{ intake.id }}/mo-review" id="form-{{ intake.id }}">
-        <input type="hidden" name="redirect_after" value="/mo-queue" />
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px" id="action-btns-{{ intake.id }}">
-          <button class="btn btn-proceed" type="button" onclick="openProceedSection({{ intake.id }})">Proceed</button>
-          <button class="btn btn-decline" type="submit" name="mo_decision" value="DECLINE">Decline</button>
-          <button class="btn btn-moreinfo" type="submit" name="mo_decision" value="REQUEST_CLARIFICATION">Need More Info</button>
+      {# Capacity / Engineer Assignment #}
+      <div class="mo-capacity-section" id="capacity-section-{{ intake.id }}">
+        <div class="mo-section-label" id="capacity-label-{{ intake.id }}">
+          ASSIGN ENGINEERS — PROJECTED CAPACITY (NEXT 60 DAYS)
         </div>
-        <div id="other-actions-{{ intake.id }}">
-          <button type="button" class="mo-notes-toggle" onclick="toggleNotes('other-notes-{{ intake.id }}', this)">+ Add notes or conditions</button>
-          <div id="other-notes-{{ intake.id }}" style="display:none">
-            <div class="row row-2" style="margin-top:8px">
-              <div class="field"><label>Notes</label><textarea name="mo_notes" rows="3"></textarea></div>
-              <div class="field"><label>Conditions</label><input type="text" name="mo_conditions" placeholder="Optional" /></div>
-            </div>
-          </div>
+        <div class="mo-capacity-bars" id="capacity-bars-{{ intake.id }}">
+          <div class="mo-capacity-loading">Loading capacity data…</div>
         </div>
-      </form>
+        <div class="mo-conflict-warnings" id="conflict-warnings-{{ intake.id }}" style="display:none;"></div>
+      </div>
 
-      <!-- ═══ PROCEED SECTION (fully AJAX, outside form) ═══ -->
-      <div id="proceed-section-{{ intake.id }}" style="display:none"
-           data-intake-id="{{ intake.id }}"
-           data-client="{{ intake.client_name | default('') }}"
-           data-location="{{ intake.location_region | default('') }}"
-           data-project-name="{{ intake.project_name | default('') }}"
-           data-project-type="{{ intake.answers.get('project_type', '') }}"
-           data-building-type="{{ intake.answers.get('building_type', '') }}"
-           data-approx-sf="{{ intake.answers.get('approx_sf', '') }}"
-           data-architect="{{ intake.architect_name | default('') }}">
+    </div>
 
-        <!-- ① Project Intelligence -->
-        <div style="background:rgba(0,229,255,.05); border:1px solid rgba(0,229,255,.20); border-radius:12px; padding:16px; margin-bottom:12px">
-          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--accent); margin-bottom:12px">Project Intelligence</div>
-          <div id="pi-{{ intake.id }}"><div style="color:var(--muted); font-size:12px">Loading intelligence…</div></div>
-        </div>
+    {# Sticky action bar #}
+    <div class="mo-action-bar" id="action-bar-{{ intake.id }}">
+      <button class="btn btn-primary mo-confirm-btn"
+              onclick="moSubmitDecision({{ intake.id }}, 'PROCEED')"
+              id="confirm-btn-{{ intake.id }}">
+        ✓ Proceed &amp; Generate Proposal
+      </button>
+      <button class="btn mo-cancel-btn"
+              onclick="moSelectAction({{ intake.id }}, null)">
+        Cancel
+      </button>
+    </div>
+  </div>
 
-        <!-- ② Approved Fee -->
-        <div style="background:rgba(0,230,118,.05); border:1px solid rgba(0,230,118,.20); border-radius:12px; padding:14px 16px; margin-bottom:12px">
-          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--good); margin-bottom:10px">Approved Fee</div>
-          <div style="display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap">
-            <div class="field" style="margin:0">
-              <label for="approved-fee-{{ intake.id }}" style="font-size:11px">Amount ($) *</label>
-              <input type="number" id="approved-fee-{{ intake.id }}" min="500" step="500"
-                     placeholder="e.g. 12500" style="font-size:18px; font-weight:800; max-width:190px" />
-            </div>
-            <div class="subtle" style="font-size:11px; padding-bottom:3px">Flows into Reports → Approved Pipeline</div>
-          </div>
-        </div>
+  {# ── Needs Info / Conditions / Decline Panel ── #}
+  <div class="mo-text-panel" id="text-panel-{{ intake.id }}" style="display:none;">
+    <div class="mo-text-panel-inner">
+      <label class="mo-field-label" id="text-panel-label-{{ intake.id }}">NOTES</label>
+      <textarea class="mo-notes-input" id="notes-input-{{ intake.id }}"
+                rows="3" placeholder="Enter details…"></textarea>
+    </div>
+    <div class="mo-action-bar">
+      <button class="btn btn-primary mo-confirm-btn"
+              onclick="moSubmitTextDecision({{ intake.id }})"
+              id="text-confirm-btn-{{ intake.id }}">
+        Confirm
+      </button>
+      <button class="btn mo-cancel-btn"
+              onclick="moSelectAction({{ intake.id }}, null)">
+        Cancel
+      </button>
+    </div>
+  </div>
 
-        <!-- ③ Proposal Prep checklist -->
-        <div style="background:var(--card-bg-deeper); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:12px">
-          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--muted); margin-bottom:10px">Proposal Prep</div>
-          <div style="display:flex; flex-direction:column; gap:7px; font-size:13px">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" style="width:15px;height:15px"> RFP data extracted (name, location, SF, type)</label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" style="width:15px;height:15px"> Project classified (new construction or BTS)</label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" style="width:15px;height:15px"> Complexity assessed (low / medium / high)</label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" style="width:15px;height:15px"> Fee estimated and approved</label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" style="width:15px;height:15px"> Scope items determined (A–G or A–H)</label>
-          </div>
-        </div>
-
-        <!-- ④ Generate Proposal Letter -->
-        <div style="border:1px solid rgba(0,229,255,.25); border-left:3px solid var(--accent); border-radius:12px; padding:14px 16px; margin-bottom:12px">
-          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--accent); margin-bottom:10px">Generate Proposal Letter</div>
-          <div class="field" style="margin-bottom:12px">
-            <label for="structural-{{ intake.id }}" style="font-size:11px">Structural system / scope notes (optional)</label>
-            <input type="text" id="structural-{{ intake.id }}" placeholder="e.g. tilt-up panels, metal deck on steel joists, slab on grade" />
-          </div>
-          <!-- Notes for this proceed decision -->
-          <div style="margin-bottom:12px">
-            <button type="button" class="mo-notes-toggle" onclick="toggleNotes('proceed-notes-{{ intake.id }}', this)">+ Add notes or conditions for Mo</button>
-            <div id="proceed-notes-{{ intake.id }}" style="display:none">
-              <div class="row row-2" style="margin-top:8px">
-                <div class="field"><label for="pnotes-{{ intake.id }}">Notes</label><textarea id="pnotes-{{ intake.id }}" rows="3"></textarea></div>
-                <div class="field"><label for="pconds-{{ intake.id }}">Conditions</label><input type="text" id="pconds-{{ intake.id }}" placeholder="Optional" /></div>
-              </div>
-            </div>
-          </div>
-          <div id="sticky-action-bar-{{ intake.id }}"
-               style="position:sticky;bottom:0;z-index:10;margin:0 -20px -20px;padding:12px 20px;
-                      background:rgba(15,33,19,0.95);backdrop-filter:blur(12px);
-                      border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-            <button class="btn btn-primary" type="button" id="gen-btn-{{ intake.id }}"
-                    onclick="confirmAndGenerate({{ intake.id }})">
-              ✓ Confirm Proceed &amp; Generate Proposal
-            </button>
-            <button class="btn" type="button" onclick="cancelProceed({{ intake.id }})">Cancel</button>
-            <div id="gen-status-{{ intake.id }}" style="display:none; font-size:12px; color:var(--muted)">Saving decision and generating proposal — ~15 seconds…</div>
-            <div id="gen-error-{{ intake.id }}"  style="display:none; font-size:12px; color:#dc2626; font-weight:600"></div>
-          </div>
-        </div>
-
-        <!-- ⑤ Proposal output (revealed after generation) -->
-        <div id="proposal-output-{{ intake.id }}" style="display:none; margin-bottom:12px">
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:8px">
-            <div style="font-size:13px; font-weight:800; color:var(--good)">✓ Proposal Generated</div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap">
-              <button class="btn" type="button" onclick="copyProposalMQ({{ intake.id }}, event)">Copy to Clipboard</button>
-              <button class="btn" type="button" onclick="moveToAllIntakes({{ intake.id }})"
-                      style="border-color:rgba(0,229,255,.40);background:rgba(0,229,255,.10);color:var(--text)">
-                Move to All Intakes →
-              </button>
-            </div>
-          </div>
-          <pre id="proposal-text-{{ intake.id }}"
-               style="white-space:pre-wrap; font-family:var(--mono); font-size:12px; line-height:1.6;
-                      background:rgba(0,0,0,.3); border:1px solid var(--border); border-radius:12px;
-                      padding:14px; overflow-x:auto; max-height:340px; overflow-y:auto; color:var(--text)"></pre>
-        </div>
-
-        <!-- ⑥ Create Calendar Event (revealed after Proceed confirmed) -->
-        <div id="cal-event-btn-{{ intake.id }}" style="display:none; margin-bottom:12px">
-          <button class="btn" type="button" onclick="toggleCalendarSection({{ intake.id }})"
-                  style="border-color:rgba(0,229,255,.35); color:var(--accent); font-weight:700">
-            + Create Calendar Event for This Project
-          </button>
-        </div>
-
-        <div id="cal-section-{{ intake.id }}" style="display:none; background:rgba(0,229,255,.04); border:1px solid rgba(0,229,255,.20); border-radius:12px; padding:16px; margin-bottom:12px">
-          <div style="font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--accent); margin-bottom:14px">Create Calendar Event</div>
-          <div class="row row-2" style="margin-bottom:10px">
-            <div class="field">
-              <label for="cal-proj-{{ intake.id }}" style="font-size:11px">Project #</label>
-              <input type="text" id="cal-proj-{{ intake.id }}" placeholder="e.g. 9771"
-                     value="{{ intake.project_number or '' }}" />
-            </div>
-            <div class="field">
-              <label for="cal-client-{{ intake.id }}" style="font-size:11px">Client</label>
-              <input type="text" id="cal-client-{{ intake.id }}" />
-            </div>
-          </div>
-          <div class="row row-2" style="margin-bottom:10px">
-            <div class="field">
-              <label for="cal-location-{{ intake.id }}" style="font-size:11px">Location</label>
-              <input type="text" id="cal-location-{{ intake.id }}" />
-            </div>
-            <div class="field">
-              <label for="cal-type-{{ intake.id }}" style="font-size:11px">Project Type</label>
-              <input type="text" id="cal-type-{{ intake.id }}" />
-            </div>
-          </div>
-          <div class="row row-2" style="margin-bottom:10px">
-            <div class="field">
-              <label for="cal-phase-{{ intake.id }}" style="font-size:11px">Phase</label>
-              <select id="cal-phase-{{ intake.id }}">
-                {% for p in valid_phases %}<option value="{{ p }}"{% if p == 'IFP' %} selected{% endif %}>{{ p }}</option>{% endfor %}
-              </select>
-            </div>
-            <div class="field">
-              <label for="cal-tier-{{ intake.id }}" style="font-size:11px">Tier (1–5)</label>
-              <select id="cal-tier-{{ intake.id }}">
-                <option value="">— No tier —</option>
-                <option value="1">1 — Minor</option>
-                <option value="2">2 — Small</option>
-                <option value="3">3 — Standard</option>
-                <option value="4">4 — Large</option>
-                <option value="5">5 — Major</option>
-              </select>
-            </div>
-          </div>
-          <div class="row row-2" style="margin-bottom:14px">
-            <div class="field">
-              <label for="cal-start-{{ intake.id }}" style="font-size:11px">Start Date</label>
-              <input type="date" id="cal-start-{{ intake.id }}" />
-            </div>
-            <div class="field">
-              <label for="cal-end-{{ intake.id }}" style="font-size:11px">End Date</label>
-              <input type="date" id="cal-end-{{ intake.id }}" />
-            </div>
-          </div>
-
-          <!-- Capacity-based team picker -->
-          <div style="margin-bottom:12px">
-            <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; color:var(--accent); margin-bottom:10px">
-              Assign Team — Live Capacity
-            </div>
-            <div id="cap-picker-{{ intake.id }}">
-              <div style="color:var(--muted); font-size:12px">Loading capacity…</div>
-            </div>
-            <div id="sel-team-{{ intake.id }}" style="margin-top:8px; min-height:24px; display:flex; gap:4px; flex-wrap:wrap; align-items:center">
-              <span style="font-size:12px; color:var(--muted)">No team members selected</span>
-            </div>
-          </div>
-
-          <div id="cal-save-error-{{ intake.id }}" style="display:none; color:var(--bad); font-size:12px; font-weight:600; margin-bottom:8px"></div>
-          <div id="cal-save-ok-{{ intake.id }}"    style="display:none; background:rgba(0,230,118,.08); border:1px solid rgba(0,230,118,.30); border-radius:8px; padding:8px 12px; font-size:13px; font-weight:700; color:var(--good); margin-bottom:8px">✓ Calendar event saved!</div>
-
-          <button class="btn btn-primary" type="button" onclick="saveCalEvent({{ intake.id }})">
-            Save to Calendar
-          </button>
-        </div>
-
-      </div><!-- /proceed-section -->
-
-    </div><!-- /card -->
-  {% endfor %}
+</div>
+{% endfor %}
 
 <script>
 (function () {
-  const MQ_TEAM_COLORS  = {{ team_colors_json | safe }};
-  const MQ_PHASE_COLORS = {{ phase_colors_json | safe }};
+  // ─── Mo Queue State ──────────────────────────────────────────────────────────
+  const moActiveAction  = {};
+  const moCapacityCache = {};
 
-  // Per-intake selected teams
-  const selectedTeams = {};
+  // ─── Action Toggle ───────────────────────────────────────────────────────────
+  window.moSelectAction = function (intakeId, action) {
+    const card = document.getElementById('mo-card-' + intakeId);
+    card.querySelectorAll('.mo-action-btn').forEach(btn => {
+      btn.classList.remove('active-proceed','active-info','active-conditions','active-decline');
+    });
 
-  // ── Helpers ────────────────────────────────────────────────
-  window.toggleNotes = function (id, btn) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const hidden = el.style.display === 'none';
-    el.style.display = hidden ? 'block' : 'none';
-    btn.textContent = hidden ? '− Hide notes' : '+ Add notes or conditions';
-  };
+    const proceedPanel = document.getElementById('proceed-panel-' + intakeId);
+    const textPanel    = document.getElementById('text-panel-'   + intakeId);
+    if (proceedPanel) proceedPanel.style.display = 'none';
+    if (textPanel)    textPanel.style.display    = 'none';
 
-  // ── Open / Close Proceed ───────────────────────────────────
-  window.openProceedSection = function (id) {
-    document.getElementById('action-btns-' + id).style.display = 'none';
-    document.getElementById('other-actions-' + id).style.display = 'none';
-    document.getElementById('proceed-section-' + id).style.display = 'block';
-    selectedTeams[id] = new Set();
-    loadFeeEstimate(id);
-  };
-
-  window.cancelProceed = function (id) {
-    document.getElementById('proceed-section-' + id).style.display = 'none';
-    document.getElementById('action-btns-' + id).style.display = 'flex';
-    document.getElementById('other-actions-' + id).style.display = 'block';
-  };
-
-  // ── Load full Project Intelligence ─────────────────────────
-  function loadFeeEstimate(id) {
-    fetch('/api/intakes/' + id + '/fee-estimate')
-      .then(r => r.json())
-      .then(d => {
-        renderProjectIntelligence(id, d);
-        autoFillCalEvent(id, d);
-      })
-      .catch(() => {
-        const el = document.getElementById('pi-' + id);
-        if (el) el.innerHTML = '<div style="font-size:12px;color:var(--muted)">Could not load estimate — enter fee manually.</div>';
-      });
-  }
-
-  function renderProjectIntelligence(id, d) {
-    const c = d.cognasync;
-    let html = '';
-
-    // Complexity + historical range row
-    if (d.complexity && d.complexity !== 'unknown') {
-      const cx = {low:'#16a34a', medium:'#d97706', high:'#dc2626'};
-      const cc = cx[d.complexity] || '#9ca3af';
-      html += `<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px">Complexity</div>
-          <span style="display:inline-block;padding:3px 10px;border-radius:4px;background:${cc};color:#fff;font-size:12px;font-weight:800">${d.complexity.toUpperCase()}</span>
-        </div>
-        ${d.fee_range ? `<div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px">Historical Range</div>
-          <div style="font-size:13px;font-weight:700">${d.fee_range}</div>
-        </div>` : ''}
-        ${d.approx_sf ? `<div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px">Approx SF</div>
-          <div style="font-size:13px;font-weight:700">${parseInt(d.approx_sf).toLocaleString()} SF</div>
-        </div>` : ''}
-      </div>`;
+    if (moActiveAction[intakeId] === action) {
+      moActiveAction[intakeId] = null;
+      return;
     }
+    moActiveAction[intakeId] = action;
+    if (!action) return;
 
-    if (c && !c.needs_manual_review && c.suggested_fee_range) {
-      // Header: building type, delivery, rates
-      html += `<div style="border:1px solid rgba(0,229,255,.20);background:rgba(0,229,255,.04);border-radius:10px;padding:14px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--accent);margin-bottom:10px">
-          Risk-Adjusted Estimator
-          <span style="font-weight:500;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.5);margin-left:6px">
-            ${(c.building_type||'').replace(/_/g,' ')} · ${(c.delivery_bucket||'').toUpperCase()} · $${(c.effective_rate_low||0).toFixed(2)}–$${(c.effective_rate_high||0).toFixed(2)}/SF
-          </span>
-        </div>`;
+    const activeBtn = card.querySelector('[data-action="' + action + '"]');
+    if (activeBtn) activeBtn.classList.add('active-' + action);
 
-      if (c.fee_requires_review) {
-        html += `<div style="background:rgba(255,215,64,.08);border:1px solid rgba(255,215,64,.35);border-radius:6px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--warn);margin-bottom:10px">⚠ ${c.review_reason||'Fee requires manual review'} — estimate is directional only.</div>`;
-      }
-
-      // Suggested fee range — large display
-      html += `<div style="font-size:1.5rem;font-weight:900;margin-bottom:4px;color:#fff">
-        $${(c.suggested_fee_range.low||0).toLocaleString()} – $${(c.suggested_fee_range.high||0).toLocaleString()}
-      </div>`;
-      if (c.floor_applied) {
-        html += `<div style="font-size:11px;color:var(--warn);margin-bottom:8px">▲ Floor of $${(c.floor_fee||0).toLocaleString()} applied</div>`;
-      }
-
-      // Step-by-step breakdown
-      html += `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;padding-top:8px;border-top:1px solid rgba(255,255,255,.10)">`;
-      if (c.base_fee_range) {
-        html += `<div><div style="color:rgba(255,255,255,.5);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">① Base</div><div style="font-weight:700;color:#fff">$${(c.base_fee_range.low||0).toLocaleString()} – $${(c.base_fee_range.high||0).toLocaleString()}</div></div>`;
-      }
-      if (c.complexity_adjusted_range) {
-        html += `<div><div style="color:rgba(255,255,255,.5);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">② Complexity (${c.complexity_multiplier||1}×)</div><div style="font-weight:700;color:#fff">$${(c.complexity_adjusted_range.low||0).toLocaleString()} – $${(c.complexity_adjusted_range.high||0).toLocaleString()}</div></div>`;
-      }
-      if (c.risk_adjusted_range) {
-        const rc = (c.risk_multiplier||1) >= 1.35 ? 'var(--bad)' : (c.risk_multiplier||1) >= 1.15 ? 'var(--warn)' : 'var(--good)';
-        html += `<div><div style="color:rgba(255,255,255,.5);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">③ Risk (${c.risk_multiplier||1}× · ${c.flag_count||0} flags)</div><div style="font-weight:700;color:${rc}">$${(c.risk_adjusted_range.low||0).toLocaleString()} – $${(c.risk_adjusted_range.high||0).toLocaleString()}</div></div>`;
-      }
-      html += `</div>`;
-
-      if (c.warnings && c.warnings.length) {
-        html += `<div style="margin-top:10px;padding:7px 10px;background:rgba(255,82,82,.07);border-left:3px solid var(--bad);border-radius:6px">
-          <div style="font-size:10px;font-weight:700;color:var(--bad);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">Risk flags (${c.flag_count||0})</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px">${(c.warnings||[]).map(w=>`<span style="background:rgba(255,215,64,.10);color:var(--warn);border:1px solid rgba(255,215,64,.35);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">${w.replace(/_/g,' ')}</span>`).join('')}</div>
-        </div>`;
-      }
-
-      html += `</div>`;
-
-      // Pre-fill approved fee
-      if (d.suggested_midpoint) {
-        const fi = document.getElementById('approved-fee-' + id);
-        if (fi && !fi.value) fi.value = d.suggested_midpoint;
-      }
-
-    } else if (c && c.needs_manual_review) {
-      html += `<div style="background:rgba(255,215,64,.08);border:1px solid rgba(255,215,64,.35);border-radius:8px;padding:10px 12px;font-size:12px;font-weight:700;color:var(--warn)">⚠ ${c.review_reason||'Complex project'} — enter approved fee manually.</div>`;
+    if (action === 'proceed') {
+      if (proceedPanel) proceedPanel.style.display = 'block';
+      moLoadCapacity(intakeId);
     } else {
-      html += `<div style="font-size:12px;color:var(--muted)">No automated estimate available — enter fee manually.</div>`;
+      const labelMap = {
+        'info':       'WHAT INFORMATION IS NEEDED?',
+        'conditions': 'ENTER CONDITIONS FOR PROCEEDING',
+        'decline':    'REASON FOR DECLINING (optional)',
+      };
+      const confirmMap = {
+        'info':       'Send Request for Info',
+        'conditions': 'Mark as Conditional Proceed',
+        'decline':    'Confirm Decline',
+      };
+      const labelEl   = document.getElementById('text-panel-label-'   + intakeId);
+      const confirmEl = document.getElementById('text-confirm-btn-'   + intakeId);
+      const notesEl   = document.getElementById('notes-input-'        + intakeId);
+      if (labelEl)   labelEl.textContent   = labelMap[action]   || 'NOTES';
+      if (confirmEl) confirmEl.textContent = confirmMap[action] || 'Confirm';
+      if (notesEl)   notesEl.value = '';
+      if (textPanel) textPanel.style.display = 'block';
+      if (notesEl)   setTimeout(() => notesEl.focus(), 50);
+    }
+  };
+
+  // ─── Capacity Loading ────────────────────────────────────────────────────────
+  window.moLoadCapacity = function (intakeId, startDate, endDate) {
+    const container = document.getElementById('capacity-bars-' + intakeId);
+    const label     = document.getElementById('capacity-label-' + intakeId);
+
+    const today       = new Date();
+    const defaultStart = today.toISOString().split('T')[0];
+    const defaultEnd   = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const start = startDate || defaultStart;
+    const end   = endDate   || defaultEnd;
+
+    if (label) {
+      label.textContent = startDate
+        ? 'ASSIGN ENGINEERS — PROJECTED CAPACITY (' + formatMoDateRange(start, end) + ')'
+        : 'ASSIGN ENGINEERS — PROJECTED CAPACITY (NEXT 60 DAYS)';
     }
 
-    const el = document.getElementById('pi-' + id);
-    if (el) el.innerHTML = html;
-  }
-
-  function autoFillCalEvent(id, d) {
-    const sec = document.getElementById('proceed-section-' + id);
-    const client   = (sec && sec.dataset.client)   || d.client_name   || '';
-    const location = (sec && sec.dataset.location) || d.location_region || '';
-    const ptype    = (sec && sec.dataset.projectType) || d.project_type || '';
-
-    const set = (eid, val) => { const el = document.getElementById(eid + '-' + id); if (el && val) el.value = val; };
-    set('cal-client',   client);
-    set('cal-location', location);
-    set('cal-type',     ptype);
-
-    // Auto-pick tier from complexity
-    if (d.complexity) {
-      const tm = {low:'2', medium:'3', high:'4'};
-      const tel = document.getElementById('cal-tier-' + id);
-      if (tel && !tel.value && tm[d.complexity]) tel.value = tm[d.complexity];
-    }
-  }
-
-  // ── Confirm Proceed + Generate Proposal ───────────────────
-  window.confirmAndGenerate = async function (id) {
-    const fi = document.getElementById('approved-fee-' + id);
-    const fee = parseFloat(fi.value);
-    if (!fee || fee < 500) { fi.style.borderColor = '#dc2626'; fi.focus(); return; }
-    fi.style.borderColor = '';
-
-    const structural = (document.getElementById('structural-' + id) || {}).value || '';
-    const notes      = (document.getElementById('pnotes-' + id) || {}).value || '';
-    const conditions = (document.getElementById('pconds-' + id)  || {}).value || '';
-
-    const genBtn    = document.getElementById('gen-btn-' + id);
-    const genStatus = document.getElementById('gen-status-' + id);
-    const genError  = document.getElementById('gen-error-' + id);
-    genBtn.disabled = true;
-    genBtn.textContent = 'Saving decision…';
-    genStatus.style.display = 'block';
-    genError.style.display  = 'none';
-
-    // Step 1: Save mo decision
-    try {
-      const r = await fetch('/api/intakes/' + id + '/mo-review', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          mo_decision:   'PROCEED',
-          mo_fee_decision: 'OVERRIDE',
-          mo_fee_override: fee,
-          mo_notes:      notes,
-          mo_conditions: conditions,
-        }),
-      });
-      if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.detail || 'Save failed'); }
-      const moData = await r.json().catch(() => ({}));
-      // Auto-fill project number into calendar section
-      if (moData.project_number) {
-        const projInput = document.getElementById('cal-proj-' + id);
-        if (projInput && !projInput.value) projInput.value = moData.project_number;
-        // Also update the card header badge
-        const hdr = document.querySelector('#card-' + id + ' .mo-queue-title');
-        if (hdr && hdr.parentElement) {
-          const existing = hdr.parentElement.querySelector('.pn-badge');
-          if (!existing) {
-            const badge = document.createElement('span');
-            badge.className = 'pn-badge';
-            badge.style.cssText = 'font-size:13px;font-weight:700;font-family:var(--mono);color:var(--muted)';
-            badge.textContent = '#' + moData.project_number;
-            hdr.parentElement.insertBefore(badge, hdr);
-          }
-        }
-      }
-    } catch (e) {
-      genBtn.disabled = false; genBtn.textContent = '✓ Confirm Proceed & Generate Proposal';
-      genStatus.style.display = 'none';
-      genError.textContent = 'Error saving decision: ' + e.message; genError.style.display = 'block';
+    if (moCapacityCache[intakeId] && !startDate) {
+      renderMoCapacityBars(intakeId, moCapacityCache[intakeId]);
       return;
     }
 
-    // Step 2: Generate proposal
-    genBtn.textContent = 'Generating proposal…';
-    try {
-      const r = await fetch('/api/intakes/' + id + '/generate-proposal', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({fee_amount: fee, structural_system: structural}),
+    if (container) container.innerHTML = '<div class="mo-capacity-loading">Loading…</div>';
+
+    fetch('/api/capacity/projected?start=' + start + '&end=' + end)
+      .then(r => r.json())
+      .then(data => {
+        moCapacityCache[intakeId] = data;
+        renderMoCapacityBars(intakeId, data);
+      })
+      .catch(() => {
+        if (container) container.innerHTML =
+          '<div class="mo-capacity-loading" style="color:var(--bad)">Could not load capacity data.</div>';
       });
-      if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.detail || 'Generation failed'); }
-      const data = await r.json();
+  };
 
-      document.getElementById('proposal-text-' + id).textContent = data.proposal_text;
-      document.getElementById('proposal-output-' + id).style.display = 'block';
-      document.getElementById('cal-event-btn-' + id).style.display = 'block';
-
-      genBtn.textContent = '✓ Proceed Confirmed — Proposal Generated';
-      genBtn.style.cssText += ';background:#16a34a;border-color:#16a34a';
-      genStatus.style.display = 'none';
-
-      // Decrement queue badge
-      const badge = document.getElementById('queue-badge');
-      if (badge) {
-        const n = parseInt(badge.textContent) - 1;
-        badge.textContent = n + ' pending';
-        if (n <= 0) badge.style.display = 'none';
-      }
-    } catch (e) {
-      genBtn.disabled = false; genBtn.textContent = '✓ Confirm Proceed & Generate Proposal';
-      genStatus.style.display = 'none';
-      genError.textContent = 'Error generating proposal: ' + e.message; genError.style.display = 'block';
+  window.moUpdateCapacity = function (intakeId) {
+    const startEl = document.getElementById('window-start-' + intakeId);
+    const endEl   = document.getElementById('window-end-'   + intakeId);
+    const start = startEl ? startEl.value : '';
+    const end   = endEl   ? endEl.value   : '';
+    if (start && end && start <= end) {
+      moLoadCapacity(intakeId, start, end);
+    } else if (!start && !end) {
+      moLoadCapacity(intakeId);
     }
   };
 
-  window.copyProposalMQ = function (id, evt) {
-    const text = document.getElementById('proposal-text-' + id).textContent;
-    navigator.clipboard.writeText(text).then(() => {
-      const btn = evt.target;
-      btn.textContent = '✓ Copied!';
-      setTimeout(() => { btn.textContent = 'Copy to Clipboard'; }, 2000);
+  function formatMoDateRange(start, end) {
+    const opts = { month: 'short', day: 'numeric' };
+    const s = new Date(start + 'T00:00:00').toLocaleDateString('en-US', opts);
+    const e = new Date(end   + 'T00:00:00').toLocaleDateString('en-US', opts);
+    return s === e ? s : s + ' – ' + e;
+  }
+
+  // ─── Render Capacity Bars ────────────────────────────────────────────────────
+  function renderMoCapacityBars(intakeId, data) {
+    const container = document.getElementById('capacity-bars-' + intakeId);
+    if (!container) return;
+
+    function barClass(pct) {
+      return pct < 70 ? 'bar-good' : pct < 85 ? 'bar-warn' : pct < 100 ? 'bar-high' : 'bar-over';
+    }
+    function pctClass(pct) {
+      return pct < 70 ? 'pct-good' : pct < 85 ? 'pct-warn' : pct < 100 ? 'pct-high' : 'pct-over';
+    }
+
+    function renderPool(poolName, pool) {
+      if (!pool || pool.length === 0) return '';
+      let out = '<div class="mo-capacity-pool-label">' + poolName + '</div>';
+      pool.forEach(eng => {
+        const pct = Math.round(eng.utilization_pct || 0);
+        const oooBadge = (eng.has_ooo && eng.ooo_days > 0)
+          ? '<span class="mo-capacity-ooo-badge">' + eng.ooo_days + 'd OOO</span>' : '';
+        out += '<div class="mo-capacity-row" data-engineer="' + eng.engineer_initials + '">' +
+          '<input type="checkbox" class="mo-capacity-checkbox"' +
+          ' id="assign-' + intakeId + '-' + eng.engineer_initials + '"' +
+          ' value="' + eng.engineer_initials + '"' +
+          ' onchange="moUpdateConflicts(' + intakeId + ')">' +
+          '<span class="mo-capacity-initials">' + eng.engineer_initials + '</span>' +
+          '<div class="mo-capacity-track">' +
+            '<div class="mo-capacity-fill ' + barClass(pct) + '" style="width:' + Math.min(pct,100) + '%"></div>' +
+          '</div>' +
+          '<span class="mo-capacity-pct ' + pctClass(pct) + '">' + pct + '%</span>' +
+          oooBadge +
+          '</div>';
+      });
+      return out;
+    }
+
+    container.innerHTML =
+      renderPool('Engineering Pool', data.engineering_pool) +
+      renderPool('Drafting Pool', data.drafting_pool);
+  }
+
+  // ─── Conflict Warnings ───────────────────────────────────────────────────────
+  window.moUpdateConflicts = function (intakeId) {
+    const data  = moCapacityCache[intakeId];
+    const panel = document.getElementById('conflict-warnings-' + intakeId);
+    if (!data || !panel) return;
+
+    const card    = document.getElementById('mo-card-' + intakeId);
+    const checked = Array.from(card.querySelectorAll('.mo-capacity-checkbox:checked')).map(cb => cb.value);
+    const all     = [...(data.engineering_pool || []), ...(data.drafting_pool || [])];
+
+    const conflicts = all.filter(eng => checked.includes(eng.engineer_initials) && eng.has_ooo);
+    if (conflicts.length === 0) { panel.style.display = 'none'; return; }
+
+    panel.style.display = 'block';
+    panel.innerHTML = conflicts.map(eng => {
+      const pool = (data.engineering_pool || []).find(e => e.engineer_initials === eng.engineer_initials)
+        ? (data.engineering_pool || [])
+        : (data.drafting_pool || []);
+      const subs = pool
+        .filter(e => !checked.includes(e.engineer_initials) && e.utilization_pct < 70 && e.engineer_initials !== eng.engineer_initials)
+        .sort((a, b) => a.utilization_pct - b.utilization_pct)
+        .slice(0, 2);
+      const subText = subs.length
+        ? 'Suggested: ' + subs.map(s => s.engineer_initials + ' (' + Math.round(s.utilization_pct) + '%)').join(' or ') + '.'
+        : 'No low-utilization substitutes available.';
+      return '<div>⚠ <strong>' + eng.engineer_initials + '</strong> has ' + eng.ooo_days +
+        ' day' + (eng.ooo_days !== 1 ? 's' : '') + ' of OOO in this window. ' + subText + '</div>';
+    }).join('');
+  };
+
+  // ─── Submit: Proceed ─────────────────────────────────────────────────────────
+  window.moSubmitDecision = function (intakeId, moDecision) {
+    const feeInput = document.getElementById('fee-input-' + intakeId);
+    const fee = feeInput ? parseFloat(feeInput.value) : null;
+    if (!fee || fee <= 0) {
+      alert('Please enter an approved fee amount before proceeding.');
+      if (feeInput) feeInput.focus();
+      return;
+    }
+
+    const startEl = document.getElementById('window-start-' + intakeId);
+    const endEl   = document.getElementById('window-end-'   + intakeId);
+    const card    = document.getElementById('mo-card-'      + intakeId);
+    const assigned = Array.from(card.querySelectorAll('.mo-capacity-checkbox:checked')).map(cb => cb.value);
+
+    const btn = document.getElementById('confirm-btn-' + intakeId);
+    if (btn) { btn.textContent = 'Processing…'; btn.disabled = true; }
+
+    fetch('/api/intakes/' + intakeId + '/mo-review', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        mo_decision:         moDecision,
+        mo_fee_decision:     'OVERRIDE',
+        mo_fee_override:     fee,
+        proposed_start_date: startEl && startEl.value ? startEl.value : null,
+        proposed_end_date:   endEl   && endEl.value   ? endEl.value   : null,
+        assigned_engineers:  assigned,
+        mo_decision_notes:   '',
+      }),
+    })
+    .then(r => { if (!r.ok) throw new Error('Server error ' + r.status); return r.json(); })
+    .then(data => {
+      // Non-blocking proposal generation
+      fetch('/api/intakes/' + intakeId + '/generate-proposal', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ fee_amount: fee }),
+      }).catch(() => {});
+
+      // Remove card with fade
+      const c = document.getElementById('mo-card-' + intakeId);
+      if (c) {
+        c.style.transition = 'opacity 0.35s ease';
+        c.style.opacity = '0';
+        setTimeout(() => {
+          c.remove();
+          _decrementBadge();
+          _checkEmpty();
+        }, 380);
+      }
+    })
+    .catch(err => {
+      if (btn) { btn.textContent = '✓ Proceed & Generate Proposal'; btn.disabled = false; }
+      alert('Error: ' + err.message);
     });
   };
 
-  window.moveToAllIntakes = function (id) {
-    const card = document.getElementById('card-' + id);
-    if (card) {
-      card.style.transition = 'opacity .3s ease, transform .3s ease';
-      card.style.opacity = '0';
-      card.style.transform = 'translateX(30px)';
-      setTimeout(() => { card.remove(); }, 310);
-    }
+  // ─── Submit: Text decisions (Needs Info / Conditions / Decline) ──────────────
+  window.moSubmitTextDecision = function (intakeId) {
+    const action = moActiveAction[intakeId];
+    const notes  = (document.getElementById('notes-input-' + intakeId) || {}).value || '';
+    const decisionMap = { info: 'NEEDS_MORE_INFO', conditions: 'CONDITIONS', decline: 'DECLINED' };
+    const moDecision = decisionMap[action];
+    if (!moDecision) return;
+
+    const btn = document.getElementById('text-confirm-btn-' + intakeId);
+    if (btn) { btn.textContent = 'Processing…'; btn.disabled = true; }
+
+    fetch('/api/intakes/' + intakeId + '/mo-review', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ mo_decision: moDecision, mo_decision_notes: notes }),
+    })
+    .then(r => { if (!r.ok) throw new Error('Server error ' + r.status); return r.json(); })
+    .then(() => {
+      const c = document.getElementById('mo-card-' + intakeId);
+      if (c) {
+        c.style.transition = 'opacity 0.35s ease';
+        c.style.opacity = '0';
+        setTimeout(() => { c.remove(); _decrementBadge(); _checkEmpty(); }, 380);
+      }
+    })
+    .catch(err => {
+      if (btn) { btn.disabled = false; }
+      alert('Error: ' + err.message);
+    });
   };
 
-  // ── Calendar Event section ─────────────────────────────────
-  window.toggleCalendarSection = function (id) {
-    const sec = document.getElementById('cal-section-' + id);
-    const opening = sec.style.display === 'none';
-    sec.style.display = opening ? 'block' : 'none';
-    if (opening && !sec.dataset.loaded) {
-      sec.dataset.loaded = '1';
-      loadCapacityPicker(id);
-    }
-  };
-
-  function loadCapacityPicker(id) {
-    const container = document.getElementById('cap-picker-' + id);
-    if (!container) return;
-    if (!selectedTeams[id]) selectedTeams[id] = new Set();
-
-    fetch('/api/capacity')
-      .then(r => r.json())
-      .then(data => {
-        const STATUS_COLORS = {best:'#00E676', approaching:'#FFD740', at_capacity:'#FF5252', over_allocated:'#FF1744'};
-
-        function renderPool(people, label) {
-          let h = `<div>
-            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--accent);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(0,229,255,.20)">${label}</div>`;
-          people.forEach(p => {
-            const sc = STATUS_COLORS[p.status] || 'rgba(255,255,255,.4)';
-            const tc = MQ_TEAM_COLORS[p.initials] || 'rgba(255,255,255,.3)';
-            const pct = Math.min(p.load_pct, 100).toFixed(0);
-            h += `<div id="pr-${id}-${p.initials}" data-member="${p.initials}"
-                      onclick="window.toggleTeamMember(${id}, '${p.initials}')"
-                      style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;border:1.5px solid rgba(255,255,255,.10);margin-bottom:5px;background:rgba(255,255,255,.04);transition:border-color .15s,background .15s">
-              <div style="width:28px;height:28px;border-radius:50%;background:${tc};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0">${p.initials}</div>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:11px;font-weight:800;color:#fff">${p.initials} <span style="font-weight:500;color:rgba(255,255,255,.5);font-size:10px">${p.role}</span></div>
-                <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
-                  <div style="flex:1;height:4px;background:rgba(255,255,255,.15);border-radius:2px;overflow:hidden">
-                    <div style="height:100%;width:${pct}%;background:${sc};border-radius:2px"></div>
-                  </div>
-                  <span style="font-size:10px;font-weight:800;font-family:var(--mono);color:${sc};flex-shrink:0;min-width:32px;text-align:right">${p.load_pct.toFixed(0)}%</span>
-                </div>
-              </div>
-              <div class="pcheck-${id}" data-member="${p.initials}"
-                   style="width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0;transition:all .15s"></div>
-            </div>`;
-          });
-          h += '</div>';
-          return h;
-        }
-
-        container.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          ${renderPool(data.engineering, 'Engineering Pool')}
-          ${renderPool(data.drafting,    'Drafting Pool')}
-        </div>`;
-      })
-      .catch(() => {
-        container.innerHTML = '<div style="font-size:12px;color:var(--muted)">Could not load capacity data.</div>';
-      });
+  // ─── Badge + empty state helpers ────────────────────────────────────────────
+  function _decrementBadge() {
+    const badge = document.getElementById('queue-badge');
+    if (!badge) return;
+    const n = parseInt(badge.textContent) - 1;
+    if (n <= 0) badge.style.display = 'none';
+    else badge.textContent = n + ' pending';
   }
 
-  window.toggleTeamMember = function (id, member) {
-    if (!selectedTeams[id]) selectedTeams[id] = new Set();
-    const row   = document.getElementById('pr-' + id + '-' + member);
-    const check = row && row.querySelector('.pcheck-' + id + '[data-member="' + member + '"]');
-    const tc    = MQ_TEAM_COLORS[member] || '#9ca3af';
-
-    if (selectedTeams[id].has(member)) {
-      selectedTeams[id].delete(member);
-      if (row)   { row.style.borderColor = 'rgba(255,255,255,.10)'; row.style.background = 'rgba(255,255,255,.04)'; }
-      if (check) { check.textContent = ''; check.style.borderColor = 'rgba(255,255,255,.25)'; check.style.background = ''; check.style.color = ''; }
-    } else {
-      selectedTeams[id].add(member);
-      if (row)   { row.style.borderColor = tc; row.style.background = tc + '22'; }
-      if (check) { check.textContent = '✓'; check.style.borderColor = tc; check.style.background = tc; check.style.color = '#fff'; }
+  function _checkEmpty() {
+    if (document.querySelectorAll('.mo-card').length === 0) {
+      const empty = document.querySelector('.mo-empty-state');
+      if (empty) empty.style.display = 'block';
     }
+  }
 
-    const disp = document.getElementById('sel-team-' + id);
-    if (disp) {
-      const sel = [...selectedTeams[id]];
-      if (sel.length === 0) {
-        disp.innerHTML = '<span style="font-size:12px;color:var(--muted)">No team members selected</span>';
-      } else {
-        disp.innerHTML = sel.map(m => {
-          const c = MQ_TEAM_COLORS[m] || '#9ca3af';
-          return `<span title="${m}" style="width:28px;height:28px;border-radius:50%;background:${c};display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff">${m}</span>`;
-        }).join('');
-      }
-    }
-  };
+  // ─── Pre-load capacity for all cards on page load ────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    const today      = new Date();
+    const start      = today.toISOString().split('T')[0];
+    const end        = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    document.querySelectorAll('.mo-card').forEach(card => {
+      const id = card.dataset.intakeId;
+      if (!id) return;
+      fetch('/api/capacity/projected?start=' + start + '&end=' + end)
+        .then(r => r.json())
+        .then(data => { moCapacityCache[id] = data; })
+        .catch(() => {});
+    });
+  });
 
-  window.saveCalEvent = async function (id) {
-    const team = selectedTeams[id] ? [...selectedTeams[id]] : [];
-    const start = document.getElementById('cal-start-' + id).value;
-    const end   = document.getElementById('cal-end-'   + id).value;
-    const errEl = document.getElementById('cal-save-error-' + id);
-    const okEl  = document.getElementById('cal-save-ok-'   + id);
-    errEl.style.display = 'none'; okEl.style.display = 'none';
-
-    if (!start || !end) { errEl.textContent = 'Start and end dates are required.'; errEl.style.display = 'block'; return; }
-    if (end < start)   { errEl.textContent = 'End date must be on or after start date.'; errEl.style.display = 'block'; return; }
-    if (!team.length)  { errEl.textContent = 'Select at least one team member.'; errEl.style.display = 'block'; return; }
-
-    const tier = document.getElementById('cal-tier-' + id).value;
-    const payload = {
-      project_number: document.getElementById('cal-proj-'     + id).value.trim(),
-      client:         document.getElementById('cal-client-'   + id).value.trim(),
-      location:       document.getElementById('cal-location-' + id).value.trim(),
-      phase:          document.getElementById('cal-phase-'    + id).value,
-      tier:           tier ? parseInt(tier) : null,
-      phase_jump:     false,
-      team,
-      project_type:   document.getElementById('cal-type-' + id).value.trim(),
-      start_date:     start + 'T00:00:00Z',
-      end_date:       end   + 'T23:59:59Z',
-      is_ooo:         false,
-    };
-
-    try {
-      const r = await fetch('/api/calendar/events', {
-        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
-      });
-      if (!r.ok) { const e = await r.json().catch(()=>({})); errEl.textContent = e.detail || 'Save failed.'; errEl.style.display = 'block'; }
-      else { okEl.style.display = 'block'; }
-    } catch (e) {
-      errEl.textContent = 'Network error — try again.'; errEl.style.display = 'block';
-    }
-  };
 })();
 </script>
 
 {# ════ INVOICE APPROVALS SECTION ════ #}
 <div style="margin-top:40px">
   <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px">
-    <div style="flex:1;height:1px;background:rgba(255,255,255,.12)"></div>
-    <div style="font-size:11px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:var(--accent);white-space:nowrap">Invoice Approvals</div>
-    <div style="flex:1;height:1px;background:rgba(255,255,255,.12)"></div>
+    <div style="flex:1;height:1px;background:var(--border)"></div>
+    <div style="font-size:11px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);white-space:nowrap">Invoice Approvals</div>
+    <div style="flex:1;height:1px;background:var(--border)"></div>
   </div>
 
   {% if not pending_invoices %}
@@ -683,13 +529,13 @@
             </div>
             <div class="subtle" style="font-size:12px">{{ intake.client_name or '—' }}{% if intake.location_region %} · {{ intake.location_region }}{% endif %}</div>
           </div>
-          <span class="badge" style="border-color:rgba(0,229,255,.35);color:var(--accent);background:rgba(0,229,255,.08);font-size:11px">
+          <span class="badge" style="border-color:rgba(0,0,0,.15);color:var(--accent);background:var(--accent-surface);font-size:11px">
             {{ billing_labels.get(inv.billing_phase_code, inv.billing_phase_code) }}
           </span>
         </div>
 
         <!-- phase detail box -->
-        <div style="background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;margin-bottom:14px;font-size:13px">
+        <div style="background:var(--card-bg-deeper);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px;font-size:13px">
           <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 16px;align-items:baseline">
             <span style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Phase</span>
             <span style="font-weight:700">{{ billing_labels.get(inv.billing_phase_code, inv.billing_phase_code) }} ({{ inv.billing_phase_code }})</span>
@@ -701,7 +547,7 @@
 
             {% if inv.phase_completed_note %}
             <span style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Note</span>
-            <span style="color:rgba(255,255,255,.75)">{{ inv.phase_completed_note }}</span>
+            <span>{{ inv.phase_completed_note }}</span>
             {% endif %}
 
             <span style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Hours</span>
@@ -711,7 +557,7 @@
               <span style="font-family:var(--mono);font-weight:700">{{ hours.budgeted }}</span>
               <span style="color:var(--muted)"> budgeted</span>
               {% if hours.over_budget %}
-                <span style="color:var(--warn);font-weight:700;margin-left:8px">⚠ {{ "%.1f" | format(hours.variance) }} h over budget — verify scope</span>
+                <span style="color:var(--warn);font-weight:700;margin-left:8px">⚠ {{ "%.1f" | format(hours.variance) }} h over budget</span>
               {% else %}
                 <span style="color:var(--good);margin-left:8px">✓</span>
               {% endif %}
@@ -741,30 +587,31 @@
 
         <!-- actions -->
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <button class="btn btn-proceed" type="button"
+          <button class="btn btn-primary" type="button"
                   id="inv-approve-btn-{{ inv.id }}"
                   onclick="approveInvoice({{ inv.id }}, {{ inv.intake_id }}, '{{ inv.billing_phase_code }}', {{ inv.fee_amount }})">
             ✓ Approve Invoice — ${{ "%.0f" | format(inv.fee_amount) | replace(',', '') }}
           </button>
-          <button class="btn btn-decline" type="button"
+          <button class="btn" type="button"
+                  style="border-color:var(--bad);color:var(--bad)"
                   onclick="showDeclinePanel({{ inv.id }})">
             Decline / Request Changes
           </button>
         </div>
 
         <!-- decline panel -->
-        <div id="inv-decline-{{ inv.id }}" style="display:none;margin-top:12px;background:rgba(255,82,82,.06);border:1px solid rgba(255,82,82,.20);border-radius:10px;padding:14px">
+        <div id="inv-decline-{{ inv.id }}" style="display:none;margin-top:12px;background:var(--card-bg-deeper);border:1px solid var(--border);border-radius:10px;padding:14px">
           <div style="font-size:12px;font-weight:700;color:var(--bad);margin-bottom:8px">Reason for declining / what needs to change?</div>
           <textarea id="inv-decline-reason-{{ inv.id }}" rows="2"
-                    style="width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(255,82,82,.30);color:var(--text);border-radius:8px;padding:9px 11px;font-size:12px;resize:vertical;font-family:'DM Sans',sans-serif"
+                    style="width:100%;background:var(--card-bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 11px;font-size:12px;resize:vertical;font-family:var(--font);box-sizing:border-box"
                     placeholder="Describe what needs to be corrected…"></textarea>
           <div style="display:flex;gap:8px;margin-top:10px">
             <button class="btn" style="font-size:12px;padding:5px 12px" onclick="hideDeclinePanel({{ inv.id }})">Cancel</button>
-            <button class="btn btn-decline" style="font-size:12px;padding:5px 14px" onclick="declineInvoice({{ inv.id }}, {{ inv.intake_id }}, '{{ inv.billing_phase_code }}')">Submit Decline</button>
+            <button class="btn" style="font-size:12px;padding:5px 14px;border-color:var(--bad);color:var(--bad)" onclick="declineInvoice({{ inv.id }}, {{ inv.intake_id }}, '{{ inv.billing_phase_code }}')">Submit Decline</button>
           </div>
         </div>
 
-      </div><!-- /inv-card -->
+      </div>
     {% endfor %}
   {% endif %}
 </div>
@@ -780,33 +627,26 @@
     const val = parseFloat(inp.value);
     btn.textContent = isNaN(val)
       ? '✓ Approve Invoice'
-      : '✓ Approve Invoice — $' + val.toLocaleString(undefined, {maximumFractionDigits: 0});
+      : '✓ Approve Invoice — $' + val.toLocaleString(undefined, {maximumFractionDigits:0});
   };
 
   window.approveInvoice = async function(rowId, intakeId, code, defaultFee) {
-    const feeInput = document.getElementById('inv-fee-' + rowId);
+    const feeInput  = document.getElementById('inv-fee-'  + rowId);
     const noteInput = document.getElementById('inv-note-' + rowId);
-    const btn = document.getElementById('inv-approve-btn-' + rowId);
-    const fee = parseFloat((feeInput || {}).value);
+    const btn       = document.getElementById('inv-approve-btn-' + rowId);
+    const fee       = parseFloat((feeInput || {}).value);
     const feeOverride = (!isNaN(fee) && fee !== defaultFee) ? fee : null;
-
     if (btn) { btn.disabled = true; btn.textContent = 'Approving…'; }
     try {
       const resp = await fetch('/api/projects/' + intakeId + '/billing-phases/' + code + '/approve-invoice', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          approved_by: 'MO',
-          fee_override: feeOverride,
-          note: (noteInput || {}).value || null,
-        }),
+        body: JSON.stringify({ approved_by:'MO', fee_override:feeOverride, note:(noteInput||{}).value||null }),
       });
       if (!resp.ok) { const e = await resp.json().catch(()=>({})); throw new Error(e.detail || 'Failed'); }
-      // Remove card with animation
       const card = document.getElementById('inv-card-' + rowId);
       if (card) {
-        card.style.transition = 'opacity .3s ease';
-        card.style.opacity = '0';
+        card.style.transition = 'opacity .3s ease'; card.style.opacity = '0';
         setTimeout(() => card.remove(), 310);
       }
     } catch(e) {
@@ -815,30 +655,23 @@
     }
   };
 
-  window.showDeclinePanel = function(rowId) {
-    const el = document.getElementById('inv-decline-' + rowId);
-    if (el) el.style.display = 'block';
-  };
-  window.hideDeclinePanel = function(rowId) {
-    const el = document.getElementById('inv-decline-' + rowId);
-    if (el) el.style.display = 'none';
-  };
+  window.showDeclinePanel  = id => { const el = document.getElementById('inv-decline-' + id); if (el) el.style.display = 'block';  };
+  window.hideDeclinePanel  = id => { const el = document.getElementById('inv-decline-' + id); if (el) el.style.display = 'none';   };
 
   window.declineInvoice = async function(rowId, intakeId, code) {
     const reasonEl = document.getElementById('inv-decline-reason-' + rowId);
-    const reason = (reasonEl || {}).value || '';
+    const reason   = (reasonEl || {}).value || '';
     if (!reason.trim()) { alert('Please provide a reason.'); return; }
     try {
       const resp = await fetch('/api/projects/' + intakeId + '/billing-phases/' + code + '/decline-invoice', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({declined_by: 'MO', reason: reason.trim()}),
+        body: JSON.stringify({ declined_by:'MO', reason:reason.trim() }),
       });
       if (!resp.ok) { const e = await resp.json().catch(()=>({})); throw new Error(e.detail || 'Failed'); }
       const card = document.getElementById('inv-card-' + rowId);
       if (card) {
-        card.style.transition = 'opacity .3s ease';
-        card.style.opacity = '0';
+        card.style.transition = 'opacity .3s ease'; card.style.opacity = '0';
         setTimeout(() => card.remove(), 310);
       }
     } catch(e) { alert('Error: ' + e.message); }

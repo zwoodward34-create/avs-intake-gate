@@ -50,6 +50,10 @@ class IntakeRow:
     proposal_text: Optional[str] = None
     proposal_generated_at: Optional[str] = None
     project_number: Optional[str] = None
+    proposed_start_date: Optional[str] = None
+    proposed_end_date: Optional[str] = None
+    assigned_engineers: Optional[str] = None  # JSON array string e.g. '["JW","MK"]'
+    mo_decision_notes: Optional[str] = None
 
     @property
     def red_flags(self) -> list[dict[str, Any]]:
@@ -98,6 +102,10 @@ class IntakeRow:
             proposal_text=d.get("proposal_text"),
             proposal_generated_at=d.get("proposal_generated_at"),
             project_number=d.get("project_number"),
+            proposed_start_date=d.get("proposed_start_date"),
+            proposed_end_date=d.get("proposed_end_date"),
+            assigned_engineers=d.get("assigned_engineers"),
+            mo_decision_notes=d.get("mo_decision_notes"),
         )
 
 
@@ -354,21 +362,34 @@ def set_mo_review(
     mo_fee_decision: Optional[str],
     mo_fee_override: Optional[str],
     status: str,
+    proposed_start_date: Optional[str] = None,
+    proposed_end_date: Optional[str] = None,
+    assigned_engineers: Optional[str] = None,
+    mo_decision_notes: Optional[str] = None,
 ) -> None:
     now = _utc_now_iso()
+    payload: dict[str, Any] = {
+        "updated_at":      now,
+        "mo_decision":     mo_decision,
+        "mo_notes":        mo_notes,
+        "mo_conditions":   mo_conditions,
+        "mo_reviewed_at":  now,
+        "mo_fee_decision": mo_fee_decision,
+        "mo_fee_override": mo_fee_override,
+        "status":          status,
+    }
+    if proposed_start_date is not None:
+        payload["proposed_start_date"] = proposed_start_date
+    if proposed_end_date is not None:
+        payload["proposed_end_date"] = proposed_end_date
+    if assigned_engineers is not None:
+        payload["assigned_engineers"] = assigned_engineers
+    if mo_decision_notes is not None:
+        payload["mo_decision_notes"] = mo_decision_notes
     (
         _client()
         .table("intakes")
-        .update({
-            "updated_at":      now,
-            "mo_decision":     mo_decision,
-            "mo_notes":        mo_notes,
-            "mo_conditions":   mo_conditions,
-            "mo_reviewed_at":  now,
-            "mo_fee_decision": mo_fee_decision,
-            "mo_fee_override": mo_fee_override,
-            "status":          status,
-        })
+        .update(payload)
         .eq("id", intake_id)
         .execute()
     )
