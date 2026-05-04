@@ -185,14 +185,19 @@
         </div>
       </div>
 
-      {# Project Window #}
+      {# Project Window — pre-filled from RFP data #}
+      {# Start: use Mo's prior value → inquiry date. End: use Mo's prior value → IFP due date. #}
+      {% set prefill_start = intake.proposed_start_date or intake.inquiry_date or '' %}
+      {% set prefill_end   = intake.proposed_end_date   or intake.ifp_due_date  or '' %}
       <div class="mo-proceed-window-row">
-        <label class="mo-field-label">PROJECT WINDOW <span class="mo-field-optional">(optional — for capacity planning)</span></label>
+        <label class="mo-field-label">PROJECT WINDOW <span class="mo-field-optional">(for capacity planning)</span></label>
         <div class="mo-date-pair">
           <input type="date" class="mo-date-input" id="window-start-{{ intake.id }}"
+                 value="{{ prefill_start }}"
                  onchange="moUpdateCapacity({{ intake.id }})">
           <span class="mo-date-sep">→</span>
           <input type="date" class="mo-date-input" id="window-end-{{ intake.id }}"
+                 value="{{ prefill_end }}"
                  onchange="moUpdateCapacity({{ intake.id }})">
         </div>
       </div>
@@ -200,10 +205,14 @@
       {# Capacity / Engineer Assignment #}
       <div class="mo-capacity-section" id="capacity-section-{{ intake.id }}">
         <div class="mo-section-label" id="capacity-label-{{ intake.id }}">
-          ASSIGN ENGINEERS — PROJECTED CAPACITY (NEXT 60 DAYS)
+          ASSIGN ENGINEERS — PROJECTED CAPACITY
         </div>
         <div class="mo-capacity-bars" id="capacity-bars-{{ intake.id }}">
-          <div class="mo-capacity-loading">Loading capacity data…</div>
+          <button class="btn" id="capacity-btn-{{ intake.id }}"
+                  onclick="moLoadCapacity({{ intake.id }})"
+                  style="margin:4px 0">
+            See Capacity
+          </button>
         </div>
         <div class="mo-conflict-warnings" id="conflict-warnings-{{ intake.id }}" style="display:none;"></div>
       </div>
@@ -299,7 +308,6 @@
 
     if (action === 'proceed') {
       if (proceedPanel) proceedPanel.style.display = 'block';
-      moLoadCapacity(intakeId);
     } else {
       const labelMap = {
         'info':       'WHAT INFORMATION IS NEEDED?',
@@ -351,6 +359,8 @@
       .then(r => r.json())
       .then(data => {
         moCapacityCache[intakeId] = data;
+        const capBtn = document.getElementById('capacity-btn-' + intakeId);
+        if (capBtn) capBtn.style.display = 'none';
         renderMoCapacityBars(intakeId, data);
       })
       .catch(() => {
@@ -360,6 +370,7 @@
   };
 
   window.moUpdateCapacity = function (intakeId) {
+    if (!moCapacityCache[intakeId]) return;
     const startEl = document.getElementById('window-start-' + intakeId);
     const endEl   = document.getElementById('window-end-'   + intakeId);
     const start = startEl ? startEl.value : '';
@@ -595,20 +606,6 @@
     }
   }
 
-  // ─── Pre-load capacity for all cards on page load ────────────────────────────
-  document.addEventListener('DOMContentLoaded', () => {
-    const today      = new Date();
-    const start      = today.toISOString().split('T')[0];
-    const end        = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    document.querySelectorAll('.mo-card').forEach(card => {
-      const id = card.dataset.intakeId;
-      if (!id) return;
-      fetch('/api/capacity/projected?start=' + start + '&end=' + end)
-        .then(r => r.json())
-        .then(data => { moCapacityCache[id] = data; })
-        .catch(() => {});
-    });
-  });
 
 })();
 </script>
