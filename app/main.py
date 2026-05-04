@@ -874,6 +874,25 @@ async def api_mo_review_json(request: Request, intake_id: int) -> dict:
             except Exception:
                 pass  # non-fatal: billing phases can be created later
 
+    # Generate phase calendar events whenever PROCEED is decided and dates are available
+    if mo_decision == "PROCEED":
+        _start = body.get("proposed_start_date") or (intake.proposed_start_date if intake else None)
+        _ifp   = body.get("proposed_end_date")   or (intake.ifp_due_date         if intake else None)
+        _team  = body.get("assigned_engineers") or []
+        if _start and _ifp and project_number:
+            try:
+                db.generate_phase_calendar_events(
+                    intake_id=intake_id,
+                    project_number=project_number,
+                    start_date=_start,
+                    ifp_date=_ifp,
+                    team=_team,
+                    weu_hours=40.0,
+                    replace_existing=True,
+                )
+            except Exception:
+                pass  # non-fatal: can be regenerated manually
+
     return {"success": True, "status": status, "intake_id": intake_id, "project_number": project_number}
 
 
@@ -1449,6 +1468,62 @@ def api_calendar_events_delete(event_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Not found.")
     db.delete_calendar_event(event_id)
     return {"deleted": event_id}
+
+
+@app.get("/api/calendar/phase-events")
+def api_phase_events(year: Optional[int] = None, month: Optional[int] = None) -> dict[str, Any]:
+    today = date.today()
+    y = year  or today.year
+    m = month or today.month
+    events = db.list_phase_calendar_events(y, m)
+    # Attach project_name from intakes
+    intake_ids = list({e["intake_id"] for e in events if e.get("intake_id")})
+    names: dict[int, str] = {}
+    if intake_ids:
+        resp = (
+            db._client()
+            .table("intakes")
+            .select("id,project_name,project_number")
+            .in_("id", intake_ids)
+            .execute()
+        )
+        for row in (resp.data or []):
+            names[row["id"]] = row.get("project_name") or row.get("project_number") or ""
+    for e in events:
+        iid = e.get("intake_id")
+        e["project_name"] = names.get(iid, e["project_number"]) if iid else e["project_number"]
+    return {"events": events, "year": y, "month": m}
+
+
+@app.post("/api/intakes/{intake_id}/regenerate-calendar")
+def api_regenerate_calendar(intake_id: int) -> dict[str, Any]:
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    if not (intake.project_number and intake.proposed_start_date and intake.ifp_due_date):
+        raise HTTPException(
+            status_code=400,
+            detail="Project must have project_number, proposed_start_date, and ifp_due_date.",
+        )
+    import json as _json
+    team: list[str] = []
+    try:
+        team = _json.loads(intake.assigned_engineers or "[]")
+    except Exception:
+        pass
+    try:
+        events = db.generate_phase_calendar_events(
+            intake_id=intake_id,
+            project_number=intake.project_number,
+            start_date=intake.proposed_start_date,
+            ifp_date=intake.ifp_due_date,
+            team=team,
+            weu_hours=40.0,
+            replace_existing=True,
+        )
+        return {"ok": True, "phases_generated": len(events)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # ── Projected Capacity ────────────────────────────────────────────────────────

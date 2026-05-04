@@ -670,6 +670,18 @@ DEFAULT_PHASE_SPLITS: dict[str, float] = {
     "REV": 0.05,
 }
 
+PHASE_ORDER: list[str] = ["SD", "50%", "75%", "90%", "IFP", "CA", "REV"]
+
+PHASE_LABELS: dict[str, str] = {
+    "SD":  "Schematic Design",
+    "50%": "50% DD",
+    "75%": "75% DD",
+    "90%": "90% CD",
+    "IFP": "Issued for Permit",
+    "CA":  "Construction Admin",
+    "REV": "Revisions",
+}
+
 TEAM_FULL_NAMES: dict[str, str] = {
     "MK": "Mo Kateeb",
     "NK": "Nathan Kline",
@@ -1910,6 +1922,163 @@ def count_working_days(start: date, end: date) -> int:
     return total
 
 
+def generate_phase_calendar_events(
+    intake_id: int,
+    project_number: str,
+    start_date: str,
+    ifp_date: str,
+    team: list[str],
+    weu_hours: float = 40.0,
+    replace_existing: bool = True,
+) -> list[dict]:
+    """
+    Generate one calendar_events row per phase for a project.
+    IFP phase ends exactly on ifp_date. Pre-IFP phases are distributed
+    backward from ifp_date; CA and REV are distributed forward from it.
+    Returns the list of generated event dicts.
+    """
+    start = date.fromisoformat(start_date)
+    ifp   = date.fromisoformat(ifp_date)
+    total_days = (ifp - start).days
+    if total_days <= 0:
+        raise ValueError(f"start_date {start_date} must be before ifp_date {ifp_date}")
+
+    pre_ifp  = ["SD", "50%", "75%", "90%", "IFP"]
+    post_ifp = ["CA", "REV"]
+
+    pre_total  = sum(DEFAULT_PHASE_SPLITS[p] for p in pre_ifp)
+    post_total = sum(DEFAULT_PHASE_SPLITS[p] for p in post_ifp)
+    post_days  = int(total_days * (post_total / pre_total))
+
+    now = _utc_now_iso()
+    events: list[dict] = []
+    cursor = start
+
+    for i, phase in enumerate(pre_ifp):
+        split = DEFAULT_PHASE_SPLITS[phase] / pre_total
+        if i == len(pre_ifp) - 1:
+            phase_start, phase_end = cursor, ifp
+        else:
+            phase_days  = int(total_days * split)
+            phase_start = cursor
+            phase_end   = cursor + timedelta(days=max(phase_days - 1, 0))
+
+        events.append({
+            "intake_id":      intake_id,
+            "project_number": project_number,
+            "phase_code":     phase,
+            "phase_label":    PHASE_LABELS[phase],
+            "phase":          phase,
+            "start_date":     phase_start.isoformat() + "T00:00:00Z",
+            "end_date":       phase_end.isoformat()   + "T23:59:59Z",
+            "weu_hours":      round(weu_hours * DEFAULT_PHASE_SPLITS[phase], 1),
+            "team":           team,
+            "is_legacy":      False,
+            "is_ooo":         False,
+            "client":         "",
+            "location":       "",
+            "project_type":   "",
+            "created_at":     now,
+            "updated_at":     now,
+        })
+
+        if i < len(pre_ifp) - 1:
+            cursor = phase_end + timedelta(days=1)
+
+    cursor = ifp + timedelta(days=1)
+    for phase in post_ifp:
+        split      = DEFAULT_PHASE_SPLITS[phase] / post_total
+        phase_days = int(post_days * split)
+        phase_start = cursor
+        phase_end   = cursor + timedelta(days=max(phase_days - 1, 0))
+
+        events.append({
+            "intake_id":      intake_id,
+            "project_number": project_number,
+            "phase_code":     phase,
+            "phase_label":    PHASE_LABELS[phase],
+            "phase":          phase,
+            "start_date":     phase_start.isoformat() + "T00:00:00Z",
+            "end_date":       phase_end.isoformat()   + "T23:59:59Z",
+            "weu_hours":      round(weu_hours * DEFAULT_PHASE_SPLITS[phase], 1),
+            "team":           team,
+            "is_legacy":      False,
+            "is_ooo":         False,
+            "client":         "",
+            "location":       "",
+            "project_type":   "",
+            "created_at":     now,
+            "updated_at":     now,
+        })
+        cursor = phase_end + timedelta(days=1)
+
+    if replace_existing:
+        _client().table("calendar_events") \
+            .delete() \
+            .eq("intake_id", intake_id) \
+            .eq("is_legacy", False) \
+            .execute()
+
+    if events:
+        _client().table("calendar_events").insert(events).execute()
+
+    return events
+
+
+def list_phase_calendar_events(
+    year: int,
+    month: int,
+) -> list[dict]:
+    """
+    Return non-legacy phase-span events that overlap the 3-month window
+    centred on (year, month) — for the Gantt calendar view.
+    """
+    from calendar import monthrange as _mr
+    first = date(year, month, 1)
+    # previous month start
+    if month > 1:
+        prev_start = date(year, month - 1, 1)
+    else:
+        prev_start = date(year - 1, 12, 1)
+    # next month end
+    if month < 12:
+        next_end = date(year, month + 1, _mr(year, month + 1)[1])
+    else:
+        next_end = date(year + 1, 1, 31)
+
+    resp = (
+        _client()
+        .table("calendar_events")
+        .select("id,intake_id,project_number,phase_code,phase_label,start_date,end_date,weu_hours,team")
+        .eq("is_legacy", False)
+        .eq("is_ooo", False)
+        .gte("end_date",   prev_start.isoformat())
+        .lte("start_date", next_end.isoformat())
+        .order("start_date")
+        .execute()
+    )
+    rows = []
+    for r in (resp.data or []):
+        team = r.get("team") or []
+        if isinstance(team, str):
+            try:
+                team = json.loads(team)
+            except Exception:
+                team = [t.strip() for t in team.split(",") if t.strip()]
+        rows.append({
+            "id":             r["id"],
+            "intake_id":      r.get("intake_id"),
+            "project_number": r.get("project_number") or "",
+            "phase_code":     r.get("phase_code") or "",
+            "phase_label":    r.get("phase_label") or r.get("phase_code") or "",
+            "start_date":     (r.get("start_date") or "")[:10],
+            "end_date":       (r.get("end_date")   or "")[:10],
+            "weu_hours":      r.get("weu_hours") or 0.0,
+            "team":           team,
+        })
+    return rows
+
+
 def _count_ooo_days(engineer_initials: str, window_start: date, window_end: date) -> int:
     resp = (
         _client()
@@ -1935,7 +2104,7 @@ def _get_existing_load_hours(engineer_initials: str, window_start: date, window_
     resp = (
         _client()
         .table("calendar_events")
-        .select("start_date,end_date,phase,tier,team,phase_jump,is_ooo")
+        .select("start_date,end_date,phase,tier,team,phase_jump,is_ooo,is_legacy,weu_hours")
         .lte("start_date", window_end.isoformat() + "T23:59:59Z")
         .gte("end_date",   window_start.isoformat())
         .execute()
@@ -1963,25 +2132,37 @@ def _get_existing_load_hours(engineer_initials: str, window_start: date, window_
         ov_working   = count_working_days(overlap_start, overlap_end)
         if ov_working <= 0:
             continue
-        fraction = ov_working / ev_working
-        tier = event.get("tier") or 0
-        phase_coeff = _PHASE_COEFF.get(event.get("phase") or "", 0.5)
-        person_mult = _TEAM_MULTIPLIER.get(engineer_initials, 1.0)
-        qa = 1.15 if event.get("phase_jump") else 1.0
-        weu_rate = tier * phase_coeff * person_mult * qa / _CAPACITY_BASE
-        total += weu_rate * ov_working * 8.0
+
+        is_legacy = event.get("is_legacy")
+        if is_legacy is None:
+            is_legacy = True  # treat unknown rows as legacy
+
+        if not is_legacy:
+            # New phase-span events: weu_hours is total team hours for the phase.
+            # Attribute each engineer's share pro-rated over the overlap window.
+            weu = float(event.get("weu_hours") or 0.0)
+            n_team = max(len(team), 1)
+            total += (weu / n_team) * (ov_working / ev_working)
+        else:
+            # Legacy events: tier-based WEU formula
+            tier = event.get("tier") or 0
+            phase_coeff = _PHASE_COEFF.get(event.get("phase") or "", 0.5)
+            person_mult = _TEAM_MULTIPLIER.get(engineer_initials, 1.0)
+            qa = 1.15 if event.get("phase_jump") else 1.0
+            weu_rate = tier * phase_coeff * person_mult * qa / _CAPACITY_BASE
+            total += weu_rate * ov_working * 8.0
     return total
 
 
 def get_remaining_resourced_hours(project_number: str, from_date: date) -> float:
     """
     Total team-hours from future calendar events for this project, pro-rated from from_date.
-    Uses the same WEU formula as _get_existing_load_hours, summed across all team members.
+    Handles both legacy (tier-based) and new phase-span (weu_hours-based) events.
     """
     resp = (
         _client()
         .table("calendar_events")
-        .select("start_date,end_date,phase,tier,team,phase_jump,is_ooo")
+        .select("start_date,end_date,phase,tier,team,phase_jump,is_ooo,is_legacy,weu_hours")
         .eq("project_number", project_number)
         .gte("end_date", from_date.isoformat())
         .execute()
@@ -1990,11 +2171,6 @@ def get_remaining_resourced_hours(project_number: str, from_date: date) -> float
     for event in (resp.data or []):
         if event.get("is_ooo"):
             continue
-        tier = event.get("tier") or 0
-        if not tier:
-            continue
-        phase_coeff = _PHASE_COEFF.get(event.get("phase") or "", 0.5)
-        qa = 1.15 if event.get("phase_jump") else 1.0
         try:
             ev_start = date.fromisoformat(event["start_date"][:10])
             ev_end   = date.fromisoformat(event["end_date"][:10])
@@ -2007,16 +2183,30 @@ def get_remaining_resourced_hours(project_number: str, from_date: date) -> float
         rem_working = count_working_days(effective_start, ev_end)
         if rem_working <= 0:
             continue
-        team = event.get("team") or []
-        if isinstance(team, str):
-            try:
-                team = json.loads(team)
-            except Exception:
-                team = [t.strip() for t in team.split(",") if t.strip()]
-        for eng in team:
-            person_mult = _TEAM_MULTIPLIER.get(eng, 1.0)
-            weu_rate = tier * phase_coeff * person_mult * qa / _CAPACITY_BASE
-            total += weu_rate * rem_working * 8.0
+
+        is_legacy = event.get("is_legacy")
+        if is_legacy is None:
+            is_legacy = True
+
+        if not is_legacy:
+            weu = float(event.get("weu_hours") or 0.0)
+            total += weu * (rem_working / ev_working)
+        else:
+            tier = event.get("tier") or 0
+            if not tier:
+                continue
+            phase_coeff = _PHASE_COEFF.get(event.get("phase") or "", 0.5)
+            qa = 1.15 if event.get("phase_jump") else 1.0
+            team = event.get("team") or []
+            if isinstance(team, str):
+                try:
+                    team = json.loads(team)
+                except Exception:
+                    team = [t.strip() for t in team.split(",") if t.strip()]
+            for eng in team:
+                person_mult = _TEAM_MULTIPLIER.get(eng, 1.0)
+                weu_rate = tier * phase_coeff * person_mult * qa / _CAPACITY_BASE
+                total += weu_rate * rem_working * 8.0
     return total
 
 
@@ -2163,11 +2353,11 @@ def get_burn_health_data(today: date) -> list[dict[str, Any]]:
         iid = e["intake_id"]
         hours_by_intake[iid] = hours_by_intake.get(iid, 0.0) + float(e["hours"] or 0)
 
-    # Future calendar events for all project numbers — apply WEU formula
+    # Future calendar events for all project numbers — handles both legacy and phase-span events
     ce_resp = (
         _client()
         .table("calendar_events")
-        .select("project_number,start_date,end_date,phase,tier,team,phase_jump,is_ooo")
+        .select("project_number,start_date,end_date,phase,tier,team,phase_jump,is_ooo,is_legacy,weu_hours")
         .in_("project_number", project_nums)
         .gte("end_date", today.isoformat())
         .execute()
@@ -2176,14 +2366,9 @@ def get_burn_health_data(today: date) -> list[dict[str, Any]]:
     for event in (ce_resp.data or []):
         if event.get("is_ooo"):
             continue
-        tier = event.get("tier") or 0
-        if not tier:
-            continue
         pnum = event.get("project_number")
         if not pnum:
             continue
-        phase_coeff = _PHASE_COEFF.get(event.get("phase") or "", 0.5)
-        qa = 1.15 if event.get("phase_jump") else 1.0
         try:
             ev_start = date.fromisoformat(event["start_date"][:10])
             ev_end   = date.fromisoformat(event["end_date"][:10])
@@ -2196,18 +2381,34 @@ def get_burn_health_data(today: date) -> list[dict[str, Any]]:
         rem_working = count_working_days(effective_start, ev_end)
         if rem_working <= 0:
             continue
-        team = event.get("team") or []
-        if isinstance(team, str):
-            try:
-                team = json.loads(team)
-            except Exception:
-                team = [t.strip() for t in team.split(",") if t.strip()]
-        for eng in team:
-            person_mult = _TEAM_MULTIPLIER.get(eng, 1.0)
-            weu_rate = tier * phase_coeff * person_mult * qa / _CAPACITY_BASE
+
+        is_legacy = event.get("is_legacy")
+        if is_legacy is None:
+            is_legacy = True
+
+        if not is_legacy:
+            weu = float(event.get("weu_hours") or 0.0)
             remaining_by_project[pnum] = (
-                remaining_by_project.get(pnum, 0.0) + weu_rate * rem_working * 8.0
+                remaining_by_project.get(pnum, 0.0) + weu * (rem_working / ev_working)
             )
+        else:
+            tier = event.get("tier") or 0
+            if not tier:
+                continue
+            phase_coeff = _PHASE_COEFF.get(event.get("phase") or "", 0.5)
+            qa = 1.15 if event.get("phase_jump") else 1.0
+            team = event.get("team") or []
+            if isinstance(team, str):
+                try:
+                    team = json.loads(team)
+                except Exception:
+                    team = [t.strip() for t in team.split(",") if t.strip()]
+            for eng in team:
+                person_mult = _TEAM_MULTIPLIER.get(eng, 1.0)
+                weu_rate = tier * phase_coeff * person_mult * qa / _CAPACITY_BASE
+                remaining_by_project[pnum] = (
+                    remaining_by_project.get(pnum, 0.0) + weu_rate * rem_working * 8.0
+                )
 
     results: list[dict[str, Any]] = []
     for i in active:

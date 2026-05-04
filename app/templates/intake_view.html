@@ -88,7 +88,13 @@
         <h2 style="margin:0">Phase / Resource Matrix</h2>
         <div class="subtle small" style="margin-top:2px">Click a phase row to expand engineer breakdown · click budget to edit</div>
       </div>
-      <div id="pm-save-status" style="font-size:12px;color:var(--good);display:none">✓ Saved</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div id="pm-save-status" style="font-size:12px;color:var(--good);display:none">✓ Saved</div>
+        {% if intake.project_number and intake.proposed_start_date and intake.ifp_due_date %}
+        <button class="btn" style="font-size:11px;padding:4px 10px" id="btn-regen-cal"
+                onclick="regenCalendar()">↻ Regenerate Calendar</button>
+        {% endif %}
+      </div>
     </div>
     <div id="phase-matrix-wrap"><div class="subtle small">Loading…</div></div>
   </div>
@@ -1035,6 +1041,21 @@ document.addEventListener('DOMContentLoaded', function() {
     })
     .catch(() => { wrap.innerHTML = '<div class="subtle small">Could not load time entries.</div>'; });
 })();
+
+async function regenCalendar() {
+  const btn = document.getElementById('btn-regen-cal');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = '↻ Regenerating…';
+  try {
+    const r = await fetch('/api/intakes/{{ intake.id }}/regenerate-calendar', { method: 'POST' });
+    const d = await r.json();
+    btn.textContent = d.ok ? `✓ ${d.phases_generated} phases` : 'Error';
+  } catch (e) {
+    btn.textContent = 'Error';
+  }
+  setTimeout(() => { btn.disabled = false; btn.textContent = '↻ Regenerate Calendar'; }, 2500);
+}
 </script>
 
 {% endblock %}

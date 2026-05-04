@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-/* ── Layout ────────────────────────────────────────────────── */
+/* ── Header ─────────────────────────────────────────────────── */
 .cal-header {
   display: flex;
   align-items: center;
@@ -37,31 +37,6 @@
 }
 .cal-nav-btn:hover { background: var(--card-bg-deeper); }
 
-/* ── Phase filter chips ────────────────────────────────────── */
-.cal-phase-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  flex: 1;
-  justify-content: center;
-}
-.phase-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 9px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  border: 2px solid transparent;
-  color: #fff;
-  transition: opacity .15s;
-  user-select: none;
-  letter-spacing: .2px;
-}
-.phase-chip.inactive { opacity: .28; }
-
 /* ── Calendar grid ─────────────────────────────────────────── */
 .cal-grid-wrapper {
   background: var(--card-bg);
@@ -87,16 +62,14 @@
 }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
 .cal-day {
-  height: 130px;
-  overflow: hidden;
+  min-height: 100px;
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  padding: 5px;
-  cursor: pointer;
-  transition: background .1s;
+  padding: 5px 4px 4px;
   box-sizing: border-box;
+  vertical-align: top;
+  position: relative;
 }
-.cal-day:hover { background: #faf9f7; }
 .cal-day:nth-child(7n) { border-right: none; }
 .cal-day.other-month { background: var(--card-bg-deeper); }
 .cal-day.other-month .cal-day-num { color: var(--subtle); }
@@ -111,71 +84,67 @@
   justify-content: center;
   font-weight: 800;
 }
-.cal-day.ifp-bloat { background: #fff1f2; }
 .cal-day-num {
   height: 22px;
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
-  margin-bottom: 2px;
+  margin-bottom: 3px;
   display: flex;
   align-items: center;
   gap: 4px;
-}
-.ifp-bloat-badge {
-  font-size: 9px;
-  font-weight: 800;
-  background: #dc2626;
-  color: #fff;
-  border-radius: 3px;
-  padding: 1px 4px;
 }
 
-/* ── Event chips ───────────────────────────────────────────── */
-.cal-event-chip {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-  padding: 2px 5px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #fff;
+/* ── Phase Gantt bars ─────────────────────────────────────── */
+.cal-phase-bar {
+  display: block;
+  height: 18px;
   margin-bottom: 2px;
-  cursor: pointer;
-  transition: opacity .12s;
-  border: none;
-  text-align: left;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-.cal-event-chip:hover { opacity: .82; }
-.cal-event-chip.ooo-chip {
-  background: #e7e5e4 !important;
-  color: var(--muted);
-  border: 1px dashed var(--border-hover);
-  font-style: italic;
-}
-.chip-title {
-  flex: 1;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  padding: 0 5px;
+  line-height: 18px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  min-width: 0;
+  border-radius: 3px;
+  cursor: default;
 }
-.chip-dots {
+/* strip left radius when bar continues from previous cell */
+.cal-phase-bar.bar-cont-l { border-top-left-radius: 0; border-bottom-left-radius: 0; padding-left: 2px; }
+/* strip right radius when bar continues into next cell */
+.cal-phase-bar.bar-cont-r { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+
+/* Project color palette — stable for session via JS colorIdx */
+.cal-c0 { background: oklch(50% 0.17 250); }
+.cal-c1 { background: oklch(48% 0.16 150); }
+.cal-c2 { background: oklch(50% 0.16 30);  }
+.cal-c3 { background: oklch(48% 0.15 320); }
+.cal-c4 { background: oklch(50% 0.14 200); }
+.cal-c5 { background: oklch(50% 0.15 60);  }
+.cal-c6 { background: oklch(50% 0.15 270); }
+.cal-c7 { background: oklch(48% 0.14 100); }
+
+/* ── OOO chips (legacy style, below phase bars) ──────────── */
+.cal-ooo-chip {
   display: flex;
-  gap: 2px;
-  flex-shrink: 0;
   align-items: center;
-}
-.chip-dot-inline {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  border: 1px solid rgba(255,255,255,.5);
+  gap: 3px;
+  width: 100%;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 2px;
+  background: #e7e5e4;
+  border: 1px dashed var(--border-hover);
+  font-style: italic;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .cal-more {
   display: block;
@@ -194,7 +163,41 @@
 }
 .cal-more:hover { background: rgba(30,58,95,.08); }
 
-/* ── Modal ─────────────────────────────────────────────────── */
+/* ── Legend ─────────────────────────────────────────────── */
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  align-items: center;
+}
+.cal-legend-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.cal-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.cal-legend-swatch {
+  width: 18px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Modal (re-used from previous calendar) ─────────────── */
 .modal-overlay {
   display: none;
   position: fixed;
@@ -232,62 +235,11 @@
   margin-top: 20px;
 }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn-danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+.btn-danger:hover { background: #6b1a1a; border-color: #6b1a1a; }
 
-/* ── Warning banners ───────────────────────────────────────── */
-.conflict-banner {
-  display: none;
-  background: #fef3c7;
-  border: 1px solid #f59e0b;
-  border-radius: var(--radius);
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #92400e;
-  margin-bottom: 10px;
-}
-.conflict-banner.visible { display: block; }
-
-/* Large red IFP team warning */
-.team-ifp-warning {
-  display: none;
-  background: #fef2f2;
-  border: 2px solid #dc2626;
-  border-radius: 6px;
-  padding: 14px 16px;
-  margin-bottom: 14px;
-}
-.team-ifp-warning.visible { display: block; }
-.team-ifp-warning-title {
-  font-size: 14px;
-  font-weight: 800;
-  color: #991b1b;
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.team-ifp-warning-icon {
-  font-size: 18px;
-}
-.team-ifp-warning-list {
-  margin: 0;
-  padding: 0 0 0 4px;
-  list-style: none;
-}
-.team-ifp-warning-list li {
-  font-size: 12px;
-  font-weight: 600;
-  color: #7f1d1d;
-  padding: 2px 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* ── Team multi-select dropdown ────────────────────────────── */
-.team-select-wrapper {
-  position: relative;
-}
+/* ── Team multi-select ───────────────────────────────────── */
+.team-select-wrapper { position: relative; }
 .team-select-trigger {
   width: 100%;
   padding: 9px 32px 9px 11px;
@@ -312,16 +264,9 @@
 .team-select-trigger:focus,
 .team-select-trigger.open { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(30,58,95,.10); }
 .selected-avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  font-size: 9px;
-  font-weight: 800;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  width: 22px; height: 22px; border-radius: 50%;
+  font-size: 9px; font-weight: 800; color: #fff;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .team-select-placeholder { color: var(--subtle); }
 .team-dropdown {
@@ -340,137 +285,33 @@
 }
 .team-dropdown.open { display: block; }
 .team-option {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  cursor: pointer;
-  transition: background .1s;
-  user-select: none;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; cursor: pointer; transition: background .1s; user-select: none;
 }
 .team-option:hover { background: var(--card-bg-deeper); }
 .team-option.selected { background: #eff6ff; }
 .team-option-dot {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 800;
-  color: #fff;
-  flex-shrink: 0;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800; color: #fff; flex-shrink: 0;
 }
 .team-option-label { font-size: 13px; font-weight: 600; }
 .team-option-check { margin-left: auto; color: var(--accent); font-size: 14px; }
-
-.btn-danger {
-  background: var(--bad);
-  border-color: var(--bad);
-  color: #fff;
-}
-.btn-danger:hover { background: #6b1a1a; border-color: #6b1a1a; color: #fff; }
-
-/* ── Projected capacity bars in form ─────────────────────────────────────── */
-.cap-form-section {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-.cap-form-header {
-  font-size: 10px; font-weight: 800; text-transform: uppercase;
-  letter-spacing: .07em; color: var(--muted); margin-bottom: 10px;
-}
-.cap-form-pool-label {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .05em; color: var(--muted); margin: 8px 0 4px;
-}
-.cap-form-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 3px 0;
-}
-.cap-form-dot {
-  width: 20px; height: 20px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 800; color: #fff;
-  flex-shrink: 0;
-}
-.cap-form-bar-track {
-  flex: 1; height: 6px; border-radius: 3px;
-  background: var(--card-bg-deeper); border: 1px solid var(--border);
-  position: relative; overflow: hidden;
-}
-.cap-form-bar-fill {
-  position: absolute; left: 0; top: 0; height: 100%;
-  border-radius: 3px; transition: width .25s;
-}
-.cap-form-ooo-stripe {
-  position: absolute; top: 0; height: 100%; right: 0;
-  background: repeating-linear-gradient(
-    45deg, rgba(220,38,38,.28), rgba(220,38,38,.28) 2px, transparent 2px, transparent 6px
-  );
-  border-radius: 0 3px 3px 0;
-  pointer-events: none;
-}
-.cap-form-pct {
-  font-size: 11px; font-weight: 700; font-family: var(--mono);
-  width: 36px; text-align: right; flex-shrink: 0;
-}
-.cap-form-ooo-badge {
-  font-size: 10px; padding: 1px 5px; border-radius: 999px;
-  background: var(--bad); color: #fff; flex-shrink: 0;
-}
-#conflict-warnings {
-  display: none; margin-top: 10px; padding: 10px 14px;
-  border: 1px solid var(--warn);
-  border-radius: var(--radius-sm);
-  background: rgba(255,215,64,.07);
-}
-.conflict-warning-item {
-  display: flex; gap: 6px; font-size: 12px;
-  line-height: 1.5; margin-bottom: 6px;
-}
-.conflict-warning-item:last-child { margin-bottom: 0; }
-.conflict-icon { color: var(--warn); flex-shrink: 0; }
-
-/* ── Schedule generator modal ─────────────────────────────────────────────── */
-.sched-gen-step { display: none; }
-.sched-gen-step.active { display: block; }
-.sched-phase-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-.sched-phase-table th {
-  font-size: 10px; font-weight: 800; text-transform: uppercase;
-  letter-spacing: .05em; color: var(--muted); padding: 0 8px 6px; text-align: left;
-}
-.sched-phase-table td {
-  padding: 4px 8px; border-bottom: 1px solid var(--border); font-size: 13px;
-}
-.sched-phase-table td input[type=date] {
-  padding: 4px 8px; border-radius: var(--radius-sm);
-  border: 1px solid var(--border); background: var(--card-bg);
-  color: var(--text); font-size: 12px; font-family: var(--mono);
-}
-.sched-phase-code {
-  font-family: var(--mono); font-weight: 700; font-size: 13px;
-}
-.sched-duration-cell {
-  font-family: var(--mono); font-size: 12px; color: var(--muted);
-}
 </style>
 
+<!-- Header -->
 <div class="cal-header">
   <div class="cal-month-nav">
     <button class="cal-nav-btn" id="prev-month">&#8592;</button>
     <div class="cal-month-label" id="month-label">—</div>
     <button class="cal-nav-btn" id="next-month">&#8594;</button>
   </div>
-  <div class="cal-phase-filters" id="phase-filters"></div>
   <div style="display:flex;gap:8px;flex-shrink:0">
-    <button class="btn" id="gen-schedule-btn">&#9654; Generate Schedule</button>
-    <button class="btn btn-primary" id="add-event-btn">+ Add Event</button>
+    <button class="btn" id="add-ooo-btn">+ OOO</button>
   </div>
 </div>
 
+<!-- Grid -->
 <div class="cal-grid-wrapper">
   <div class="cal-weekdays">
     {% for d in ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"] %}
@@ -483,115 +324,35 @@
 </div>
 
 <!-- Legend -->
-<div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius)">
-  <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;align-self:center">Legend:</div>
-  <div style="display:flex;gap:6px;align-items:center;font-size:12px;font-weight:600;color:var(--muted)">
-    <span style="width:22px;height:14px;border-radius:3px;background:#dc2626;display:inline-block"></span> Phase color
-  </div>
-  <div style="display:flex;gap:6px;align-items:center;font-size:12px;font-weight:600;color:var(--muted)">
-    <span style="width:14px;height:14px;border-radius:50%;background:#2563eb;display:inline-block;border:1.5px solid rgba(255,255,255,.7)"></span> Team member
-  </div>
-  <div style="display:flex;gap:6px;align-items:center;font-size:12px;font-weight:600;color:var(--muted)">
-    <span style="width:22px;height:14px;border-radius:3px;background:#fff1f2;border:1px dashed #dc2626;display:inline-block"></span> IFP Bloat day
-  </div>
+<div class="cal-legend" id="cal-legend">
+  <span class="cal-legend-label">Projects:</span>
+  <span class="subtle small" id="legend-empty">No active projects this period</span>
 </div>
 
-<!-- Day-detail modal -->
+<!-- Day detail modal -->
 <div class="modal-overlay" id="day-detail-overlay">
   <div class="modal" style="max-width:420px">
     <button class="modal-close" id="day-detail-close">✕</button>
     <h3 id="day-detail-title">—</h3>
     <div id="day-detail-list"></div>
     <div class="modal-actions" style="margin-top:14px">
-      <button class="btn btn-primary" id="day-detail-add-btn">+ Add Event</button>
+      <button class="btn btn-primary" id="day-detail-ooo-btn">+ Add OOO</button>
     </div>
   </div>
 </div>
 
-<!-- Add/Edit Modal -->
-<div class="modal-overlay" id="event-modal">
+<!-- OOO Add/Edit Modal -->
+<div class="modal-overlay" id="ooo-modal">
   <div class="modal">
-    <button class="modal-close" id="modal-close">✕</button>
-    <h3 id="modal-title">Add Event</h3>
-
-    <!-- Large IFP team conflict warning -->
-    <div class="team-ifp-warning" id="team-ifp-warning">
-      <div class="team-ifp-warning-title">
-        <span class="team-ifp-warning-icon">🚨</span>
-        IFP Scheduling Conflict
-      </div>
-      <ul class="team-ifp-warning-list" id="team-ifp-warning-list"></ul>
-    </div>
-
-    <!-- IFP bloat warning -->
-    <div class="conflict-banner" id="conflict-banner">
-      ⚠ IFP Bloat — 2 or more IFP events already overlap on one or more days in this range.
-    </div>
-
+    <button class="modal-close" id="ooo-modal-close">✕</button>
+    <h3 id="ooo-modal-title">Add OOO</h3>
     <div class="field">
-      <label style="display:flex;align-items:center;gap:7px;text-transform:none;font-size:13px;font-weight:600;letter-spacing:0">
-        <input type="checkbox" id="is-ooo" style="width:auto">
-        Out of Office (OOO)
-      </label>
-    </div>
-
-    <div id="project-section">
-      <div class="field">
-        <label for="f-project-number">Project #</label>
-        <input type="text" id="f-project-number" placeholder="e.g. 9771" oninput="onProjectNumberInput(this.value)">
-        <div id="f-ifp-hint" style="display:none;font-size:11px;color:var(--good);margin-top:4px;font-weight:600"></div>
-      </div>
-      <div class="two-col">
-        <div class="field">
-          <label for="f-client">Client</label>
-          <input type="text" id="f-client" placeholder="e.g. Sprouts">
-        </div>
-        <div class="field">
-          <label for="f-location">Location</label>
-          <input type="text" id="f-location" placeholder="e.g. Hutto,TX">
-        </div>
-      </div>
-      <div class="two-col">
-        <div class="field">
-          <label for="f-phase">Phase</label>
-          <select id="f-phase">
-            {% for p in valid_phases %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
-          </select>
-        </div>
-        <div class="field">
-          <label for="f-tier">Tier (1–5)</label>
-          <select id="f-tier">
-            <option value="">— No tier —</option>
-            <option value="1">1 — Minor</option>
-            <option value="2">2 — Small</option>
-            <option value="3">3 — Standard</option>
-            <option value="4">4 — Large</option>
-            <option value="5">5 — Major</option>
-          </select>
-        </div>
-      </div>
-      <div class="two-col">
-        <div class="field">
-          <label for="f-type">Type</label>
-          <input type="text" id="f-type" placeholder="e.g. BTS">
-        </div>
-        <div class="field" style="align-self:end;padding-bottom:2px">
-          <label style="display:flex;align-items:center;gap:7px;text-transform:none;font-size:13px;font-weight:600;letter-spacing:0">
-            <input type="checkbox" id="f-phase-jump" style="width:auto">
-            Phase jump (skipped 75%)
-          </label>
-        </div>
-      </div>
-    </div>
-
-    <!-- Team multi-select -->
-    <div class="field">
-      <label>Team</label>
-      <div class="team-select-wrapper" id="team-select-wrapper">
-        <button type="button" class="team-select-trigger" id="team-trigger">
-          <span class="team-select-placeholder" id="team-placeholder">Select team members…</span>
+      <label>Team Member</label>
+      <div class="team-select-wrapper" id="ooo-team-wrapper">
+        <button type="button" class="team-select-trigger" id="ooo-team-trigger">
+          <span class="team-select-placeholder" id="ooo-team-placeholder">Select member…</span>
         </button>
-        <div class="team-dropdown" id="team-dropdown">
+        <div class="team-dropdown" id="ooo-team-dropdown">
           {% for m in team_members %}
           <div class="team-option" data-member="{{ m }}">
             <span class="team-option-dot" data-member="{{ m }}">{{ m }}</span>
@@ -602,599 +363,236 @@
         </div>
       </div>
     </div>
-
-    <!-- Projected capacity bars -->
-    <div class="cap-form-section" id="cap-section">
-      <div class="cap-form-header" id="capacity-header-label">ASSIGN TEAM — LIVE CAPACITY</div>
-      <div id="capacity-bars-container">
-        <div class="cap-form-pool-label">Engineering Pool</div>
-        <div id="engineering-pool-container">
-          {% for m in team_members %}{% if m in ['MK','NK','RO','JW','JR','JK'] %}
-          <div class="cap-form-row" data-engineer="{{ m }}">
-            <div class="cap-form-dot" style="background:{{ '#2563eb' }}">{{ m }}</div>
-            <div class="cap-form-bar-track">
-              <div class="cap-form-bar-fill" style="width:0%;background:var(--good)"></div>
-            </div>
-            <span class="cap-form-pct" style="color:var(--good)">—</span>
-          </div>
-          {% endif %}{% endfor %}
-        </div>
-        <div class="cap-form-pool-label">Drafting Pool</div>
-        <div id="drafting-pool-container">
-          {% for m in team_members %}{% if m in ['RS','SW','JP'] %}
-          <div class="cap-form-row" data-engineer="{{ m }}">
-            <div class="cap-form-dot" style="background:{{ '#2563eb' }}">{{ m }}</div>
-            <div class="cap-form-bar-track">
-              <div class="cap-form-bar-fill" style="width:0%;background:var(--good)"></div>
-            </div>
-            <span class="cap-form-pct" style="color:var(--good)">—</span>
-          </div>
-          {% endif %}{% endfor %}
-        </div>
-      </div>
-      <div id="conflict-warnings"></div>
-    </div>
-
-    <div id="f-start-row">
+    <div class="two-col">
       <div class="field">
-        <label for="f-start">Start Date</label>
-        <input type="date" id="f-start">
+        <label>Start Date</label>
+        <input type="date" id="ooo-start">
+      </div>
+      <div class="field">
+        <label>End Date</label>
+        <input type="date" id="ooo-end">
       </div>
     </div>
-    <div class="field">
-      <label for="f-end" id="f-end-label">IFP Due Date</label>
-      <input type="date" id="f-end">
-    </div>
-
     <div class="modal-actions">
-      <button class="btn btn-danger" id="delete-btn" style="display:none;margin-right:auto">Delete</button>
-      <button class="btn" id="cancel-btn">Cancel</button>
-      <button class="btn btn-primary" id="save-btn">Save</button>
+      <button class="btn btn-danger" id="ooo-delete-btn" style="display:none;margin-right:auto">Delete</button>
+      <button class="btn" id="ooo-cancel-btn">Cancel</button>
+      <button class="btn btn-primary" id="ooo-save-btn">Save</button>
     </div>
-  </div>
-</div>
-
-<!-- Schedule Generator Modal -->
-<div class="modal-overlay" id="sched-gen-modal">
-  <div class="modal" style="max-width:680px;width:95%">
-    <button class="modal-close" id="sched-gen-close">✕</button>
-    <h3>Generate Project Schedule</h3>
-
-    <!-- Step 1: Project details -->
-    <div class="sched-gen-step active" id="step-1">
-      <div class="two-col">
-        <div class="field">
-          <label>Project #</label>
-          <input type="text" id="sg-project-number" placeholder="e.g. 9771">
-        </div>
-        <div class="field">
-          <label>Client</label>
-          <input type="text" id="sg-client" placeholder="e.g. Irongate Industrial">
-        </div>
-      </div>
-      <div class="two-col">
-        <div class="field">
-          <label>Project Type</label>
-          <select id="sg-type">
-            <option value="new_construction">New Construction</option>
-            <option value="tenant_improvement">Tenant Improvement</option>
-            <option value="addition_expansion">Addition / Expansion</option>
-            <option value="build_to_suit_retrofit">Build-to-Suit / Retrofit</option>
-            <option value="repeating_program">Repeating Program</option>
-            <option value="one_off_unique">One-Off / Unique</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Tier (1–5)</label>
-          <select id="sg-tier">
-            <option value="">— No tier —</option>
-            <option value="1">1 — Minor</option>
-            <option value="2">2 — Small</option>
-            <option value="3">3 — Standard</option>
-            <option value="4">4 — Large</option>
-            <option value="5">5 — Major</option>
-          </select>
-        </div>
-      </div>
-      <div class="two-col">
-        <div class="field">
-          <label>Project Start</label>
-          <input type="date" id="sg-start">
-        </div>
-        <div class="field">
-          <label>Project End (IFP target)</label>
-          <input type="date" id="sg-end">
-        </div>
-      </div>
-      <div id="step1-err" style="font-size:12px;color:var(--bad);margin-bottom:8px;display:none"></div>
-      <div class="modal-actions">
-        <button class="btn" id="sg-cancel-1">Cancel</button>
-        <button class="btn btn-primary" id="sg-preview-btn">Preview Schedule &#8594;</button>
-      </div>
-    </div>
-
-    <!-- Step 2: Review phase dates + capacity -->
-    <div class="sched-gen-step" id="step-2">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Adjust phase dates as needed. Phases must remain sequential.</div>
-      <table class="sched-phase-table" id="sg-phase-table">
-        <thead><tr><th>Phase</th><th>Start</th><th>End</th><th>Duration</th></tr></thead>
-        <tbody id="sg-phase-tbody"></tbody>
-      </table>
-      <div class="cap-form-section" style="margin-top:10px">
-        <div class="cap-form-header" id="sg-cap-header">PROJECTED CAPACITY</div>
-        <div id="sg-cap-bars" style="font-size:12px;color:var(--muted)">Loading…</div>
-      </div>
-      <div class="modal-actions" style="margin-top:12px">
-        <button class="btn" id="sg-back-1">&#8592; Back</button>
-        <button class="btn btn-primary" id="sg-assign-btn">Assign Team &amp; Create &#8594;</button>
-      </div>
-    </div>
-
-    <!-- Step 3: Assign team + confirm -->
-    <div class="sched-gen-step" id="step-3">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Select engineers for all phases in this schedule.</div>
-      <div class="cap-form-pool-label">Engineering Pool</div>
-      <div id="sg-eng-pool"></div>
-      <div class="cap-form-pool-label" style="margin-top:10px">Drafting Pool</div>
-      <div id="sg-draft-pool"></div>
-      <div id="sg-conflict-warnings" style="display:none;margin-top:10px;padding:10px 14px;border:1px solid var(--warn);border-radius:var(--radius-sm);background:rgba(255,215,64,.07)"></div>
-      <div id="step3-err" style="font-size:12px;color:var(--bad);margin-top:8px;display:none"></div>
-      <div class="modal-actions" style="margin-top:12px">
-        <button class="btn" id="sg-back-2">&#8592; Back</button>
-        <button class="btn btn-primary" id="sg-create-btn" disabled>&#10003; Create Schedule</button>
-      </div>
-    </div>
-
   </div>
 </div>
 
 <script>
 (function () {
-  const PHASE_COLORS  = {{ phase_colors | safe }};
-  const TEAM_COLORS   = {{ team_colors | safe }};
-  const PHASES        = {{ valid_phases | tojson }};
-  const TEAM_MEMBERS  = {{ team_members | tojson }};
-  const ENG_POOL  = ['MK','NK','RO','JW','JR','JK'];
-  const DRAFT_POOL = ['RS','SW','JP'];
+  const TEAM_COLORS = {{ team_colors | safe }};
+  const TEAM_MEMBERS = {{ team_members | tojson }};
 
-  let year = new Date().getFullYear();
-  let month = new Date().getMonth();
-  let events = [];
-  let activePhases = new Set(PHASES);
-  let editingId = null;
-  let selectedTeam = new Set();
+  const MONTH_NAMES = [
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December"
+  ];
 
-  // ── Phase filter chips ──────────────────────────────────────
-  const filtersEl = document.getElementById('phase-filters');
-  PHASES.forEach(phase => {
-    const btn = document.createElement('button');
-    btn.className = 'phase-chip';
-    btn.dataset.phase = phase;
-    btn.style.background = PHASE_COLORS[phase];
-    btn.textContent = phase;
-    btn.addEventListener('click', () => {
-      if (activePhases.has(phase)) { activePhases.delete(phase); btn.classList.add('inactive'); }
-      else { activePhases.add(phase); btn.classList.remove('inactive'); }
-      renderGrid();
+  let viewYear  = new Date().getFullYear();
+  let viewMonth = new Date().getMonth() + 1; // 1-based
+
+  // Stable project→color mapping for the session
+  const projectColorMap = {};
+  let colorCounter = 0;
+  function projectColor(pn) {
+    if (!(pn in projectColorMap)) {
+      projectColorMap[pn] = colorCounter % 8;
+      colorCounter++;
+    }
+    return projectColorMap[pn];
+  }
+
+  function pad(n) { return String(n).padStart(2,'0'); }
+  function isoStr(y,m,d) { return `${y}-${pad(m)}-${pad(d)}`; }
+  function daysInMonth(y,m) { return new Date(y, m, 0).getDate(); }
+  function addDays(iso, n) {
+    const d = new Date(iso + 'T12:00:00');
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0,10);
+  }
+  function dateRange(s, e) {
+    const arr = [];
+    let cur = s;
+    while (cur <= e) { arr.push(cur); cur = addDays(cur, 1); }
+    return arr;
+  }
+
+  // ── Render ────────────────────────────────────────────────────
+  function renderGrid(phaseEvents, oooEvents) {
+    const today = new Date().toISOString().slice(0,10);
+    const label = document.getElementById('month-label');
+    label.textContent = `${MONTH_NAMES[viewMonth-1]} ${viewYear}`;
+
+    // Build dayMap: date → [{type:'phase'|'ooo', ev, isFirst, isLast}]
+    const dayMap = {};
+    function addToDay(d, entry) {
+      if (!dayMap[d]) dayMap[d] = [];
+      dayMap[d].push(entry);
+    }
+
+    phaseEvents.forEach(ev => {
+      const days = dateRange(ev.start_date, ev.end_date);
+      days.forEach((d, i) => {
+        addToDay(d, { type: 'phase', ev, isFirst: i === 0, isLast: i === days.length - 1 });
+      });
     });
-    filtersEl.appendChild(btn);
-  });
 
-  // Set team option dot colors
-  document.querySelectorAll('.team-option-dot[data-member]').forEach(dot => {
-    const m = dot.dataset.member;
-    dot.style.background = TEAM_COLORS[m] || '#9ca3af';
-  });
-
-  // ── Helpers ─────────────────────────────────────────────────
-  function pad(n) { return String(n).padStart(2, '0'); }
-  function isoDate(y, m, d) { return `${y}-${pad(m + 1)}-${pad(d)}`; }
-  function monthName(y, m) {
-    return new Date(y, m, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
-  }
-  function addMonths(y, m, delta) {
-    const d = new Date(y, m + delta, 1);
-    return [d.getFullYear(), d.getMonth()];
-  }
-  function daysInMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
-
-  function eventsOnDay(dateStr) {
-    return events.filter(ev => {
-      const start = ev.start_date.slice(0, 10);
-      const end   = ev.end_date.slice(0, 10);
-      if (start > dateStr || end < dateStr) return false;
-      if (ev.is_ooo) return true;
-      return activePhases.has(ev.phase);
+    oooEvents.forEach(ev => {
+      const s = (ev.start_date || '').slice(0,10);
+      const e = (ev.end_date   || '').slice(0,10);
+      if (!s || !e) return;
+      const days = dateRange(s, e);
+      days.forEach((d, i) => {
+        addToDay(d, { type: 'ooo', ev, isFirst: i === 0, isLast: i === days.length - 1 });
+      });
     });
-  }
-
-  function ifpCountOnDay(dateStr) {
-    return events.filter(ev =>
-      ev.phase === 'IFP' && !ev.is_ooo &&
-      ev.start_date.slice(0, 10) <= dateStr &&
-      ev.end_date.slice(0, 10) >= dateStr
-    ).length;
-  }
-
-  // ── Grid render ─────────────────────────────────────────────
-  function renderGrid() {
-    const today = new Date();
-    const todayStr = isoDate(today.getFullYear(), today.getMonth(), today.getDate());
-    document.getElementById('month-label').textContent = monthName(year, month);
-
-    const firstDow = new Date(year, month, 1).getDay();
-    const dim = daysInMonth(year, month);
-    const [py, pm] = addMonths(year, month, -1);
-    const [ny, nm] = addMonths(year, month, 1);
-    const prevDim  = daysInMonth(py, pm);
-    const totalCells = Math.ceil((firstDow + dim) / 7) * 7;
 
     const grid = document.getElementById('cal-grid');
     grid.innerHTML = '';
 
+    const firstDow = new Date(viewYear, viewMonth - 1, 1).getDay();
+    const dim = daysInMonth(viewYear, viewMonth);
+    const totalCells = Math.ceil((firstDow + dim) / 7) * 7;
+
+    // prev/next month fill
+    const [py, pm] = viewMonth > 1 ? [viewYear, viewMonth-1] : [viewYear-1, 12];
+    const [ny, nm] = viewMonth < 12 ? [viewYear, viewMonth+1] : [viewYear+1, 1];
+    const prevDim = daysInMonth(py, pm);
+
     for (let i = 0; i < totalCells; i++) {
-      let dayNum, dateStr, isCurrentMonth;
+      let dateStr, isCurrentMonth;
       if (i < firstDow) {
-        dayNum = prevDim - firstDow + i + 1;
-        dateStr = isoDate(py, pm, dayNum);
+        dateStr = isoStr(py, pm, prevDim - firstDow + i + 1);
         isCurrentMonth = false;
       } else if (i >= firstDow + dim) {
-        dayNum = i - firstDow - dim + 1;
-        dateStr = isoDate(ny, nm, dayNum);
+        dateStr = isoStr(ny, nm, i - firstDow - dim + 1);
         isCurrentMonth = false;
       } else {
-        dayNum = i - firstDow + 1;
-        dateStr = isoDate(year, month, dayNum);
+        const dayNum = i - firstDow + 1;
+        dateStr = isoStr(viewYear, viewMonth, dayNum);
         isCurrentMonth = true;
       }
 
+      const dayNum = parseInt(dateStr.slice(8), 10);
       const cell = document.createElement('div');
       cell.className = 'cal-day' +
         (isCurrentMonth ? '' : ' other-month') +
-        (dateStr === todayStr ? ' today' : '');
+        (dateStr === today && isCurrentMonth ? ' today' : '');
 
-      const ifpCount = ifpCountOnDay(dateStr);
-      if (ifpCount >= 2 && isCurrentMonth) cell.classList.add('ifp-bloat');
-
-      const numRow = document.createElement('div');
-      numRow.className = 'cal-day-num';
+      // Day number
+      const numEl = document.createElement('div');
+      numEl.className = 'cal-day-num';
       const inner = document.createElement('span');
       inner.className = 'cal-day-num-inner';
       inner.textContent = dayNum;
-      numRow.appendChild(inner);
-      if (ifpCount >= 2 && isCurrentMonth) {
-        const badge = document.createElement('span');
-        badge.className = 'ifp-bloat-badge';
-        badge.title = `${ifpCount} IFP events on this day`;
-        badge.textContent = `IFP×${ifpCount}`;
-        numRow.appendChild(badge);
-      }
-      cell.appendChild(numRow);
+      numEl.appendChild(inner);
+      cell.appendChild(numEl);
 
-      const dayEvs = eventsOnDay(dateStr);
-      const MAX = 3;
-      dayEvs.slice(0, MAX).forEach(ev => {
-        const chip = document.createElement('button');
-        chip.className = 'cal-event-chip' + (ev.is_ooo ? ' ooo-chip' : '');
-        if (!ev.is_ooo) chip.style.background = PHASE_COLORS[ev.phase] || '#9ca3af';
-        chip.title = ev.title;
-        chip.addEventListener('click', e => { e.stopPropagation(); openEdit(ev); });
+      const entries = dayMap[dateStr] || [];
+      const phaseEntries = entries.filter(e => e.type === 'phase');
+      const oooEntries   = entries.filter(e => e.type === 'ooo');
 
-        const titleSpan = document.createElement('span');
-        titleSpan.className = 'chip-title';
-        titleSpan.textContent = ev.title;
-        chip.appendChild(titleSpan);
-
-        if (!ev.is_ooo && ev.team && ev.team.length) {
-          const dots = document.createElement('span');
-          dots.className = 'chip-dots';
-          const show = ev.team.slice(0, 4);
-          show.forEach(m => {
-            const d = document.createElement('span');
-            d.className = 'chip-dot-inline';
-            d.style.background = TEAM_COLORS[m] || 'rgba(255,255,255,.7)';
-            d.title = m;
-            dots.appendChild(d);
-          });
-          if (ev.team.length > 4) {
-            const more = document.createElement('span');
-            more.style.cssText = 'font-size:9px;font-weight:800;color:rgba(255,255,255,.9)';
-            more.textContent = `+${ev.team.length - 4}`;
-            dots.appendChild(more);
-          }
-          chip.appendChild(dots);
-        }
-
-        cell.appendChild(chip);
+      const MAX_BARS = 4;
+      phaseEntries.slice(0, MAX_BARS).forEach(({ ev, isFirst, isLast }) => {
+        const ci = projectColor(ev.project_number);
+        const bar = document.createElement('div');
+        bar.className = 'cal-phase-bar cal-c' + ci +
+          (isFirst ? '' : ' bar-cont-l') +
+          (isLast  ? '' : ' bar-cont-r');
+        bar.textContent = isFirst
+          ? `${ev.phase_code} · ${ev.project_number}`
+          : '';
+        bar.title = `${ev.project_name || ev.project_number} | ${ev.phase_label}\n${ev.start_date} → ${ev.end_date}\nTeam: ${(ev.team||[]).join(', ')}`;
+        cell.appendChild(bar);
       });
 
-      if (dayEvs.length > MAX) {
+      if (phaseEntries.length > MAX_BARS) {
         const more = document.createElement('button');
         more.className = 'cal-more';
-        more.textContent = `+${dayEvs.length - MAX} more`;
-        more.addEventListener('click', e => { e.stopPropagation(); openDayDetail(dateStr); });
+        more.textContent = `+${phaseEntries.length - MAX_BARS} more`;
+        more.addEventListener('click', e => { e.stopPropagation(); openDayDetail(dateStr, phaseEntries, oooEntries); });
         cell.appendChild(more);
       }
 
-      cell.addEventListener('click', () => openDayDetail(dateStr));
+      // OOO chips (first day label only)
+      oooEntries.slice(0, 2).forEach(({ ev, isFirst }) => {
+        const chip = document.createElement('div');
+        chip.className = 'cal-ooo-chip';
+        const team = ev.team || [];
+        chip.textContent = isFirst
+          ? `OOO: ${team.join(', ') || '?'}`
+          : '…OOO';
+        chip.title = `OOO · ${(ev.start_date||'').slice(0,10)} – ${(ev.end_date||'').slice(0,10)} · ${team.join(', ')}`;
+        chip.style.cursor = 'pointer';
+        chip.addEventListener('click', e => { e.stopPropagation(); openOOOEdit(ev); });
+        cell.appendChild(chip);
+      });
+
+      cell.addEventListener('click', () => openDayDetail(dateStr, phaseEntries, oooEntries));
       grid.appendChild(cell);
     }
+
+    // Legend
+    renderLegend(phaseEvents);
   }
 
-  // ── Fetch ───────────────────────────────────────────────────
-  async function fetchEvents() {
-    const [py, pm] = addMonths(year, month, -1);
-    const [ny, nm] = addMonths(year, month, 1);
-    const start = isoDate(py, pm, 1) + 'T00:00:00Z';
-    const end   = isoDate(ny, nm, daysInMonth(ny, nm)) + 'T23:59:59Z';
-    try {
-      const res = await fetch(`/api/calendar/events?start=${start}&end=${end}`);
-      if (res.ok) { events = await res.json(); renderGrid(); }
-    } catch (e) { console.error('Calendar fetch', e); }
+  function renderLegend(phaseEvents) {
+    const legend = document.getElementById('cal-legend');
+    const emptyEl = document.getElementById('legend-empty');
+    // Remove old items (keep label + empty span)
+    Array.from(legend.querySelectorAll('.cal-legend-item')).forEach(el => el.remove());
+
+    const seen = {};
+    phaseEvents.forEach(ev => {
+      if (seen[ev.project_number]) return;
+      seen[ev.project_number] = true;
+      const ci = projectColor(ev.project_number);
+      const item = document.createElement('div');
+      item.className = 'cal-legend-item';
+      item.innerHTML = `
+        <div class="cal-legend-swatch cal-c${ci}"></div>
+        <span>${ev.project_number}${ev.project_name && ev.project_name !== ev.project_number ? ' — ' + ev.project_name : ''}</span>`;
+      legend.appendChild(item);
+    });
+    emptyEl.style.display = Object.keys(seen).length === 0 ? '' : 'none';
+  }
+
+  // ── Fetch ──────────────────────────────────────────────────────
+  async function loadCalendar() {
+    document.getElementById('month-label').textContent =
+      `${MONTH_NAMES[viewMonth-1]} ${viewYear}`;
+    document.getElementById('cal-grid').innerHTML =
+      '<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--muted)">Loading…</div>';
+
+    const [phaseResp, oooResp] = await Promise.all([
+      fetch(`/api/calendar/phase-events?year=${viewYear}&month=${viewMonth}`).then(r => r.json()).catch(() => ({ events: [] })),
+      fetch(`/api/calendar/events?start=${isoStr(viewYear, viewMonth, 1)}&end=${isoStr(viewYear, viewMonth, daysInMonth(viewYear, viewMonth))}T23:59:59Z`)
+        .then(r => r.json()).catch(() => []),
+    ]);
+
+    const phaseEvents = phaseResp.events || [];
+    const oooEvents   = (Array.isArray(oooResp) ? oooResp : []).filter(e => e.is_ooo);
+    renderGrid(phaseEvents, oooEvents);
   }
 
   document.getElementById('prev-month').addEventListener('click', () => {
-    [year, month] = addMonths(year, month, -1); fetchEvents();
+    if (viewMonth === 1) { viewMonth = 12; viewYear--; } else viewMonth--;
+    loadCalendar();
   });
   document.getElementById('next-month').addEventListener('click', () => {
-    [year, month] = addMonths(year, month, 1); fetchEvents();
+    if (viewMonth === 12) { viewMonth = 1; viewYear++; } else viewMonth++;
+    loadCalendar();
   });
 
-  // ── Team multi-select ────────────────────────────────────────
-  const teamTrigger  = document.getElementById('team-trigger');
-  const teamDropdown = document.getElementById('team-dropdown');
-  const teamPlaceholder = document.getElementById('team-placeholder');
+  // ── Day detail modal ───────────────────────────────────────────
+  const dayOverlay = document.getElementById('day-detail-overlay');
+  let _dayDetailDate = null;
 
-  function renderTeamTrigger() {
-    teamTrigger.innerHTML = '';
-    if (selectedTeam.size === 0) {
-      const ph = document.createElement('span');
-      ph.className = 'team-select-placeholder';
-      ph.textContent = 'Select team members…';
-      teamTrigger.appendChild(ph);
-    } else {
-      [...selectedTeam].forEach(m => {
-        const av = document.createElement('div');
-        av.className = 'selected-avatar';
-        av.style.background = TEAM_COLORS[m] || '#9ca3af';
-        av.title = m;
-        av.textContent = m;
-        teamTrigger.appendChild(av);
-      });
-    }
-    // Keep arrow background-image functional via inline append:
-    teamTrigger.style.backgroundImage = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(107,101,96,.70)' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`;
-    teamTrigger.style.backgroundRepeat = 'no-repeat';
-    teamTrigger.style.backgroundPosition = 'right 10px center';
-    teamTrigger.style.paddingRight = '32px';
-  }
-
-  function syncDropdownChecks() {
-    document.querySelectorAll('.team-option').forEach(opt => {
-      const m = opt.dataset.member;
-      const check = opt.querySelector('.team-option-check');
-      if (selectedTeam.has(m)) { opt.classList.add('selected'); check.style.display = ''; }
-      else { opt.classList.remove('selected'); check.style.display = 'none'; }
-    });
-  }
-
-  teamTrigger.addEventListener('click', e => {
-    e.stopPropagation();
-    teamDropdown.classList.toggle('open');
-    teamTrigger.classList.toggle('open', teamDropdown.classList.contains('open'));
-  });
-
-  document.querySelectorAll('.team-option').forEach(opt => {
-    opt.addEventListener('click', e => {
-      e.stopPropagation();
-      const m = opt.dataset.member;
-      if (selectedTeam.has(m)) selectedTeam.delete(m);
-      else selectedTeam.add(m);
-      syncDropdownChecks();
-      renderTeamTrigger();
-      checkAllConflicts();
-      updateConflictWarnings([...selectedTeam], _lastCapData);
-    });
-  });
-
-  document.addEventListener('click', () => {
-    teamDropdown.classList.remove('open');
-    teamTrigger.classList.remove('open');
-  });
-
-  // ── Conflict checks ─────────────────────────────────────────
-  const conflictBanner   = document.getElementById('conflict-banner');
-  const teamWarning      = document.getElementById('team-ifp-warning');
-  const teamWarningList  = document.getElementById('team-ifp-warning-list');
-
-  async function checkBloatConflict() {
-    const phase     = document.getElementById('f-phase').value;
-    const startDate = document.getElementById('f-start').value;
-    const isOOO     = document.getElementById('is-ooo').checked;
-    if (phase !== 'IFP' || !startDate || isOOO) {
-      conflictBanner.classList.remove('visible'); return;
-    }
-    try {
-      const r = await fetch(`/api/calendar/events/check-conflict?date=${startDate}&phase=${phase}`);
-      const d = await r.json();
-      conflictBanner.classList.toggle('visible', d.conflict);
-    } catch (e) { /* silent */ }
-  }
-
-  function checkTeamIFPConflict() {
-    const phase     = document.getElementById('f-phase').value;
-    const startDate = document.getElementById('f-start').value;
-    const endDate   = document.getElementById('f-end').value;
-    const isOOO     = document.getElementById('is-ooo').checked;
-
-    if (phase !== 'IFP' || !startDate || !endDate || isOOO || selectedTeam.size === 0) {
-      teamWarning.classList.remove('visible');
-      return;
-    }
-
-    const conflicts = [];
-    selectedTeam.forEach(member => {
-      const clashing = events.filter(ev =>
-        ev.phase === 'IFP' &&
-        !ev.is_ooo &&
-        ev.id !== editingId &&
-        (ev.team || []).includes(member) &&
-        ev.start_date.slice(0, 10) <= endDate &&
-        ev.end_date.slice(0, 10) >= startDate
-      );
-      if (clashing.length > 0) {
-        const dates = clashing.map(ev => {
-          const s = ev.start_date.slice(0, 10);
-          const e = ev.end_date.slice(0, 10);
-          return s === e ? s : `${s} – ${e}`;
-        }).join(', ');
-        conflicts.push({ member, details: clashing[0].title, dates });
-      }
-    });
-
-    if (conflicts.length === 0) {
-      teamWarning.classList.remove('visible'); return;
-    }
-
-    teamWarningList.innerHTML = '';
-    conflicts.forEach(({ member, details, dates }) => {
-      const li = document.createElement('li');
-      const dot = document.createElement('span');
-      dot.style.cssText = `width:18px;height:18px;border-radius:50%;background:${TEAM_COLORS[member]||'#9ca3af'};display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0`;
-      dot.textContent = member;
-      li.appendChild(dot);
-      const txt = document.createElement('span');
-      txt.textContent = `${member} already has an IFP event on ${dates}: "${details}"`;
-      li.appendChild(txt);
-      teamWarningList.appendChild(li);
-    });
-    teamWarning.classList.add('visible');
-  }
-
-  function checkAllConflicts() {
-    checkBloatConflict();
-    checkTeamIFPConflict();
-  }
-
-  document.getElementById('f-phase').addEventListener('change', checkAllConflicts);
-  document.getElementById('f-start').addEventListener('change', checkAllConflicts);
-  document.getElementById('f-end').addEventListener('change', checkAllConflicts);
-
-  // ── Modal open/close ─────────────────────────────────────────
-  const modal = document.getElementById('event-modal');
-  const deleteBtn = document.getElementById('delete-btn');
-
-  function toggleOOO(on) {
-    document.getElementById('project-section').style.display = on ? 'none' : 'block';
-    document.getElementById('f-start-row').style.display = on ? 'block' : 'none';
-    document.getElementById('f-end-label').textContent = on ? 'End Date' : 'IFP Due Date';
-  }
-  document.getElementById('is-ooo').addEventListener('change', function () {
-    toggleOOO(this.checked);
-    checkAllConflicts();
-  });
-
-  var _pnTimer = null;
-  window.onProjectNumberInput = function(val) {
-    clearTimeout(_pnTimer);
-    var hint = document.getElementById('f-ifp-hint');
-    hint.style.display = 'none';
-    if (!val || val.length < 3) return;
-    _pnTimer = setTimeout(function() {
-      fetch('/api/intakes/by-project-number/' + encodeURIComponent(val.trim()))
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function(d) {
-          if (!d) return;
-          if (d.client_name) document.getElementById('f-client').value = d.client_name;
-          if (d.ifp_due_date) {
-            var ifpDate = d.ifp_due_date.slice(0, 10);
-            document.getElementById('f-end').value = ifpDate;
-            if (!document.getElementById('f-start').value) {
-              document.getElementById('f-start').value = new Date().toISOString().slice(0, 10);
-            }
-            hint.textContent = '✓ IFP date autofilled from intake (' + ifpDate + ')';
-            hint.style.display = 'block';
-            onFormDateChange();
-          }
-        })
-        .catch(function() {});
-    }, 500);
-  };
-
-  function resetModal() {
-    editingId = null;
-    selectedTeam.clear();
-    document.getElementById('modal-title').textContent = 'Add Event';
-    document.getElementById('f-project-number').value = '';
-    document.getElementById('f-client').value = '';
-    document.getElementById('f-location').value = '';
-    document.getElementById('f-phase').value = 'IFP';
-    document.getElementById('f-tier').value = '';
-    document.getElementById('f-type').value = '';
-    document.getElementById('f-phase-jump').checked = false;
-    document.getElementById('f-start').value = new Date().toISOString().slice(0, 10);
-    document.getElementById('f-end').value = '';
-    var hint = document.getElementById('f-ifp-hint');
-    if (hint) hint.style.display = 'none';
-    document.getElementById('is-ooo').checked = false;
-    document.getElementById('f-start-row').style.display = 'none';
-    document.getElementById('f-end-label').textContent = 'IFP Due Date';
-    toggleOOO(false);
-    conflictBanner.classList.remove('visible');
-    teamWarning.classList.remove('visible');
-    deleteBtn.style.display = 'none';
-    syncDropdownChecks();
-    renderTeamTrigger();
-  }
-
-  function openAdd(dateStr) {
-    resetModal();
-    document.getElementById('f-start').value = dateStr;
-    document.getElementById('f-end').value = dateStr;
-    modal.classList.add('open');
-    triggerCapacityLoad();
-  }
-
-  function openEdit(ev) {
-    resetModal();
-    editingId = ev.id;
-    document.getElementById('modal-title').textContent = 'Edit Event';
-    document.getElementById('f-project-number').value = ev.project_number || '';
-    document.getElementById('f-client').value = ev.client || '';
-    document.getElementById('f-location').value = ev.location || '';
-    document.getElementById('f-phase').value = ev.phase || 'IFP';
-    document.getElementById('f-tier').value = ev.tier || '';
-    document.getElementById('f-type').value = ev.project_type || '';
-    document.getElementById('f-phase-jump').checked = !!ev.phase_jump;
-    document.getElementById('f-start').value = ev.start_date.slice(0, 10);
-    document.getElementById('f-end').value = ev.end_date.slice(0, 10);
-    document.getElementById('is-ooo').checked = ev.is_ooo;
-    toggleOOO(ev.is_ooo);
-    (ev.team || []).forEach(m => selectedTeam.add(m));
-    syncDropdownChecks();
-    renderTeamTrigger();
-    deleteBtn.style.display = '';
-    modal.classList.add('open');
-    checkAllConflicts();
-    triggerCapacityLoad();
-  }
-
-  function closeModal() { modal.classList.remove('open'); }
-  document.getElementById('modal-close').addEventListener('click', closeModal);
-  document.getElementById('cancel-btn').addEventListener('click', closeModal);
-  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
-  document.getElementById('add-event-btn').addEventListener('click', () => {
-    const t = new Date();
-    openAdd(isoDate(t.getFullYear(), t.getMonth(), t.getDate()));
-  });
-
-  // ── Day-detail popup ─────────────────────────────────────────
-  const dayDetailOverlay = document.getElementById('day-detail-overlay');
-  let dayDetailDate = null;
-
-  function openDayDetail(dateStr) {
-    dayDetailDate = dateStr;
-    const dayEvs = eventsOnDay(dateStr);
+  function openDayDetail(dateStr, phaseEntries, oooEntries) {
+    _dayDetailDate = dateStr;
     const d = new Date(dateStr + 'T12:00:00');
     document.getElementById('day-detail-title').textContent =
       d.toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -1202,529 +600,185 @@
     const list = document.getElementById('day-detail-list');
     list.innerHTML = '';
 
-    if (dayEvs.length === 0) {
+    if (phaseEntries.length === 0 && oooEntries.length === 0) {
       list.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:12px 0;text-align:center">No events this day</div>';
-    } else {
-      dayEvs.forEach(ev => {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)';
-
-        const phaseDot = document.createElement('div');
-        phaseDot.style.cssText = `width:10px;height:10px;border-radius:2px;background:${ev.is_ooo ? '#e7e5e4' : (PHASE_COLORS[ev.phase]||'#9ca3af')};flex-shrink:0;margin-top:3px`;
-        row.appendChild(phaseDot);
-
-        const info = document.createElement('div');
-        info.style.cssText = 'flex:1;min-width:0';
-
-        const title = document.createElement('div');
-        title.style.cssText = 'font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-        title.textContent = ev.title;
-        info.appendChild(title);
-
-        const meta = document.createElement('div');
-        meta.style.cssText = 'font-size:11px;color:var(--muted);margin-top:2px';
-        const s = ev.start_date.slice(0,10);
-        const e = ev.end_date.slice(0,10);
-        const dateRange = s === e ? s : `${s} – ${e}`;
-        meta.textContent = ev.is_ooo ? `OOO · ${dateRange}` : `${ev.phase}${ev.tier ? ' · T'+ev.tier : ''} · ${dateRange}`;
-        info.appendChild(meta);
-
-        if (!ev.is_ooo && ev.team && ev.team.length) {
-          const teamRow = document.createElement('div');
-          teamRow.style.cssText = 'display:flex;gap:4px;margin-top:5px;flex-wrap:wrap';
-          ev.team.forEach(m => {
-            const av = document.createElement('div');
-            av.style.cssText = `width:20px;height:20px;border-radius:50%;background:${TEAM_COLORS[m]||'#9ca3af'};display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff;flex-shrink:0`;
-            av.title = m;
-            av.textContent = m;
-            teamRow.appendChild(av);
-          });
-          info.appendChild(teamRow);
-        }
-
-        row.appendChild(info);
-
-        const editBtn = document.createElement('button');
-        editBtn.className = 'btn';
-        editBtn.style.cssText = 'font-size:11px;padding:3px 10px;flex-shrink:0';
-        editBtn.textContent = 'Edit';
-        editBtn.addEventListener('click', () => { closeDayDetail(); openEdit(ev); });
-        row.appendChild(editBtn);
-
-        list.appendChild(row);
-      });
     }
 
-    dayDetailOverlay.classList.add('open');
+    phaseEntries.forEach(({ ev }) => {
+      const ci = projectColor(ev.project_number);
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)';
+      row.innerHTML = `
+        <div class="cal-legend-swatch cal-c${ci}" style="margin-top:3px"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700">${ev.project_number} — ${ev.phase_label}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${ev.start_date} → ${ev.end_date} · Team: ${(ev.team||[]).join(', ') || '—'}</div>
+        </div>`;
+      list.appendChild(row);
+    });
+
+    oooEntries.forEach(({ ev }) => {
+      const team = ev.team || [];
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)';
+      row.innerHTML = `
+        <div style="width:12px;height:12px;border-radius:2px;background:#e7e5e4;border:1px dashed #aaa;margin-top:2px;flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;font-style:italic;color:var(--muted)">OOO: ${team.join(', ') || '?'}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${(ev.start_date||'').slice(0,10)} → ${(ev.end_date||'').slice(0,10)}</div>
+        </div>
+        <button class="btn" style="font-size:11px;padding:3px 10px;flex-shrink:0" onclick="openOOOEditFromDetail(this)">Edit</button>`;
+      row.querySelector('button').dataset.evJson = JSON.stringify(ev);
+      list.appendChild(row);
+    });
+
+    dayOverlay.classList.add('open');
   }
 
-  function closeDayDetail() { dayDetailOverlay.classList.remove('open'); }
+  window.openOOOEditFromDetail = function(btn) {
+    const ev = JSON.parse(btn.dataset.evJson || '{}');
+    dayOverlay.classList.remove('open');
+    openOOOEdit(ev);
+  };
 
-  document.getElementById('day-detail-close').addEventListener('click', closeDayDetail);
-  dayDetailOverlay.addEventListener('click', e => { if (e.target === dayDetailOverlay) closeDayDetail(); });
-  document.getElementById('day-detail-add-btn').addEventListener('click', () => {
-    closeDayDetail();
-    openAdd(dayDetailDate || isoDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()));
+  document.getElementById('day-detail-close').addEventListener('click', () => dayOverlay.classList.remove('open'));
+  dayOverlay.addEventListener('click', e => { if (e.target === dayOverlay) dayOverlay.classList.remove('open'); });
+  document.getElementById('day-detail-ooo-btn').addEventListener('click', () => {
+    dayOverlay.classList.remove('open');
+    openOOOAdd(_dayDetailDate);
   });
 
-  // ── Save ─────────────────────────────────────────────────────
-  document.getElementById('save-btn').addEventListener('click', async () => {
-    const isOOO    = document.getElementById('is-ooo').checked;
-    const team     = [...selectedTeam];
-    const startDate = document.getElementById('f-start').value;
-    const endDate   = document.getElementById('f-end').value;
+  // ── OOO modal ──────────────────────────────────────────────────
+  const oooModal = document.getElementById('ooo-modal');
+  const oooTrigger  = document.getElementById('ooo-team-trigger');
+  const oooDropdown = document.getElementById('ooo-team-dropdown');
+  let _oooEditingId = null;
+  let _oooSelectedTeam = new Set();
 
-    if (!team.length)            { alert('Please select at least one team member.'); return; }
-    if (!startDate)              { document.getElementById('f-start').value = new Date().toISOString().slice(0,10); }
-    if (!endDate)                { alert('IFP Due Date is required.'); return; }
-    if (endDate < startDate)     { alert('IFP Due Date must be on or after start date.'); return; }
+  function renderOOOTeamTrigger() {
+    oooTrigger.innerHTML = '';
+    if (_oooSelectedTeam.size === 0) {
+      const ph = document.createElement('span');
+      ph.className = 'team-select-placeholder';
+      ph.textContent = 'Select member…';
+      oooTrigger.appendChild(ph);
+    } else {
+      [..._oooSelectedTeam].forEach(m => {
+        const av = document.createElement('div');
+        av.className = 'selected-avatar';
+        av.style.background = TEAM_COLORS[m] || '#9ca3af';
+        av.textContent = m;
+        oooTrigger.appendChild(av);
+      });
+    }
+    oooTrigger.style.backgroundImage = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(107,101,96,.70)' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`;
+    oooTrigger.style.backgroundRepeat = 'no-repeat';
+    oooTrigger.style.backgroundPosition = 'right 10px center';
+    oooTrigger.style.paddingRight = '32px';
+  }
+
+  function syncOOODropdown() {
+    document.querySelectorAll('#ooo-team-dropdown .team-option').forEach(opt => {
+      const m = opt.dataset.member;
+      opt.classList.toggle('selected', _oooSelectedTeam.has(m));
+      opt.querySelector('.team-option-check').style.display = _oooSelectedTeam.has(m) ? '' : 'none';
+    });
+    document.querySelectorAll('#ooo-team-dropdown .team-option-dot[data-member]').forEach(dot => {
+      dot.style.background = TEAM_COLORS[dot.dataset.member] || '#9ca3af';
+    });
+  }
+
+  oooTrigger.addEventListener('click', e => {
+    e.stopPropagation();
+    oooDropdown.classList.toggle('open');
+    oooTrigger.classList.toggle('open', oooDropdown.classList.contains('open'));
+  });
+  document.querySelectorAll('#ooo-team-dropdown .team-option').forEach(opt => {
+    opt.addEventListener('click', e => {
+      e.stopPropagation();
+      const m = opt.dataset.member;
+      if (_oooSelectedTeam.has(m)) _oooSelectedTeam.delete(m);
+      else _oooSelectedTeam.add(m);
+      syncOOODropdown();
+      renderOOOTeamTrigger();
+    });
+  });
+  document.addEventListener('click', () => {
+    oooDropdown.classList.remove('open');
+    oooTrigger.classList.remove('open');
+  });
+
+  function openOOOAdd(dateStr) {
+    _oooEditingId = null;
+    _oooSelectedTeam.clear();
+    document.getElementById('ooo-modal-title').textContent = 'Add OOO';
+    document.getElementById('ooo-start').value = dateStr || new Date().toISOString().slice(0,10);
+    document.getElementById('ooo-end').value   = dateStr || new Date().toISOString().slice(0,10);
+    document.getElementById('ooo-delete-btn').style.display = 'none';
+    syncOOODropdown();
+    renderOOOTeamTrigger();
+    oooModal.classList.add('open');
+  }
+
+  function openOOOEdit(ev) {
+    _oooEditingId = ev.id;
+    _oooSelectedTeam.clear();
+    (ev.team || []).forEach(m => _oooSelectedTeam.add(m));
+    document.getElementById('ooo-modal-title').textContent = 'Edit OOO';
+    document.getElementById('ooo-start').value = (ev.start_date || '').slice(0,10);
+    document.getElementById('ooo-end').value   = (ev.end_date   || '').slice(0,10);
+    document.getElementById('ooo-delete-btn').style.display = '';
+    syncOOODropdown();
+    renderOOOTeamTrigger();
+    oooModal.classList.add('open');
+  }
+
+  window.openOOOEdit = openOOOEdit;
+
+  function closeOOOModal() { oooModal.classList.remove('open'); }
+  document.getElementById('ooo-modal-close').addEventListener('click', closeOOOModal);
+  document.getElementById('ooo-cancel-btn').addEventListener('click', closeOOOModal);
+  oooModal.addEventListener('click', e => { if (e.target === oooModal) closeOOOModal(); });
+
+  document.getElementById('add-ooo-btn').addEventListener('click', () => openOOOAdd(new Date().toISOString().slice(0,10)));
+
+  document.getElementById('ooo-save-btn').addEventListener('click', async () => {
+    const team  = [..._oooSelectedTeam];
+    const start = document.getElementById('ooo-start').value;
+    const end   = document.getElementById('ooo-end').value;
+    if (!team.length)        { alert('Select at least one team member.'); return; }
+    if (!start || !end)      { alert('Start and end dates are required.'); return; }
+    if (end < start)         { alert('End must be on or after start.'); return; }
 
     const payload = {
-      project_number: isOOO ? '' : document.getElementById('f-project-number').value.trim(),
-      client:         isOOO ? '' : document.getElementById('f-client').value.trim(),
-      location:       isOOO ? '' : document.getElementById('f-location').value.trim(),
-      phase:          isOOO ? 'SD' : document.getElementById('f-phase').value,
-      tier:           isOOO ? null : (document.getElementById('f-tier').value || null),
-      phase_jump:     isOOO ? false : document.getElementById('f-phase-jump').checked,
-      team,
-      project_type:   isOOO ? '' : document.getElementById('f-type').value.trim(),
-      start_date:     startDate + 'T00:00:00Z',
-      end_date:       endDate   + 'T23:59:59Z',
-      is_ooo:         isOOO,
+      project_number: '', client: '', location: '', phase: 'SD',
+      team, project_type: '', is_ooo: true,
+      start_date: start + 'T00:00:00Z',
+      end_date:   end   + 'T23:59:59Z',
     };
-
-    const url    = editingId ? `/api/calendar/events/${editingId}` : '/api/calendar/events';
-    const method = editingId ? 'PUT' : 'POST';
+    const url    = _oooEditingId ? `/api/calendar/events/${_oooEditingId}` : '/api/calendar/events';
+    const method = _oooEditingId ? 'PUT' : 'POST';
     try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert(err.detail || 'Save failed.'); return;
-      }
-      const saved = await res.json();
-      if (saved.ifp_conflict) conflictBanner.classList.add('visible');
-      closeModal();
-      await fetchEvents();
-    } catch (e) { alert('Network error — please try again.'); }
-  });
-
-  // ── Delete ───────────────────────────────────────────────────
-  deleteBtn.addEventListener('click', async () => {
-    if (!editingId || !confirm('Delete this event?')) return;
-    try {
-      const res = await fetch(`/api/calendar/events/${editingId}`, { method: 'DELETE' });
-      if (!res.ok) { alert('Delete failed.'); return; }
-      closeModal();
-      await fetchEvents();
+      const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.detail || 'Save failed.'); return; }
+      closeOOOModal();
+      loadCalendar();
     } catch (e) { alert('Network error.'); }
   });
 
-  // ── Fix capacity dot colors ──────────────────────────────────
-  document.querySelectorAll('.cap-form-dot').forEach(dot => {
-    const m = dot.textContent.trim();
-    dot.style.background = TEAM_COLORS[m] || '#9ca3af';
-  });
-
-  // ── Projected capacity in event form ─────────────────────────
-  let _lastCapData = null;
-  let _capFetchTimer = null;
-
-  function formatDateRangeLabel(start, end) {
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const [sy,sm,sd] = start.split('-').map(Number);
-    const [ey,em,ed] = end.split('-').map(Number);
-    if (start === end) return `${months[sm-1]} ${sd}`;
-    if (sm === em && sy === ey) return `${months[sm-1]} ${sd}–${ed}`;
-    return `${months[sm-1]} ${sd} – ${months[em-1]} ${ed}`;
-  }
-
-  function colorForPct(pct) {
-    if (pct >= 90) return 'var(--bad)';
-    if (pct >= 70) return 'var(--warn)';
-    return 'var(--good)';
-  }
-
-  function renderPool(containerId, engineers, capData) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    container.querySelectorAll('.cap-form-row').forEach(row => {
-      const initials = row.dataset.engineer;
-      const eng = (engineers || []).find(e => e.engineer_initials === initials);
-      const track = row.querySelector('.cap-form-bar-track');
-      const fill  = row.querySelector('.cap-form-bar-fill');
-      const pctEl = row.querySelector('.cap-form-pct');
-      const oldStripe = track.querySelector('.cap-form-ooo-stripe');
-      if (oldStripe) oldStripe.remove();
-      const oldBadge = row.querySelector('.cap-form-ooo-badge');
-      if (oldBadge) oldBadge.remove();
-      if (!eng || !capData) {
-        fill.style.width = '0%';
-        pctEl.textContent = '—';
-        pctEl.style.color = 'var(--muted)';
-        return;
-      }
-      const pct   = Math.min(eng.utilization_pct, 100);
-      const color = colorForPct(eng.utilization_pct);
-      fill.style.width = pct + '%';
-      fill.style.background = color;
-      pctEl.textContent = Math.round(eng.utilization_pct) + '%';
-      pctEl.style.color  = color;
-      if (eng.has_ooo && eng.ooo_bar_pct > 0) {
-        const stripe = document.createElement('div');
-        stripe.className = 'cap-form-ooo-stripe';
-        stripe.style.width = Math.min(eng.ooo_bar_pct, 100) + '%';
-        stripe.title = `${eng.ooo_days} OOO day(s) in this window`;
-        track.appendChild(stripe);
-        const badge = document.createElement('span');
-        badge.className = 'cap-form-ooo-badge';
-        badge.textContent = 'OOO';
-        badge.title = `${eng.ooo_days} OOO day(s)`;
-        row.appendChild(badge);
-      }
-    });
-  }
-
-  function updateConflictWarnings(selectedEngineers, capData) {
-    const panel = document.getElementById('conflict-warnings');
-    if (!panel) return;
-    if (!capData || !selectedEngineers.length) {
-      panel.style.display = 'none'; panel.innerHTML = ''; return;
-    }
-    const allEng = [...(capData.engineering_pool || []), ...(capData.drafting_pool || [])];
-    const warnings = [];
-    selectedEngineers.forEach(initials => {
-      const eng = allEng.find(e => e.engineer_initials === initials);
-      if (!eng) return;
-      if (eng.utilization_pct >= 90) {
-        warnings.push({ initials, msg: `${initials} is at ${Math.round(eng.utilization_pct)}% capacity${eng.has_ooo ? ' (includes OOO)' : ''} — may be overcommitted` });
-      } else if (eng.has_ooo) {
-        warnings.push({ initials, msg: `${initials} has time off in this window` });
-      }
-    });
-    if (!warnings.length) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
-    panel.style.display = 'block';
-    panel.innerHTML = warnings.map(w => {
-      const c = TEAM_COLORS[w.initials] || '#9ca3af';
-      const dot = `<span style="display:inline-flex;width:16px;height:16px;border-radius:50%;background:${c};align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff;flex-shrink:0">${w.initials}</span>`;
-      return `<div class="conflict-warning-item">${dot}<span class="conflict-icon">⚠</span><span>${w.msg}</span></div>`;
-    }).join('');
-  }
-
-  function renderCapacityBars(capData) {
-    _lastCapData = capData;
-    renderPool('engineering-pool-container', capData ? capData.engineering_pool : null, capData);
-    renderPool('drafting-pool-container',    capData ? capData.drafting_pool    : null, capData);
-    updateConflictWarnings([...selectedTeam], capData);
-  }
-
-  async function fetchProjectedCapacity(startDate, endDate) {
+  document.getElementById('ooo-delete-btn').addEventListener('click', async () => {
+    if (!_oooEditingId || !confirm('Delete this OOO event?')) return;
     try {
-      const r = await fetch(`/api/capacity/projected?start=${startDate}&end=${endDate}`);
-      if (!r.ok) {
-        console.error('Capacity API error:', r.status, await r.text());
-        return;
-      }
-      renderCapacityBars(await r.json());
-    } catch (e) {
-      console.error('Capacity fetch failed:', e);
-    }
-  }
-
-  function onFormDateChange() {
-    const startDate = document.getElementById('f-start').value;
-    const endDate   = document.getElementById('f-end').value;
-    if (!startDate || !endDate || startDate > endDate) return;
-    document.getElementById('capacity-header-label').textContent =
-      `ASSIGN TEAM — PROJECTED CAPACITY (${formatDateRangeLabel(startDate, endDate)})`;
-    clearTimeout(_capFetchTimer);
-    _capFetchTimer = setTimeout(() => fetchProjectedCapacity(startDate, endDate), 300);
-  }
-
-  function triggerCapacityLoad() {
-    const startDate = document.getElementById('f-start').value;
-    const endDate   = document.getElementById('f-end').value;
-    if (!startDate) return;
-    const end = endDate || startDate;
-    document.getElementById('capacity-header-label').textContent =
-      `ASSIGN TEAM — PROJECTED CAPACITY (${formatDateRangeLabel(startDate, end)})`;
-    fetchProjectedCapacity(startDate, end);
-  }
-
-  document.getElementById('f-start').addEventListener('change', onFormDateChange);
-  document.getElementById('f-end').addEventListener('change', onFormDateChange);
-
-  // ── Schedule generator ────────────────────────────────────────
-  const sgModal = document.getElementById('sched-gen-modal');
-  let sgPhases = [];
-  let sgSelectedTeam = new Set();
-
-  function sgShowStep(n) {
-    document.querySelectorAll('.sched-gen-step').forEach((el, i) => {
-      el.classList.toggle('active', i + 1 === n);
-    });
-  }
-
-  document.getElementById('gen-schedule-btn').addEventListener('click', () => {
-    sgShowStep(1);
-    sgSelectedTeam.clear();
-    ['sg-project-number','sg-client'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('sg-type').value = 'new_construction';
-    document.getElementById('sg-tier').value = '';
-    document.getElementById('sg-start').value = '';
-    document.getElementById('sg-end').value   = '';
-    document.getElementById('step1-err').style.display = 'none';
-    sgModal.classList.add('open');
+      const r = await fetch(`/api/calendar/events/${_oooEditingId}`, { method: 'DELETE' });
+      if (!r.ok) { alert('Delete failed.'); return; }
+      closeOOOModal();
+      loadCalendar();
+    } catch (e) { alert('Network error.'); }
   });
 
-  document.getElementById('sched-gen-close').addEventListener('click', () => sgModal.classList.remove('open'));
-  sgModal.addEventListener('click', e => { if (e.target === sgModal) sgModal.classList.remove('open'); });
-  document.getElementById('sg-cancel-1').addEventListener('click', () => sgModal.classList.remove('open'));
-  document.getElementById('sg-back-1').addEventListener('click', () => sgShowStep(1));
-  document.getElementById('sg-back-2').addEventListener('click', () => sgShowStep(2));
-
-  function countWDs(start, end) {
-    const s = new Date(start + 'T00:00:00'), e = new Date(end + 'T00:00:00');
-    let n = 0; const cur = new Date(s);
-    while (cur <= e) { const d = cur.getDay(); if (d >= 1 && d <= 5) n++; cur.setDate(cur.getDate() + 1); }
-    return n;
-  }
-
-  function renderPhaseTable(phases) {
-    sgPhases = phases.map(p => ({ ...p }));
-    const tbody = document.getElementById('sg-phase-tbody');
-    tbody.innerHTML = '';
-    sgPhases.forEach((p, idx) => {
-      const dur = countWDs(p.start_date, p.end_date);
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><span class="sched-phase-code" style="color:${PHASE_COLORS[p.phase_code]||'#9ca3af'}">${p.phase_code}</span></td>
-        <td><input type="date" class="sg-phase-start" data-idx="${idx}" value="${p.start_date}" style="padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:12px;font-family:var(--mono)"></td>
-        <td><input type="date" class="sg-phase-end" data-idx="${idx}" value="${p.end_date}" style="padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:12px;font-family:var(--mono)"></td>
-        <td class="sched-duration-cell" id="sg-dur-${idx}">${dur}d</td>
-      `;
-      tbody.appendChild(tr);
-    });
-    tbody.querySelectorAll('.sg-phase-start').forEach(inp => {
-      inp.addEventListener('change', () => {
-        sgPhases[parseInt(inp.dataset.idx)].start_date = inp.value;
-        syncPhaseDur(parseInt(inp.dataset.idx));
-      });
-    });
-    tbody.querySelectorAll('.sg-phase-end').forEach(inp => {
-      inp.addEventListener('change', () => {
-        sgPhases[parseInt(inp.dataset.idx)].end_date = inp.value;
-        syncPhaseDur(parseInt(inp.dataset.idx));
-      });
-    });
-  }
-
-  function syncPhaseDur(idx) {
-    const p = sgPhases[idx];
-    if (p.start_date && p.end_date && p.end_date >= p.start_date) {
-      const el = document.getElementById(`sg-dur-${idx}`);
-      if (el) el.textContent = countWDs(p.start_date, p.end_date) + 'd';
-    }
-  }
-
-  function renderSgCapBars(capData, containerId) {
-    const c = document.getElementById(containerId);
-    if (!c) return;
-    c.innerHTML = '';
-    if (!capData) { c.innerHTML = '<div style="font-size:12px;color:var(--muted)">No capacity data</div>'; return; }
-    [{ lbl: 'Engineering', list: capData.engineering_pool }, { lbl: 'Drafting', list: capData.drafting_pool }].forEach(pool => {
-      const lbl = document.createElement('div');
-      lbl.className = 'cap-form-pool-label'; lbl.textContent = pool.lbl + ' Pool';
-      c.appendChild(lbl);
-      (pool.list || []).forEach(eng => {
-        const pct = Math.min(eng.utilization_pct, 100);
-        const col = colorForPct(eng.utilization_pct);
-        const row = document.createElement('div');
-        row.className = 'cap-form-row';
-        const dot = document.createElement('div');
-        dot.className = 'cap-form-dot';
-        dot.style.background = TEAM_COLORS[eng.engineer_initials] || '#9ca3af';
-        dot.textContent = eng.engineer_initials;
-        const track = document.createElement('div'); track.className = 'cap-form-bar-track';
-        const fill = document.createElement('div');
-        fill.className = 'cap-form-bar-fill'; fill.style.width = pct + '%'; fill.style.background = col;
-        track.appendChild(fill);
-        if (eng.has_ooo && eng.ooo_bar_pct > 0) {
-          const stripe = document.createElement('div');
-          stripe.className = 'cap-form-ooo-stripe';
-          stripe.style.width = Math.min(eng.ooo_bar_pct, 100) + '%';
-          track.appendChild(stripe);
-        }
-        const pctEl = document.createElement('span');
-        pctEl.className = 'cap-form-pct'; pctEl.style.color = col;
-        pctEl.textContent = Math.round(eng.utilization_pct) + '%';
-        row.appendChild(dot); row.appendChild(track); row.appendChild(pctEl);
-        if (eng.has_ooo) {
-          const badge = document.createElement('span'); badge.className = 'cap-form-ooo-badge'; badge.textContent = 'OOO';
-          row.appendChild(badge);
-        }
-        c.appendChild(row);
-      });
-    });
-  }
-
-  function renderStep3Checkboxes(capData) {
-    const engEl   = document.getElementById('sg-eng-pool');
-    const draftEl = document.getElementById('sg-draft-pool');
-    engEl.innerHTML = ''; draftEl.innerHTML = '';
-    const engList   = capData ? capData.engineering_pool : ENG_POOL.map(i => ({ engineer_initials: i, utilization_pct: 0, has_ooo: false, role: '' }));
-    const draftList = capData ? capData.drafting_pool : DRAFT_POOL.map(i => ({ engineer_initials: i, utilization_pct: 0, has_ooo: false, role: '' }));
-    function makeRow(eng, targetEl) {
-      const col = TEAM_COLORS[eng.engineer_initials] || '#9ca3af';
-      const pct = Math.round(eng.utilization_pct);
-      const pctCol = colorForPct(eng.utilization_pct);
-      const label = document.createElement('label');
-      label.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer;border-bottom:1px solid var(--border)';
-      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = eng.engineer_initials; cb.style.cssText = 'width:auto;flex-shrink:0';
-      cb.addEventListener('change', () => {
-        if (cb.checked) sgSelectedTeam.add(eng.engineer_initials); else sgSelectedTeam.delete(eng.engineer_initials);
-        updateSgCreateBtn(); renderSgConflicts(capData);
-      });
-      const dot = document.createElement('div');
-      dot.style.cssText = `width:22px;height:22px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0`;
-      dot.textContent = eng.engineer_initials;
-      const name = document.createElement('span'); name.style.cssText = 'font-size:13px;font-weight:600;flex:1';
-      name.textContent = eng.engineer_initials + (eng.role ? ` — ${eng.role}` : '');
-      const pctEl = document.createElement('span'); pctEl.style.cssText = `font-size:11px;font-weight:700;font-family:var(--mono);color:${pctCol}`;
-      pctEl.textContent = pct + '%';
-      label.appendChild(cb); label.appendChild(dot); label.appendChild(name); label.appendChild(pctEl);
-      if (eng.has_ooo) {
-        const b = document.createElement('span'); b.className = 'cap-form-ooo-badge'; b.textContent = 'OOO'; label.appendChild(b);
-      }
-      targetEl.appendChild(label);
-    }
-    engList.forEach(e => makeRow(e, engEl));
-    draftList.forEach(e => makeRow(e, draftEl));
-  }
-
-  function renderSgConflicts(capData) {
-    const panel = document.getElementById('sg-conflict-warnings');
-    if (!capData || !sgSelectedTeam.size) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
-    const allEng = [...(capData.engineering_pool || []), ...(capData.drafting_pool || [])];
-    const warnings = [];
-    sgSelectedTeam.forEach(initials => {
-      const eng = allEng.find(e => e.engineer_initials === initials);
-      if (!eng) return;
-      if (eng.utilization_pct >= 90) warnings.push(`⚠ ${initials} is at ${Math.round(eng.utilization_pct)}% capacity — may be overcommitted`);
-      else if (eng.has_ooo) warnings.push(`⚠ ${initials} has time off during this schedule window`);
-    });
-    if (!warnings.length) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
-    panel.style.display = 'block';
-    panel.innerHTML = warnings.map(w => `<div style="font-size:12px;color:var(--warn);margin-bottom:4px">${w}</div>`).join('');
-  }
-
-  function updateSgCreateBtn() {
-    document.getElementById('sg-create-btn').disabled = sgSelectedTeam.size === 0;
-  }
-
-  document.getElementById('sg-preview-btn').addEventListener('click', async () => {
-    const start  = document.getElementById('sg-start').value;
-    const end    = document.getElementById('sg-end').value;
-    const type   = document.getElementById('sg-type').value;
-    const errEl  = document.getElementById('step1-err');
-    errEl.style.display = 'none';
-    if (!start || !end) { errEl.textContent = 'Start and end dates are required.'; errEl.style.display = 'block'; return; }
-    if (end <= start)   { errEl.textContent = 'End date must be after start date.'; errEl.style.display = 'block'; return; }
-    const btn = document.getElementById('sg-preview-btn');
-    btn.disabled = true; btn.textContent = 'Previewing…';
-    try {
-      const r = await fetch('/api/calendar/preview-schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start_date: start, end_date: end, project_type: type }),
-      });
-      if (!r.ok) { const err = await r.json().catch(() => ({})); errEl.textContent = err.detail || 'Preview failed.'; errEl.style.display = 'block'; return; }
-      const data = await r.json();
-      renderPhaseTable(data.phases || []);
-      document.getElementById('sg-cap-header').textContent = `PROJECTED CAPACITY (${formatDateRangeLabel(start, end)})`;
-      const capEl = document.getElementById('sg-cap-bars');
-      capEl.innerHTML = '<div style="font-size:12px;color:var(--muted)">Loading…</div>';
-      let sgCapData = null;
-      try {
-        const cr = await fetch(`/api/capacity/projected?start=${start}&end=${end}`);
-        if (cr.ok) { sgCapData = await cr.json(); renderSgCapBars(sgCapData, 'sg-cap-bars'); }
-      } catch (e) { capEl.innerHTML = '<div style="font-size:12px;color:var(--muted)">Capacity unavailable</div>'; }
-      sgModal._capData = sgCapData;
-      sgModal._projectNumber = document.getElementById('sg-project-number').value.trim();
-      sgModal._client = document.getElementById('sg-client').value.trim();
-      sgModal._tier   = document.getElementById('sg-tier').value || null;
-      sgShowStep(2);
-    } catch (e) { errEl.textContent = 'Network error.'; errEl.style.display = 'block'; }
-    finally { btn.disabled = false; btn.textContent = 'Preview Schedule →'; }
-  });
-
-  document.getElementById('sg-assign-btn').addEventListener('click', () => {
-    sgSelectedTeam.clear(); updateSgCreateBtn();
-    const capData = sgModal._capData || null;
-    renderStep3Checkboxes(capData);
-    renderSgConflicts(capData);
-    sgShowStep(3);
-  });
-
-  document.getElementById('sg-create-btn').addEventListener('click', async () => {
-    const btn = document.getElementById('sg-create-btn');
-    const errEl = document.getElementById('step3-err');
-    errEl.style.display = 'none';
-    btn.disabled = true; btn.textContent = 'Creating…';
-    try {
-      const r = await fetch('/api/calendar/create-schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_number: sgModal._projectNumber || '',
-          client:         sgModal._client || '',
-          tier:           sgModal._tier,
-          team:           [...sgSelectedTeam],
-          phases:         sgPhases,
-        }),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        errEl.textContent = err.detail || 'Create failed.'; errEl.style.display = 'block';
-        btn.disabled = false; btn.textContent = '✓ Create Schedule'; return;
-      }
-      const result = await r.json();
-      sgModal.classList.remove('open');
-      await fetchEvents();
-      const toast = document.createElement('div');
-      toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--good);color:#fff;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:700;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.2)';
-      toast.textContent = `✓ ${result.count || sgPhases.length} phase event(s) created`;
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 3000);
-    } catch (e) {
-      errEl.textContent = 'Network error.'; errEl.style.display = 'block';
-      btn.disabled = false; btn.textContent = '✓ Create Schedule';
-    }
-  });
-
-  // ── Init ─────────────────────────────────────────────────────
-  renderTeamTrigger();
-  fetchEvents();
-  setInterval(fetchEvents, 30000);
-
-  // Auto-open new-event modal from URL params (e.g., from Mo Review)
-  (function() {
-    var params = new URLSearchParams(window.location.search);
-    if (params.get('new') === '1') {
-      var today = new Date().toISOString().slice(0, 10);
-      openAdd(today);
-      var pn = params.get('project_number');
-      var cl = params.get('client');
-      if (pn) {
-        document.getElementById('f-project-number').value = pn;
-        onProjectNumberInput(pn);
-      }
-      if (cl) document.getElementById('f-client').value = cl;
-    }
-  })();
+  // ── Init ──────────────────────────────────────────────────────
+  loadCalendar();
+  setInterval(loadCalendar, 60000);
 })();
 </script>
 {% endblock %}
