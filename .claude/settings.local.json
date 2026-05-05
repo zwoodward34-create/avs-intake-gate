@@ -22,7 +22,25 @@
       "mcp__claude_ai_Supabase__list_projects",
       "mcp__claude_ai_Supabase__execute_sql",
       "Bash(git add *)",
-      "Bash(.venv/bin/python3 *)"
+      "Bash(.venv/bin/python3 *)",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "Bash(kill %1)",
+      "Bash(git -C /Users/woodwardfamily/Documents/Claude/avs-intake-gate status)",
+      "Bash(git -C /Users/woodwardfamily/Documents/Claude/avs-intake-gate log --oneline -5)",
+      "Bash(git *)",
+      "Bash(python *)",
+      "Bash(.venv/bin/python *)",
+      "mcp__claude_ai_Supabase__get_logs",
+      "Bash(render deploys *)",
+      "Bash(sed -n '105,115p' app/static/app.css)",
+      "Bash(sed -n '310,320p' app/static/app.css)",
+      "Bash(sed -n '590,600p' app/static/app.css)",
+      "Read(//tmp/**)",
+      "Bash(awk '{print $2}')",
+      "Bash(lsof -i :8000 -sTCP:LISTEN)",
+      "Bash(awk 'NR>1 {print $2}')",
+      "Bash(.venv/bin/uvicorn app.main:app *)",
+      "Bash(grep -n \"def dashboard\\\\|@app.get.*dashboard\\\\|@app.get.*/$\" /Users/woodwardfamily/Documents/Claude/avs-intake-gate/app/main.py)"
     ]
   }
 }

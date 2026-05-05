@@ -6,6 +6,40 @@ from typing import Any, Optional
 
 SEVERITY_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
+_DOC_CLARIFICATION_QUESTIONS: dict[str, str] = {
+    "Geotechnical report": (
+        "Can you provide the geotechnical report, or confirm when it will be available? "
+        "This is required before we can finalize foundation design."
+    ),
+    "Grading plan": (
+        "Can you provide the grading/civil plan, or confirm who is producing it and the expected delivery date?"
+    ),
+    "Architectural drawings (schematic or better)": (
+        "Can you share the current architectural drawings (schematic or better)? "
+        "We need these to define structural scope."
+    ),
+    "Existing structural drawings": (
+        "Do you have the existing structural drawings on hand? If not, have you checked county records or the original permit? "
+        "This affects our ability to assess the existing system."
+    ),
+    "Site visit photos / survey": (
+        "Can you provide site visit photos or a recent survey? "
+        "Without these we'll need to schedule a site visit before proceeding."
+    ),
+    "Architectural program / RFP": (
+        "Can you share the architectural program or RFP? "
+        "We need this to understand scope and deliverables."
+    ),
+    "Site plan with address/coordinates": (
+        "Can you provide a site plan with the project address or coordinates? "
+        "This is needed for code research and permit applications."
+    ),
+    "Preliminary schedule/timeline": (
+        "Can you share a preliminary schedule or target milestone dates? "
+        "This helps us confirm our availability and set delivery expectations."
+    ),
+}
+
 
 @dataclass(frozen=True)
 class RedFlag:
@@ -47,14 +81,15 @@ def complexity_estimate(answers: dict[str, Any]) -> str:
     """
     _TIER_NAMES = ["low", "medium", "high"]
 
-    building_type   = (answers.get("building_type")          or "").strip()
-    scope_risk_type = (answers.get("scope_risk_type")        or "").strip()
-    scope_def       = (answers.get("scope_definition")       or "").strip()
-    scope_creep     = (answers.get("scope_creep_likelihood") or "").strip()
-    schedule        = (answers.get("schedule_realism")       or "").strip()
-    arch_status     = (answers.get("architect_status")       or "").strip()
-    project_type    = (answers.get("project_type")           or "").strip()
-    has_drawings    = bool(answers.get("doc_existing_struct_drawings"))
+    building_type    = (answers.get("building_type")             or "").strip()
+    scope_risk_type  = (answers.get("scope_risk_type")           or "").strip()
+    scope_def        = (answers.get("scope_definition")          or "").strip()
+    scope_creep      = (answers.get("scope_creep_likelihood")    or "").strip()
+    schedule         = (answers.get("schedule_realism")          or "").strip()
+    arch_status      = (answers.get("architect_status")          or "").strip()
+    project_type     = (answers.get("project_type")              or "").strip()
+    primary_material = (answers.get("primary_structural_material") or "").strip()
+    has_drawings     = bool(answers.get("doc_existing_struct_drawings"))
 
     # 1. Base tier from building type
     if building_type in {"healthcare", "data_center"}:
@@ -68,17 +103,26 @@ def complexity_estimate(answers: dict[str, Any]) -> str:
     if scope_risk_type in {"ti_high_liability", "adaptive_reuse"}:
         tier = max(tier, 2)
 
+    # 3. Structural complexity adjustments
+    #    Critical healthcare TI (dialysis, surgery, life-safety): force HIGH
+    if building_type == "healthcare" and scope_risk_type == "ti_high_liability":
+        tier = 2
+
     # 3. Additional upward factors — each adds one tier, capped at HIGH
     _existing_building = project_type in {
         "build_to_suit_retrofit", "tenant_improvement",
         "addition_expansion", "one_off_unique",
     }
+    _masonry_existing = (
+        primary_material in {"masonry_cmu", "mixed"} and _existing_building
+    )
     factors = [
         scope_def    in {"undefined", "partial"},
         scope_creep  == "likely",
         schedule     in {"compressed", "unrealistic"},
         arch_status  in {"new", "not_identified"},
         _existing_building and not has_drawings,    # missing existing drawings
+        _masonry_existing,                          # masonry existing building (URM risk)
     ]
     for triggered in factors:
         if triggered:
@@ -126,6 +170,7 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
     """
     red_flags: list[RedFlag] = []
     needs_clarification_reasons: list[str] = []
+    soft_blockers: list[dict[str, str]] = []
 
     project_type = (answers.get("project_type") or "").strip()
     building_type = (answers.get("building_type") or "").strip()
@@ -308,32 +353,38 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
         if not doc_bool(key):
             missing_docs.append(label)
 
+    # Build soft blockers — one clarification question per missing document.
+    # These are advisory prompts for the client, not disqualifying flags.
+    for doc_label in missing_docs:
+        soft_blockers.append({
+            "doc": doc_label,
+            "question": _DOC_CLARIFICATION_QUESTIONS.get(
+                doc_label,
+                f"Can you provide the {doc_label.lower()}? It is required before we can proceed.",
+            ),
+        })
+
     docs_commitment = answers.get("docs_commitment")  # yes|no|unknown
     if missing_docs:
         if docs_commitment == "no":
+            # Client declined docs — flag as high (not critical); soft blockers carry the detail.
             red_flags.append(
                 RedFlag(
                     key="docs_refused",
-                    title="Required documentation will not be provided",
-                    severity="critical",
+                    title="Client declined to provide required documentation",
+                    severity="high",
                     category="Site/Docs",
-                    detail="Cannot design blind; this is a decline signal.",
+                    detail=(
+                        f"Missing: {', '.join(missing_docs[:3])}{'...' if len(missing_docs) > 3 else ''}. "
+                        "Client indicated documents will not be provided — clarification required."
+                    ),
                 )
             )
         elif docs_commitment in {"unknown", "", None}:
             needs_clarification_reasons.append(
                 "Missing required documentation and commitment to provide is unclear."
             )
-        else:
-            red_flags.append(
-                RedFlag(
-                    key="docs_missing_but_expected",
-                    title="Required documentation is missing (but expected)",
-                    severity="high",
-                    category="Site/Docs",
-                    detail="Proceed only after confirming delivery timeline for missing items.",
-                )
-            )
+        # docs expected but missing → handled via soft_blockers, not a blocking red flag
 
     # Architect/client
     architect_status = answers.get("architect_status")  # known_good|known_fair|new|unknown|not_identified|inhouse
@@ -361,8 +412,9 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
             )
         )
 
-    decision_maker = answers.get("decision_maker_clarity")  # direct|pm|unclear|none
-    if decision_maker in {"unclear", "none"}:
+    decision_maker = answers.get("decision_maker_clarity")
+    # Accept both short form ("unclear", "none") and AI-extracted long form ("unclear_red_flag")
+    if decision_maker in {"unclear", "none", "unclear_red_flag"}:
         red_flags.append(
             RedFlag(
                 key="decision_maker_unclear",
@@ -482,6 +534,7 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
         "recommendation": recommendation,
         "reason": reason,
         "missing_docs": missing_docs,
+        "soft_blockers": soft_blockers,
         "needs_clarification_reasons": needs_clarification_reasons,
         "complexity_estimate": complexity_estimate(answers),
         "fee_range_estimate": fee_range_estimate(answers),

@@ -25,8 +25,10 @@ to fill out a project intake form. You know this firm deeply:
   primary contact) — treat any C&P contact as "Known architect, good track record"
 - A "hard-stop deadline" means missing it has real consequences: lease \
   commencement, lender draw, GC mobilization, permit board date
-- "Decision-maker" means the person who can approve scope and fee. A PM, \
-  coordinator, or intermediary is NOT a decision-maker.
+- "Decision-maker" means the person who can approve scope and fee. Development \
+  Managers, Project Executives, partners, directors, VPs, and principals at \
+  the client or developer organization ARE decision-makers. A PM, coordinator, \
+  or administrative assistant who merely routes messages to an approver is NOT.
 
 Your output must be a single valid JSON object matching the schema below — \
 no prose, no markdown, no explanation. Only JSON.
@@ -92,9 +94,11 @@ quick_flags: Object with boolean values. Mark true ONLY when evidence \
   architect_unresponsive_or_unproven: true if architect status is unknown, \
     architect is not named, or document describes architect communication as \
     slow/difficult
-  no_clear_decision_maker: true if sender is a PM, coordinator, or assistant; \
-    or if the actual approving party (owner, developer principal, tenant) is \
-    unnamed or not directly accessible
+  no_clear_decision_maker: true ONLY if the sender is a PM, coordinator, or \
+    administrative assistant with no authority to approve scope or fee; or the \
+    actual approving party is unnamed and not directly accessible. Development \
+    Managers, Project Executives, directors, VPs, partners, and principals are \
+    decision-makers — do NOT flag them as unclear
 
 detailed_screening: Object with the following fields:
   primary_structural_material: One of exactly:

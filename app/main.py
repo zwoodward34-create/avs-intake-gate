@@ -491,6 +491,7 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
             "complexity_estimate": decision["complexity_estimate"],
             "fee_range_estimate": decision["fee_range_estimate"],
             "fast_track": decision["fast_track"],
+            "soft_blockers": decision.get("soft_blockers", []),
             "cognasync_estimate": cognasync_estimate,
             "now_local": _now_local_iso(),
             "mo_passcode_enabled": bool(os.environ.get("AVS_MO_PASSCODE")),

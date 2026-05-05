@@ -259,6 +259,22 @@
           {% else %}
             <div class="good">No red flags detected.</div>
           {% endif %}
+          {% if soft_blockers %}
+          <div class="hr"></div>
+          <h2>Document Clarifications Needed</h2>
+          <div class="subtle" style="margin-bottom:10px">These questions can be sent to the client to resolve missing documentation before proceeding.</div>
+          <table class="table">
+            <thead><tr><th>Missing Document</th><th>Suggested Question</th></tr></thead>
+            <tbody>
+              {% for sb in soft_blockers %}
+              <tr>
+                <td style="font-weight:700;white-space:nowrap">{{ sb.doc }}</td>
+                <td class="subtle">{{ sb.question }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
           <div class="hr"></div>
           <h2>Email to Mo</h2>
           <div class="subtle" style="margin-bottom:10px">If flagged, copy this template and send to Mo.</div>
