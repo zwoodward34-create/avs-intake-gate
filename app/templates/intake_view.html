@@ -829,7 +829,8 @@ function copyProposal() {
     var hoursEl = document.getElementById('log-hours-' + phaseCode);
     var noteEl  = document.getElementById('log-note-'  + phaseCode);
     var errorEl = document.getElementById('log-error-' + phaseCode);
-    var btn     = document.querySelector('#expand-row-' + phaseCode + ' .matrix-log-btn');
+    var _expandRow = document.getElementById('expand-row-' + phaseCode);
+    var btn     = _expandRow ? _expandRow.querySelector('.matrix-log-btn') : null;
 
     if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
 
