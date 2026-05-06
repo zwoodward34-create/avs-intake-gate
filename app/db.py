@@ -2518,3 +2518,213 @@ def count_burn_at_risk(today: date) -> int:
         if fee > 0 and burn >= fee * 0.70:
             count += 1
     return count
+
+
+# ── Profiles (RBAC) ───────────────────────────────────────────────────────────
+
+VALID_ROLES = {"admin", "billing", "engineer", "drafter"}
+
+
+def list_profiles() -> list[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("profiles")
+        .select("*")
+        .order("initials")
+        .execute()
+    )
+    return resp.data or []
+
+
+def get_profile(initials: str) -> Optional[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("profiles")
+        .select("*")
+        .eq("initials", initials.upper())
+        .maybe_single()
+        .execute()
+    )
+    return resp.data
+
+
+def get_profile_role(initials: str) -> str:
+    """Returns the role string for a team member, falling back to 'engineer'."""
+    p = get_profile(initials)
+    return p["role"] if p else "engineer"
+
+
+def upsert_profile(
+    initials: str,
+    *,
+    full_name: Optional[str] = None,
+    email: Optional[str] = None,
+    role: Optional[str] = None,
+    color: Optional[str] = None,
+    pool: Optional[str] = None,
+    capacity_multiplier: Optional[float] = None,
+) -> None:
+    now = _utc_now_iso()
+    row: dict[str, Any] = {"initials": initials.upper(), "updated_at": now}
+    if full_name is not None:
+        row["full_name"] = full_name
+    if email is not None:
+        row["email"] = email
+    if role is not None:
+        row["role"] = role
+    if color is not None:
+        row["color"] = color
+    if pool is not None:
+        row["pool"] = pool
+    if capacity_multiplier is not None:
+        row["capacity_multiplier"] = capacity_multiplier
+    (
+        _client()
+        .table("profiles")
+        .upsert(row, on_conflict="initials")
+        .execute()
+    )
+
+
+def list_profiles_by_role(role: str) -> list[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("profiles")
+        .select("*")
+        .eq("role", role)
+        .order("initials")
+        .execute()
+    )
+    return resp.data or []
+
+
+# ── Billing Queue ─────────────────────────────────────────────────────────────
+
+def list_billing_queue(
+    *,
+    status: Optional[str] = None,
+    assigned_to: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    q = _client().table("billing_queue").select("*")
+    if status:
+        q = q.eq("status", status)
+    if assigned_to:
+        q = q.eq("assigned_to", assigned_to.upper())
+    resp = q.order("created_at").execute()
+    return resp.data or []
+
+
+def get_billing_queue_item(item_id: int) -> Optional[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("billing_queue")
+        .select("*")
+        .eq("id", item_id)
+        .maybe_single()
+        .execute()
+    )
+    return resp.data
+
+
+def get_billing_queue_for_intake(intake_id: int) -> list[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("billing_queue")
+        .select("*")
+        .eq("intake_id", intake_id)
+        .order("created_at")
+        .execute()
+    )
+    return resp.data or []
+
+
+def create_billing_queue_item(
+    intake_id: int,
+    billing_phase_code: str,
+    *,
+    project_number: Optional[str] = None,
+    client_name: Optional[str] = None,
+    amount: Optional[float] = None,
+    assigned_to: Optional[str] = None,
+    invoice_date: Optional[str] = None,
+    due_date: Optional[str] = None,
+    notes: Optional[str] = None,
+) -> int:
+    now = _utc_now_iso()
+    row: dict[str, Any] = {
+        "intake_id":          intake_id,
+        "billing_phase_code": billing_phase_code,
+        "status":             "pending",
+        "created_at":         now,
+        "updated_at":         now,
+    }
+    if project_number is not None:
+        row["project_number"] = project_number
+    if client_name is not None:
+        row["client_name"] = client_name
+    if amount is not None:
+        row["amount"] = amount
+    if assigned_to is not None:
+        row["assigned_to"] = assigned_to.upper()
+    if invoice_date is not None:
+        row["invoice_date"] = invoice_date
+    if due_date is not None:
+        row["due_date"] = due_date
+    if notes is not None:
+        row["notes"] = notes
+    resp = _client().table("billing_queue").insert(row).execute()
+    return (resp.data or [{}])[0].get("id", -1)
+
+
+def update_billing_queue_item(
+    item_id: int,
+    *,
+    status: Optional[str] = None,
+    invoice_number: Optional[str] = None,
+    invoice_date: Optional[str] = None,
+    due_date: Optional[str] = None,
+    amount: Optional[float] = None,
+    paid_date: Optional[str] = None,
+    paid_amount: Optional[float] = None,
+    assigned_to: Optional[str] = None,
+    notes: Optional[str] = None,
+) -> None:
+    patch: dict[str, Any] = {"updated_at": _utc_now_iso()}
+    if status is not None:
+        patch["status"] = status
+    if invoice_number is not None:
+        patch["invoice_number"] = invoice_number
+    if invoice_date is not None:
+        patch["invoice_date"] = invoice_date
+    if due_date is not None:
+        patch["due_date"] = due_date
+    if amount is not None:
+        patch["amount"] = amount
+    if paid_date is not None:
+        patch["paid_date"] = paid_date
+    if paid_amount is not None:
+        patch["paid_amount"] = paid_amount
+    if assigned_to is not None:
+        patch["assigned_to"] = assigned_to.upper()
+    if notes is not None:
+        patch["notes"] = notes
+    (
+        _client()
+        .table("billing_queue")
+        .update(patch)
+        .eq("id", item_id)
+        .execute()
+    )
+
+
+def count_billing_queue_pending(assigned_to: Optional[str] = None) -> int:
+    q = (
+        _client()
+        .table("billing_queue")
+        .select("id", count="exact")
+        .in_("status", ["pending", "sent", "overdue"])
+    )
+    if assigned_to:
+        q = q.eq("assigned_to", assigned_to.upper())
+    resp = q.execute()
+    return resp.count or 0
