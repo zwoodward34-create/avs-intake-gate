@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  margin: -24px;
+">
+  <div style="width: 100%; max-width: 380px;">
+
+    <div style="text-align: center; margin-bottom: 32px;">
+      <div style="font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 4px;">AVS</div>
+      <div style="font-size: 13px; color: var(--muted); font-weight: 500; letter-spacing: 0.03em;">Structural Engineers · Operations</div>
+    </div>
+
+    <div class="card" style="padding: 28px 28px 24px;">
+
+      <div style="font-size: 16px; font-weight: 700; margin-bottom: 20px;">Sign in</div>
+
+      {% if error %}
+      <div style="background: oklch(95% 0.04 22); border: 1px solid oklch(85% 0.08 22); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 13px; color: var(--bad);">
+        {{ error }}
+      </div>
+      {% endif %}
+
+      <div id="login-error" style="background: oklch(95% 0.04 22); border: 1px solid oklch(85% 0.08 22); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 13px; color: var(--bad); display: none;"></div>
+
+      <div class="field">
+        <label for="login-email">Email address</label>
+        <input type="email" id="login-email" placeholder="you@avschwan.com" autocomplete="email" autofocus />
+      </div>
+
+      <div class="field" style="margin-bottom: 20px;">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+
+      <button class="btn btn-primary" id="login-btn" style="width: 100%; padding: 10px; font-size: 14px; font-weight: 600;"
+              onclick="doLogin()">
+        Sign in
+      </button>
+
+    </div>
+
+    <div style="text-align: center; margin-top: 16px; font-size: 12px; color: var(--muted);">
+      A.V. Schwan &amp; Associates · Internal Use Only
+    </div>
+
+  </div>
+</div>
+
+<script>
+async function doLogin() {
+  var email = document.getElementById('login-email').value.trim();
+  var password = document.getElementById('login-password').value;
+  var errEl = document.getElementById('login-error');
+  var btn = document.getElementById('login-btn');
+
+  errEl.style.display = 'none';
+
+  if (!email) { showErr('Enter your email address.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+
+  try {
+    var resp = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: password }),
+    });
+    var data = await resp.json();
+    if (!resp.ok) {
+      showErr(data.detail || 'Access denied.');
+    } else {
+      window.location.href = data.redirect_url || '/';
+    }
+  } catch (e) {
+    showErr('Network error. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign in';
+  }
+}
+
+function showErr(msg) {
+  var el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doLogin();
+});
+</script>
+
+{% endblock %}

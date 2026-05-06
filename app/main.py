@@ -12,9 +12,10 @@ import json as _json
 from datetime import date, timedelta
 
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 from fastapi import UploadFile, File
 
@@ -200,10 +201,87 @@ templates.env.globals["burn_nav_badge_count"] = _burn_nav_badge_count
 app = FastAPI(title="AVS Intake Gate")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+# Emails are compared case-insensitively (stored lowercase here).
+_USER_DIRECTORY: dict[str, dict[str, str]] = {
+    "mkateeb@avschwan.com":   {"role": "admin",          "initials": "MK", "name": "Mo Kateeb"},
+    "nkline@avschwan.com":    {"role": "admin",          "initials": "NK", "name": "Natalie Kline"},
+    "zwoodward@avschwan.com": {"role": "admin",          "initials": "ZW", "name": "Zac Woodward"},
+    "rolson@avschwan.com":    {"role": "admin",          "initials": "RO", "name": "R. Olson"},
+    "rsmith@avschwan.com":    {"role": "employee",       "initials": "RS", "name": "R. Smith"},
+    "swebb@avschwan.com":     {"role": "employee",       "initials": "SW", "name": "S. Webb"},
+    "jprado@avschwan.com":    {"role": "employee",       "initials": "JP", "name": "J. Prado"},
+    "jwadman@avschwan.com":   {"role": "employee",       "initials": "JW", "name": "J. Wadman"},
+    "jrobinder@avschwan.com": {"role": "employee",       "initials": "JR", "name": "J. Robinder"},
+    "rkanth@avschwan.com":    {"role": "employee",       "initials": "RK", "name": "R. Kanth"},
+    "nsongco@avschwan.com":   {"role": "office_manager", "initials": "NS", "name": "Natalie Songco"},
+}
+
+_ROLE_REDIRECT: dict[str, str] = {
+    "office_manager": "/billing-queue",
+    "admin":          "/",
+    "employee":       "/timesheet",
+}
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ.get("SESSION_SECRET_KEY", "avs-dev-fallback-key"),
+    session_cookie="avs_session",
+    https_only=False,
+    max_age=28800,  # 8 hours
+)
+
+
+def _session_user(request: Request) -> Optional[dict]:
+    return request.session.get("user")
+
 
 @app.on_event("startup")
 def _startup() -> None:
     db.init_db()
+
+
+# ── Login / Logout ────────────────────────────────────────────────────────────
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, error: Optional[str] = None) -> HTMLResponse:
+    if _session_user(request):
+        return RedirectResponse("/", status_code=302)
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "error":   error,
+        "hide_nav_actions": True,
+        "title": "Sign In — AVS",
+    })
+
+
+@app.post("/api/auth/login")
+async def api_login(request: Request) -> JSONResponse:
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    user_info = _USER_DIRECTORY.get(email)
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Access Denied: Email not registered in the system.")
+    request.session["user"] = {
+        "email":    email,
+        "role":     user_info["role"],
+        "initials": user_info["initials"],
+        "name":     user_info["name"],
+    }
+    return JSONResponse({
+        "email":        email,
+        "role":         user_info["role"],
+        "initials":     user_info["initials"],
+        "name":         user_info["name"],
+        "redirect_url": _ROLE_REDIRECT.get(user_info["role"], "/"),
+    })
+
+
+@app.get("/api/auth/logout")
+def api_logout(request: Request) -> RedirectResponse:
+    request.session.clear()
+    return RedirectResponse("/login", status_code=302)
 
 
 @app.get("/", response_class=HTMLResponse)

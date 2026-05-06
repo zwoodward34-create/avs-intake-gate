@@ -78,7 +78,19 @@
         </div>
       </div>
 
-      <div class="sidebar-footer" id="sidebar-clock"></div>
+      {% set _u = request.session.get('user') %}
+      <div class="sidebar-footer">
+        {% if _u %}
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--sidebar-active);font-size:11px;font-weight:700;color:var(--sidebar-text);flex-shrink:0">{{ _u.initials }}</span>
+            <span style="font-size:12px;color:var(--sidebar-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ _u.name }}</span>
+          </div>
+          <a href="/api/auth/logout" title="Sign out" style="font-size:11px;color:var(--sidebar-muted);white-space:nowrap;text-decoration:none;flex-shrink:0" onmouseover="this.style.color='var(--sidebar-text)'" onmouseout="this.style.color='var(--sidebar-muted)'">Sign out</a>
+        </div>
+        {% endif %}
+        <div id="sidebar-clock"></div>
+      </div>
     </nav>
     {% endif %}
 
