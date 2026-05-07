@@ -266,13 +266,22 @@
       .catch(() => { banner.style.display = 'none'; });
   }
 
+  // Store current banner state so updateBannerHours can patch it
+  var _bannerState = null;
+
   function renderSubmissionBanner(sub, eng, start, end) {
     var banner = document.getElementById('ts-submit-banner');
     var status = (sub.status || 'DRAFT').toUpperCase();
     _lockedPeriod = (status === 'SUBMITTED' || status === 'APPROVED');
+    _bannerState  = {sub, eng, start, end, status};
 
-    var badgeClass = { DRAFT:'badge-draft', SUBMITTED:'badge-submitted', APPROVED:'badge-approved', REJECTED:'badge-rejected' }[status] || 'badge-draft';
-    var statusClass = status.toLowerCase();
+    var statusColors = {
+      DRAFT:    {bg:'rgba(79,142,247,.10)', border:'rgba(79,142,247,.25)', text:'var(--accent)'},
+      SUBMITTED:{bg:'rgba(251,191,36,.10)', border:'rgba(251,191,36,.3)',  text:'#fbbf24'},
+      APPROVED: {bg:'rgba(0,230,118,.10)',  border:'rgba(0,230,118,.3)',   text:'var(--good)'},
+      REJECTED: {bg:'rgba(248,113,113,.10)',border:'rgba(248,113,113,.3)', text:'var(--bad)'},
+    };
+    var sc = statusColors[status] || statusColors.DRAFT;
 
     var metaLine = '';
     if (status === 'SUBMITTED' && sub.submitted_at) {
@@ -281,46 +290,68 @@
       metaLine = 'Approved ' + new Date(sub.reviewed_at).toLocaleDateString();
       if (sub.reviewer_notes) metaLine += ' · ' + sub.reviewer_notes;
     } else if (status === 'REJECTED' && sub.reviewer_notes) {
-      metaLine = 'Rejected · ' + sub.reviewer_notes;
+      metaLine = sub.reviewer_notes;
     } else if (status === 'DRAFT') {
-      metaLine = 'Not yet submitted for review';
+      metaLine = 'Log your hours for this period, then submit for Mo\'s approval.';
     }
 
-    var hoursLine = sub.total_hours != null ? sub.total_hours.toFixed(1) + ' h' : '';
+    var hoursHtml = sub.total_hours != null
+      ? `<span id="banner-hours" style="font-size:20px;font-weight:900;font-family:var(--mono)">${parseFloat(sub.total_hours).toFixed(1)}h</span>`
+      : `<span id="banner-hours" style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--muted)">—</span>`;
 
     var actionHtml = '';
     if (status === 'DRAFT' || status === 'REJECTED') {
-      actionHtml = `<button class="btn btn-primary" type="button" onclick="submitPeriod('${eng}','${start}','${end}')" style="white-space:nowrap;font-size:12px">Submit for Review</button>`;
+      var btnLabel = status === 'REJECTED' ? 'Re-submit for Review' : 'Submit for Review';
+      actionHtml = `<button class="btn btn-primary" type="button" id="submit-btn"
+        onclick="submitPeriod('${eng}','${start}','${end}')"
+        style="white-space:nowrap;padding:8px 20px;font-size:13px;font-weight:700">${btnLabel}</button>`;
     } else if (status === 'SUBMITTED') {
       if (_currentUserRole === 'admin') {
         actionHtml = `
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn btn-primary" type="button"
               onclick="reviewPeriod('${sub.id}','APPROVED',null,'${eng}','${start}','${end}')"
-              style="white-space:nowrap;font-size:12px;background:var(--good);border-color:var(--good)">Approve</button>
+              style="white-space:nowrap;font-size:13px;font-weight:700;padding:8px 20px;background:var(--good);border-color:var(--good)">✓ Approve</button>
             <button class="btn" type="button"
-              onclick="reviewPeriod('${sub.id}','REJECTED',prompt('Reason for rejection (optional):'),'${eng}','${start}','${end}')"
+              onclick="reviewPeriod('${sub.id}','REJECTED',prompt('Reason (optional):'),'${eng}','${start}','${end}')"
               style="white-space:nowrap;font-size:12px;color:var(--bad);border-color:var(--bad)">Reject</button>
           </div>`;
       } else {
-        actionHtml = `<span style="font-size:12px;color:var(--warn)">⏳ Awaiting approval</span>`;
+        actionHtml = `<span style="font-size:12px;color:#fbbf24;display:flex;align-items:center;gap:6px"><span>⏳</span><span>Awaiting Mo's approval</span></span>`;
       }
     } else if (status === 'APPROVED') {
-      actionHtml = `<span style="font-size:12px;color:var(--good)">✓ Period locked</span>`;
+      actionHtml = `<span style="font-size:13px;font-weight:700;color:var(--good)">✓ Approved — period locked</span>`;
     }
 
-    banner.className = 'ts-submit-banner status-' + statusClass;
+    banner.style.cssText = `display:flex;align-items:center;justify-content:space-between;gap:16px;
+      padding:16px 20px;border-radius:8px;margin-bottom:16px;flex-wrap:wrap;
+      background:${sc.bg};border:1px solid ${sc.border}`;
     banner.innerHTML = `
-      <div class="ts-submit-info">
-        <div class="ts-submit-label">
-          Pay Period ${start} – ${end}
-          <span class="ts-submit-status-badge ${badgeClass}">${status}</span>
-          ${hoursLine ? '<span style="font-size:11px;color:var(--muted);margin-left:8px">' + hoursLine + '</span>' : ''}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:700;color:${sc.text};text-transform:uppercase;letter-spacing:.05em">${status}</span>
+          <span style="font-size:13px;font-weight:600;color:var(--text)">Pay Period ${start} – ${end}</span>
         </div>
-        <div class="ts-submit-meta">${metaLine}</div>
+        <div style="font-size:12px;color:var(--muted)">${metaLine}</div>
       </div>
-      <div>${actionHtml}</div>`;
+      <div style="display:flex;align-items:center;gap:16px;flex-shrink:0">
+        ${hoursHtml}
+        ${actionHtml}
+      </div>`;
     banner.style.display = 'flex';
+  }
+
+  function updateBannerHours(totalHours) {
+    var el = document.getElementById('banner-hours');
+    if (el && _bannerState && _bannerState.status === 'DRAFT') {
+      el.textContent = totalHours > 0 ? totalHours.toFixed(1) + 'h' : '0h';
+      el.style.color = totalHours > 0 ? 'var(--text)' : 'var(--muted)';
+      // Also update the submit button label
+      var btn = document.getElementById('submit-btn');
+      if (btn) btn.textContent = totalHours > 0
+        ? `Submit ${totalHours.toFixed(1)}h for Review`
+        : 'Submit for Review';
+    }
   }
 
   window.submitPeriod = function(eng, start, end) {
@@ -363,7 +394,12 @@
 
     fetch('/api/time-entries?' + params.toString())
       .then(r => r.json())
-      .then(entries => renderTable(entries))
+      .then(entries => {
+        renderTable(entries);
+        // Update banner with live hours count after entries load
+        var liveHours = entries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
+        updateBannerHours(liveHours);
+      })
       .catch(() => {
         document.getElementById('ts-table-wrap').innerHTML =
           '<div class="ts-empty">Could not load entries.</div>';
