@@ -243,6 +243,55 @@ def _require_auth(request: Request) -> Optional[RedirectResponse]:
     return None
 
 
+_ROLE_HOME = {
+    "admin":          "/",
+    "office_manager": "/billing-queue",
+    "employee":       "/timesheet",
+    "engineer":       "/timesheet",
+    "drafter":        "/timesheet",
+    "billing":        "/billing-queue",
+}
+
+# Pages each role may visit (admin implicit everywhere)
+_EMPLOYEE_PAGES = {"/timesheet", "/calendar", "/time-off"}
+_OFFICE_PAGES   = {"/timesheet", "/calendar", "/time-off",
+                   "/billing-queue", "/payroll-export", "/burn-health", "/capacity"}
+
+_ROLE_ALLOWED: dict[str, set[str]] = {
+    "admin":          None,   # None = unrestricted
+    "office_manager": _OFFICE_PAGES,
+    "billing":        _OFFICE_PAGES,
+    "employee":       _EMPLOYEE_PAGES,
+    "engineer":       _EMPLOYEE_PAGES,
+    "drafter":        _EMPLOYEE_PAGES,
+}
+
+
+def _require_role(request: Request, *allowed: str) -> Optional[RedirectResponse]:
+    """Auth + role gate. Returns a redirect if the user lacks the required role."""
+    if redir := _require_auth(request):
+        return redir
+    user = _session_user(request) or {}
+    role = user.get("role", "")
+    if role not in allowed:
+        home = _ROLE_HOME.get(role, "/timesheet")
+        return RedirectResponse(home, status_code=302)
+    return None
+
+
+def _check_page_access(request: Request, path: str) -> Optional[RedirectResponse]:
+    """Generic per-page guard based on _ROLE_ALLOWED table."""
+    if redir := _require_auth(request):
+        return redir
+    user = _session_user(request) or {}
+    role = user.get("role", "")
+    allowed = _ROLE_ALLOWED.get(role)
+    if allowed is not None and path not in allowed:
+        home = _ROLE_HOME.get(role, "/timesheet")
+        return RedirectResponse(home, status_code=302)
+    return None
+
+
 @app.on_event("startup")
 def _startup() -> None:
     db.init_db()
@@ -296,7 +345,7 @@ def api_logout(request: Request) -> RedirectResponse:
 
 @app.get("/", response_class=HTMLResponse)
 def launch(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/"): return redir
     now = datetime.now()
     hour = now.hour
     time_of_day = "morning" if hour < 12 else "afternoon" if hour < 17 else "evening"
@@ -377,7 +426,7 @@ def launch(request: Request) -> HTMLResponse:
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, status: Optional[str] = None) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/dashboard"): return redir
     intakes = db.list_intakes(status=status)
     counts: dict[str, int] = {}
     for row in intakes:
@@ -400,7 +449,7 @@ def dashboard(request: Request, status: Optional[str] = None) -> HTMLResponse:
 
 @app.get("/intakes/new", response_class=HTMLResponse)
 def intake_new(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/intakes/new"): return redir
     return templates.TemplateResponse(
         "intake_form.html",
         {
@@ -493,7 +542,7 @@ async def intake_create(request: Request) -> RedirectResponse:
 
 @app.get("/intakes/{intake_id}", response_class=HTMLResponse)
 def intake_view(request: Request, intake_id: int) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/intakes/{intake_id}"): return redir
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -607,7 +656,7 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
 
 @app.get("/intakes/{intake_id}/edit", response_class=HTMLResponse)
 def intake_edit(request: Request, intake_id: int) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/intakes/{intake_id}/edit"): return redir
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -688,7 +737,7 @@ def push_to_mo_queue(intake_id: int) -> RedirectResponse:
 
 @app.get("/intake/upload", response_class=HTMLResponse)
 def intake_upload_get(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/intake/upload"): return redir
     return templates.TemplateResponse(
         "upload_intake.html",
         {"request": request, "now_local": _now_local_iso(), "error": None},
@@ -804,7 +853,7 @@ def _require_mo_passcode_if_configured(passcode: Optional[str]) -> None:
 
 @app.get("/mo-queue", response_class=HTMLResponse)
 def mo_queue(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/mo-queue"): return redir
     import json as _json
 
     raw_intakes = db.list_pending_mo()
@@ -1029,7 +1078,7 @@ async def api_generate_proposal_json(request: Request, intake_id: int) -> dict:
 
 @app.get("/intakes/{intake_id}/mo-review", response_class=HTMLResponse)
 def mo_review_get(request: Request, intake_id: int) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/intakes/{intake_id}/mo-review"): return redir
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -1113,7 +1162,7 @@ async def proposal_checklist_update(request: Request, intake_id: int) -> Redirec
 
 @app.get("/reports", response_class=HTMLResponse)
 def reports(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/reports"): return redir
     all_intakes = db.list_intakes()
     now = datetime.now()
 
@@ -1375,7 +1424,7 @@ def reports(request: Request) -> HTMLResponse:
 
 @app.get("/past-projects", response_class=HTMLResponse)
 def past_projects(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/past-projects"): return redir
     import json as _json
     error: Optional[str] = None
     type_options = project_search.DEFAULT_TYPE_OPTIONS
@@ -1454,7 +1503,7 @@ def api_calendar_refresh() -> dict[str, str]:
 
 @app.get("/calendar", response_class=HTMLResponse)
 def calendar_page(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/calendar"): return redir
     import json as _json
     return templates.TemplateResponse(
         "calendar.html",
@@ -1709,7 +1758,7 @@ async def api_create_schedule(request: Request) -> dict[str, Any]:
 
 @app.get("/time-off", response_class=HTMLResponse)
 def timeoff_page(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/time-off"): return redir
     return templates.TemplateResponse(
         "timeoff.html",
         {
@@ -1805,7 +1854,7 @@ def api_intake_fee_estimate(intake_id: int) -> dict:
 
 @app.get("/capacity", response_class=HTMLResponse)
 def capacity_page(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/capacity"): return redir
     import json as _json
     return templates.TemplateResponse(
         "capacity.html",
@@ -1835,7 +1884,7 @@ def api_capacity() -> dict:
 
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/settings"): return redir
     seed_row = db.get_project_number_seed()
     billing_defs = db.get_billing_phase_definitions()
     return templates.TemplateResponse(
@@ -2023,7 +2072,7 @@ def api_burn_health() -> list[dict[str, Any]]:
 
 @app.get("/burn-health")
 def burn_health_page(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/burn-health"): return redir
     return templates.TemplateResponse("burn_health.html", {
         "request":    request,
         "page_title": "Burn Health",
@@ -2191,7 +2240,7 @@ def api_active_projects(engineer: Optional[str] = None) -> list[dict[str, Any]]:
 
 @app.get("/timesheet", response_class=HTMLResponse)
 def timesheet_page(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/timesheet"): return redir
     import json as _json
     start, end = _current_pay_period()
     current_user = _session_user(request) or {}
@@ -2215,10 +2264,7 @@ def timesheet_page(request: Request) -> HTMLResponse:
 
 @app.get("/billing-queue", response_class=HTMLResponse)
 def billing_queue_page(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
-    user = _session_user(request)
-    if user and user["role"] not in ("admin", "office_manager"):
-        return RedirectResponse("/timesheet", status_code=302)
+    if redir := _check_page_access(request, "/billing-queue"): return redir
     start, end = _current_pay_period()
     try:
         pending_invoices = db.get_pending_invoice_approvals()
@@ -2268,7 +2314,7 @@ def api_all_timecards(request: Request) -> list[dict[str, Any]]:
 
 @app.get("/payroll-export", response_class=HTMLResponse)
 def payroll_export_page(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/payroll-export"): return redir
     today = date.today()
     start, end = _current_pay_period()
     if end >= today.isoformat():
@@ -2350,7 +2396,7 @@ def api_payroll_export_csv(start: Optional[str] = None, end: Optional[str] = Non
 
 @app.get("/pipeline", response_class=HTMLResponse)
 def pipeline_page(request: Request) -> HTMLResponse:
-    if redir := _require_auth(request): return redir
+    if redir := _check_page_access(request, "/pipeline"): return redir
     data = db.get_pipeline_data()
     return templates.TemplateResponse(
         "pipeline.html",
