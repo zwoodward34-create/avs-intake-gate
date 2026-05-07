@@ -2340,18 +2340,20 @@ def get_burn_health_data(today: date) -> list[dict[str, Any]]:
     intake_ids   = [i.id             for i in active]
     project_nums = [i.project_number for i in active]
 
-    # Sum of logged hours per intake
+    # Potential burn hours: only count entries from SUBMITTED or APPROVED periods
+    submitted_periods = _get_submitted_periods()
     te_resp = (
         _client()
         .table("time_entries")
-        .select("intake_id,hours")
+        .select("intake_id,hours,engineer_initials,entry_date")
         .in_("intake_id", intake_ids)
         .execute()
     )
     hours_by_intake: dict[int, float] = {}
     for e in (te_resp.data or []):
         iid = e["intake_id"]
-        hours_by_intake[iid] = hours_by_intake.get(iid, 0.0) + float(e["hours"] or 0)
+        if _entry_in_submitted_period(e.get("entry_date", ""), e.get("engineer_initials", ""), submitted_periods):
+            hours_by_intake[iid] = hours_by_intake.get(iid, 0.0) + float(e["hours"] or 0)
 
     # Future calendar events for all project numbers — handles both legacy and phase-span events
     ce_resp = (
@@ -2499,17 +2501,19 @@ def count_burn_at_risk(today: date) -> int:
 
     intake_ids = [i.id for i in active]
 
+    submitted_periods = _get_submitted_periods()
     te_resp = (
         _client()
         .table("time_entries")
-        .select("intake_id,hours")
+        .select("intake_id,hours,engineer_initials,entry_date")
         .in_("intake_id", intake_ids)
         .execute()
     )
     hours_by_intake: dict[int, float] = {}
     for e in (te_resp.data or []):
         iid = e["intake_id"]
-        hours_by_intake[iid] = hours_by_intake.get(iid, 0.0) + float(e["hours"] or 0)
+        if _entry_in_submitted_period(e.get("entry_date", ""), e.get("engineer_initials", ""), submitted_periods):
+            hours_by_intake[iid] = hours_by_intake.get(iid, 0.0) + float(e["hours"] or 0)
 
     count = 0
     for i in active:
@@ -2518,6 +2522,64 @@ def count_burn_at_risk(today: date) -> int:
         if fee > 0 and burn >= fee * 0.70:
             count += 1
     return count
+
+
+# ── Potential Burn helpers ────────────────────────────────────────────────────
+
+def _get_submitted_periods() -> list[tuple[str, str, str]]:
+    """Return (engineer_initials, period_start, period_end) for SUBMITTED + APPROVED periods."""
+    try:
+        resp = (
+            _client()
+            .table("timesheet_submissions")
+            .select("engineer_initials,period_start,period_end")
+            .in_("status", ["SUBMITTED", "APPROVED"])
+            .execute()
+        )
+        return [(r["engineer_initials"], r["period_start"], r["period_end"]) for r in (resp.data or [])]
+    except Exception:
+        return []
+
+
+def _entry_in_submitted_period(entry_date: str, engineer: str, periods: list[tuple[str, str, str]]) -> bool:
+    for eng, pstart, pend in periods:
+        if eng == engineer and pstart <= entry_date <= pend:
+            return True
+    return False
+
+
+def get_potential_hours_for_intake(intake_id: int) -> dict[str, float]:
+    """
+    Returns potential burn hours for a single project.
+    potential = hours from SUBMITTED or APPROVED periods (visible to burn tracking).
+    total     = all logged hours regardless of submission state.
+    """
+    entries = list_time_entries_for_intake(intake_id)
+    if not entries:
+        return {"potential": 0.0, "total": 0.0, "draft": 0.0}
+    submitted_periods = _get_submitted_periods()
+    potential = 0.0
+    total = 0.0
+    for e in entries:
+        h = float(e.get("hours") or 0)
+        total += h
+        if _entry_in_submitted_period(e.get("entry_date", ""), e.get("engineer_initials", ""), submitted_periods):
+            potential += h
+    return {"potential": round(potential, 2), "total": round(total, 2), "draft": round(total - potential, 2)}
+
+
+def get_enriched_review_queue() -> list[dict[str, Any]]:
+    """SUBMITTED timesheet submissions enriched with full engineer name."""
+    rows = get_review_queue()
+    result = []
+    for r in rows:
+        eng = r.get("engineer_initials", "")
+        result.append({
+            **r,
+            "engineer_name": TEAM_FULL_NAMES.get(eng, eng),
+            "engineer_color": TEAM_COLORS.get(eng, "#888"),
+        })
+    return result
 
 
 # ── Profiles (RBAC) ───────────────────────────────────────────────────────────

@@ -952,6 +952,10 @@ def mo_queue(request: Request) -> HTMLResponse:
         })
 
     pending_invoices = db.get_pending_invoice_approvals()
+    try:
+        timesheet_queue = db.get_enriched_review_queue()
+    except Exception:
+        timesheet_queue = []
     return templates.TemplateResponse(
         "mo_queue.html",
         {
@@ -959,6 +963,7 @@ def mo_queue(request: Request) -> HTMLResponse:
             "intakes":             enriched,
             "has_items":           len(enriched) > 0,
             "pending_invoices":    pending_invoices,
+            "timesheet_queue":     timesheet_queue,
             "now_local":           _now_local_iso(),
             "valid_phases":        db.VALID_PHASES,
             "team_colors_json":    _json.dumps(db.TEAM_COLORS),
@@ -2043,8 +2048,9 @@ def api_projected_burn(intake_id: int) -> dict[str, Any]:
     if approved_fee <= 0:
         return _zero
 
-    entries = db.list_time_entries_for_intake(intake_id)
-    current_burn_hours = sum(float(e["hours"]) for e in entries)
+    potential = db.get_potential_hours_for_intake(intake_id)
+    current_burn_hours = potential["potential"]   # submitted + approved only
+    draft_burn_hours   = potential["draft"]       # logged but not yet submitted
     current_burn_value = round(current_burn_hours * db.BILLING_RATE, 2)
 
     remaining_resourced_hours = 0.0
@@ -2065,6 +2071,7 @@ def api_projected_burn(intake_id: int) -> dict[str, Any]:
         "current_burn_hours":       round(current_burn_hours, 1),
         "current_burn_value":       current_burn_value,
         "current_burn_pct":         _pct(current_burn_value),
+        "draft_burn_hours":         round(draft_burn_hours, 1),
         "remaining_resourced_hours": round(remaining_resourced_hours, 1),
         "remaining_resourced_value": remaining_resourced_value,
         "projected_burn_value":     projected_burn_value,
@@ -2234,7 +2241,10 @@ async def api_review_submission(request: Request, submission_id: int) -> dict[st
     body = await request.json()
     action = (body.get("action") or "").strip().lower()
     notes = _as_str(str(body.get("notes") or ""))
-    if action not in ("approve", "reject"):
+    # Accept both verb ("approve") and past-tense ("approved") forms
+    _action_map = {"approve": "approve", "approved": "approve", "reject": "reject", "rejected": "reject"}
+    action = _action_map.get(action, "")
+    if not action:
         raise HTTPException(status_code=400, detail="action must be 'approve' or 'reject'.")
     result = db.review_submission(submission_id, action, notes or None)
     return result

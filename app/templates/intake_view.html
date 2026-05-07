@@ -52,9 +52,10 @@
   </div>
   <div class="burn-kpi-row">
     <div class="burn-kpi">
-      <div class="burn-kpi-label">Current Burn</div>
+      <div class="burn-kpi-label" title="Hours from submitted + approved timesheets only">Potential Burn</div>
       <div class="burn-kpi-value" id="burn-current-value-{{ intake.id }}">—</div>
       <div class="burn-kpi-pct"   id="burn-current-pct-{{ intake.id }}"></div>
+      <div style="font-size:10px;color:var(--muted);margin-top:2px" id="burn-draft-note-{{ intake.id }}"></div>
     </div>
     <div class="burn-kpi burn-kpi-projected">
       <div class="burn-kpi-label">Projected Burn</div>
@@ -927,6 +928,7 @@ function renderProjectedBurn(intakeId, data) {
 
   var cv = $('burn-current-value');   if (cv) cv.textContent  = fmt(data.current_burn_value);
   var cp = $('burn-current-pct');     if (cp) cp.textContent  = data.current_burn_pct + '% of fee';
+  var dn = $('burn-draft-note');      if (dn) dn.textContent  = data.draft_burn_hours > 0 ? '+ ' + data.draft_burn_hours + 'h draft (unsubmitted)' : '';
   var pv = $('burn-projected-value'); if (pv) pv.textContent  = fmt(data.projected_burn_value);
   var pp = $('burn-projected-pct');   if (pp) pp.textContent  = data.projected_burn_pct + '% of fee';
   var rv = $('burn-remaining-value'); if (rv) {

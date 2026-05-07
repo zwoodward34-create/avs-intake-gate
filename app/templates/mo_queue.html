@@ -786,4 +786,93 @@
   };
 })();
 </script>
+
+{# ════ TIMESHEET APPROVALS SECTION ════ #}
+<div style="margin-top:40px">
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px">
+    <div style="flex:1;height:1px;background:var(--border)"></div>
+    <div style="font-size:11px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);white-space:nowrap">
+      Timesheet Approvals
+      {% if timesheet_queue %}<span style="background:rgba(79,142,247,.15);color:var(--accent);border:1px solid rgba(79,142,247,.3);border-radius:10px;font-size:10px;padding:1px 8px;margin-left:6px">{{ timesheet_queue|length }}</span>{% endif %}
+    </div>
+    <div style="flex:1;height:1px;background:var(--border)"></div>
+  </div>
+
+  {% if not timesheet_queue %}
+  <div class="card" style="text-align:center;padding:32px 20px;max-width:520px;margin:0 auto">
+    <div class="subtle">No timesheets pending approval</div>
+  </div>
+  {% else %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
+    {% for sub in timesheet_queue %}
+    <div class="card" id="ts-approval-card-{{ sub.id }}" style="padding:16px;border-left:3px solid {{ sub.engineer_color }}">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:{{ sub.engineer_color }}22;color:{{ sub.engineer_color }};font-size:12px;font-weight:700;border:1px solid {{ sub.engineer_color }}44;flex-shrink:0">{{ sub.engineer_initials }}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">{{ sub.engineer_name }}</div>
+          <div style="font-size:11px;color:var(--muted)">{{ sub.period_start }} → {{ sub.period_end }}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:18px;font-weight:900;font-family:var(--mono)">{{ sub.total_hours }}h</div>
+          <div style="font-size:10px;color:var(--muted)">submitted</div>
+        </div>
+      </div>
+      {% if sub.submitted_at %}
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Submitted {{ sub.submitted_at[:10] }}</div>
+      {% endif %}
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" type="button"
+          onclick="approveTimesheet({{ sub.id }})"
+          id="ts-approve-btn-{{ sub.id }}"
+          style="flex:1;font-size:12px;padding:6px 0;background:var(--good);border-color:var(--good)">
+          Approve
+        </button>
+        <button class="btn" type="button"
+          onclick="rejectTimesheet({{ sub.id }})"
+          style="flex:1;font-size:12px;padding:6px 0;color:var(--bad);border-color:var(--bad)">
+          Reject
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<script>
+(function() {
+  window.approveTimesheet = async function(subId) {
+    var btn = document.getElementById('ts-approve-btn-' + subId);
+    if (btn) { btn.disabled = true; btn.textContent = 'Approving…'; }
+    try {
+      var resp = await fetch('/api/timesheet/review/' + subId, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'approve'}),
+      });
+      if (!resp.ok) { var e = await resp.json().catch(()=>({})); throw new Error(e.detail || 'Failed'); }
+      var card = document.getElementById('ts-approval-card-' + subId);
+      if (card) { card.style.transition = 'opacity .3s'; card.style.opacity = '0'; setTimeout(() => card.remove(), 310); }
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Approve'; }
+      alert('Error: ' + e.message);
+    }
+  };
+
+  window.rejectTimesheet = async function(subId) {
+    var reason = prompt('Reason for rejection (optional):');
+    if (reason === null) return; // cancelled
+    try {
+      var resp = await fetch('/api/timesheet/review/' + subId, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'reject', notes: reason || ''}),
+      });
+      if (!resp.ok) { var e = await resp.json().catch(()=>({})); throw new Error(e.detail || 'Failed'); }
+      var card = document.getElementById('ts-approval-card-' + subId);
+      if (card) { card.style.transition = 'opacity .3s'; card.style.opacity = '0'; setTimeout(() => card.remove(), 310); }
+    } catch(e) { alert('Error: ' + e.message); }
+  };
+})();
+</script>
 {% endblock %}
