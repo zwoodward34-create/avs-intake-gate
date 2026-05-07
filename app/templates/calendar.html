@@ -109,8 +109,10 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   border-radius: 3px;
-  cursor: default;
+  cursor: pointer;
+  transition: filter .12s;
 }
+.cal-phase-bar:hover { filter: brightness(1.15); }
 /* strip left radius when bar continues from previous cell */
 .cal-phase-bar.bar-cont-l { border-top-left-radius: 0; border-bottom-left-radius: 0; padding-left: 2px; }
 /* strip right radius when bar continues into next cell */
@@ -341,6 +343,22 @@
   </div>
 </div>
 
+<!-- Event Detail Modal (phase events) -->
+<div class="modal-overlay" id="event-detail-overlay">
+  <div class="modal" style="max-width:440px">
+    <button class="modal-close" id="event-detail-close">✕</button>
+    <div id="event-detail-swatch-row" style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div id="event-detail-swatch" style="width:14px;height:14px;border-radius:3px;flex-shrink:0"></div>
+      <h3 id="event-detail-title" style="margin:0;font-size:16px;font-weight:800">—</h3>
+    </div>
+    <div id="event-detail-body"></div>
+    <div class="modal-actions" style="margin-top:18px">
+      <button class="btn btn-danger" id="event-detail-delete-btn" style="margin-right:auto">Delete Event</button>
+      <button class="btn" id="event-detail-close-btn">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- OOO Add/Edit Modal -->
 <div class="modal-overlay" id="ooo-modal">
   <div class="modal">
@@ -506,6 +524,7 @@
           ? `${ev.phase_code} · ${ev.project_number}`
           : '';
         bar.title = `${ev.project_name || ev.project_number} | ${ev.phase_label}\n${ev.start_date} → ${ev.end_date}\nTeam: ${(ev.team||[]).join(', ')}`;
+        bar.addEventListener('click', e => { e.stopPropagation(); openPhaseEventDetail(ev, ci); });
         cell.appendChild(bar);
       });
 
@@ -607,13 +626,20 @@
     phaseEntries.forEach(({ ev }) => {
       const ci = projectColor(ev.project_number);
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)';
+      row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;border-radius:4px;margin:0 -4px;padding-left:4px;padding-right:4px';
       row.innerHTML = `
-        <div class="cal-legend-swatch cal-c${ci}" style="margin-top:3px"></div>
+        <div class="cal-legend-swatch cal-c${ci}" style="margin-top:3px;flex-shrink:0"></div>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:700">${ev.project_number} — ${ev.phase_label}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">${ev.start_date} → ${ev.end_date} · Team: ${(ev.team||[]).join(', ') || '—'}</div>
-        </div>`;
+        </div>
+        <span style="font-size:11px;color:var(--accent);font-weight:600;flex-shrink:0;margin-top:2px">Details →</span>`;
+      row.addEventListener('mouseenter', () => { row.style.background = 'var(--card-bg-deeper)'; });
+      row.addEventListener('mouseleave', () => { row.style.background = ''; });
+      row.addEventListener('click', () => {
+        dayOverlay.classList.remove('open');
+        openPhaseEventDetail(ev, ci);
+      });
       list.appendChild(row);
     });
 
@@ -774,6 +800,61 @@
       closeOOOModal();
       loadCalendar();
     } catch (e) { alert('Network error.'); }
+  });
+
+  // ── Event Detail Modal (phase events) ─────────────────────────
+  const eventDetailOverlay = document.getElementById('event-detail-overlay');
+  let _detailEventId = null;
+
+  // Compute inline background from the cal-cN class by creating a temp element
+  function getClassBg(className) {
+    const tmp = document.createElement('div');
+    tmp.className = className;
+    tmp.style.position = 'absolute';
+    tmp.style.visibility = 'hidden';
+    document.body.appendChild(tmp);
+    const bg = getComputedStyle(tmp).backgroundColor;
+    document.body.removeChild(tmp);
+    return bg;
+  }
+
+  function openPhaseEventDetail(ev, ci) {
+    _detailEventId = ev.id;
+    const colorClass = 'cal-c' + (ci !== undefined ? ci : projectColor(ev.project_number));
+    document.getElementById('event-detail-swatch').style.background = getClassBg(colorClass);
+    document.getElementById('event-detail-title').textContent =
+      `${ev.project_number} — ${ev.phase_label}`;
+
+    const body = document.getElementById('event-detail-body');
+    const teamStr = (ev.team || []).join(', ') || '—';
+    const weuRow  = ev.weu_hours
+      ? `<tr><td style="color:var(--muted);font-weight:600;padding:5px 12px 5px 0;white-space:nowrap">WEU Hours</td><td>${ev.weu_hours}</td></tr>`
+      : '';
+    body.innerHTML = `
+      <table style="font-size:13px;width:100%;border-collapse:collapse">
+        <tr><td style="color:var(--muted);font-weight:600;padding:5px 12px 5px 0;white-space:nowrap">Project</td><td>${ev.project_name || ev.project_number}</td></tr>
+        <tr><td style="color:var(--muted);font-weight:600;padding:5px 12px 5px 0;white-space:nowrap">Phase</td><td>${ev.phase_label}${ev.phase_code && ev.phase_code !== ev.phase_label ? ' (' + ev.phase_code + ')' : ''}</td></tr>
+        <tr><td style="color:var(--muted);font-weight:600;padding:5px 12px 5px 0;white-space:nowrap">Start</td><td>${ev.start_date}</td></tr>
+        <tr><td style="color:var(--muted);font-weight:600;padding:5px 12px 5px 0;white-space:nowrap">End</td><td>${ev.end_date}</td></tr>
+        <tr><td style="color:var(--muted);font-weight:600;padding:5px 12px 5px 0;white-space:nowrap">Team</td><td>${teamStr}</td></tr>
+        ${weuRow}
+      </table>`;
+    eventDetailOverlay.classList.add('open');
+  }
+
+  function closeEventDetail() { eventDetailOverlay.classList.remove('open'); }
+  document.getElementById('event-detail-close').addEventListener('click', closeEventDetail);
+  document.getElementById('event-detail-close-btn').addEventListener('click', closeEventDetail);
+  eventDetailOverlay.addEventListener('click', e => { if (e.target === eventDetailOverlay) closeEventDetail(); });
+
+  document.getElementById('event-detail-delete-btn').addEventListener('click', async () => {
+    if (!_detailEventId || !confirm('Delete this phase event? This cannot be undone.')) return;
+    try {
+      const r = await fetch(`/api/calendar/events/${_detailEventId}`, { method: 'DELETE' });
+      if (!r.ok) { alert('Delete failed.'); return; }
+      closeEventDetail();
+      loadCalendar();
+    } catch (err) { alert('Network error.'); }
   });
 
   // ── Init ──────────────────────────────────────────────────────
