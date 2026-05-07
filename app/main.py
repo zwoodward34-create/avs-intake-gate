@@ -1459,10 +1459,7 @@ def past_projects(request: Request) -> HTMLResponse:
         {
             "request": request,
             "now_local": _now_local_iso(),
-            "type_options_json": _json.dumps(type_options),
-            "type_keys": list(type_options.keys()),
             "total": total,
-            "company_options": company_options,
             "error": error,
         },
     )
@@ -1496,6 +1493,51 @@ def api_past_projects(
 def api_past_projects_refresh() -> dict[str, str]:
     project_search.invalidate_cache()
     return {"status": "cache cleared"}
+
+
+@app.post("/api/nl-search-projects")
+async def api_nl_search_projects(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    query = (body.get("query") or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required.")
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY is not configured.")
+    import anthropic as _anthropic
+    client = _anthropic.Anthropic(api_key=api_key)
+    prompt = (
+        "You are helping search a structural engineering project database.\n"
+        "Extract search filters from the user's query. Return ONLY a JSON object with these keys "
+        "(use empty string \"\" if not mentioned):\n"
+        "  type (BTS or TI only), wallSystem, roof, slab, foundation, company\n\n"
+        "Known values:\n"
+        "- type: BTS, TI\n"
+        "- wallSystem: Cast in Place Concrete, Concrete Tilt Panels, Masonry, Wood, Concrete\n"
+        "- roof: Steel, Wood, Hybrid, Concrete Slab\n"
+        "- slab: Slab on Grade, Structural Slab, Elevated Slab\n"
+        "- foundation: Spread Footing, Piers\n"
+        "- company: any company or client name mentioned\n\n"
+        f"Query: {query}"
+    )
+    msg = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=256,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = msg.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    try:
+        filters = _json.loads(raw.strip())
+    except _json.JSONDecodeError:
+        filters = {}
+    try:
+        return project_search.search_projects(filters, limit=500)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/api/analyze-project")
