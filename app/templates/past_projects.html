@@ -105,9 +105,25 @@
       </div>
       <div class="row row-2" style="margin-bottom:12px">
         <div class="field">
+          <label>Slab Type</label>
+          <input id="ap-slab" type="text" placeholder="e.g. Structural Slab, Elevated Slab" style="width:100%; box-sizing:border-box">
+        </div>
+        <div class="field">
+          <label>Foundation Type</label>
+          <input id="ap-foundation" type="text" placeholder="e.g. Spread Footing, Piers" style="width:100%; box-sizing:border-box">
+        </div>
+      </div>
+      <div class="row row-2" style="margin-bottom:12px">
+        <div class="field">
+          <label>Client</label>
+          <input id="ap-client" type="text" placeholder="e.g. Sprouts, Burlington" style="width:100%; box-sizing:border-box">
+        </div>
+        <div class="field">
           <label>AHJ</label>
           <input id="ap-ahj" type="text" style="width:100%; box-sizing:border-box">
         </div>
+      </div>
+      <div class="row row-2" style="margin-bottom:12px">
         <div class="field" style="display:flex; align-items:center; gap:10px; padding-top:22px">
           <input id="ap-site-visit" type="checkbox" style="width:18px; height:18px; cursor:pointer">
           <label for="ap-site-visit" style="margin:0; cursor:pointer">Site Visit Conducted</label>
@@ -161,6 +177,9 @@ function analyzeProject() {
     document.getElementById('ap-material').value        = data.material || '';
     document.getElementById('ap-roof').value            = data.roof || '';
     document.getElementById('ap-lfrs').value            = data.lfrs || '';
+    document.getElementById('ap-slab').value            = data.slab || '';
+    document.getElementById('ap-foundation').value      = data.foundation || '';
+    document.getElementById('ap-client').value          = data.client || '';
     document.getElementById('ap-ahj').value             = data.ahj || '';
     document.getElementById('ap-site-visit').checked   = data.site_visit === true;
     document.getElementById('ap-notes').value           = data.notes || '';
@@ -183,6 +202,9 @@ function saveHistoricalProject() {
     material:        document.getElementById('ap-material').value.trim(),
     roof:            document.getElementById('ap-roof').value.trim(),
     lfrs:            document.getElementById('ap-lfrs').value.trim(),
+    slab:            document.getElementById('ap-slab').value.trim(),
+    foundation:      document.getElementById('ap-foundation').value.trim(),
+    client:          document.getElementById('ap-client').value.trim(),
     ahj:             document.getElementById('ap-ahj').value.trim(),
     site_visit:      document.getElementById('ap-site-visit').checked,
     notes:           document.getElementById('ap-notes').value.trim(),

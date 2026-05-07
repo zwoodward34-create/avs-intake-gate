@@ -1575,8 +1575,11 @@ async def api_analyze_project(request: Request) -> dict[str, Any]:
         "Extract technical details from the following project description.\n"
         "Return ONLY a JSON object with these exact keys (use null if unknown):\n"
         "  project_name, project_number, location, year_completed, project_type,\n"
-        "  material, roof, lfrs, ahj, site_visit, notes\n\n"
-        "For site_visit: return true if a site visit is mentioned, false if explicitly not done, null if unknown.\n\n"
+        "  material, roof, lfrs, slab, foundation, client, ahj, site_visit, notes\n\n"
+        "For site_visit: return true if a site visit is mentioned, false if explicitly not done, null if unknown.\n"
+        "For slab: e.g. 'Structural Slab', 'Elevated Slab', 'Slab on Grade'.\n"
+        "For foundation: e.g. 'Spread Footing', 'Piers'.\n"
+        "For client: the company or tenant the project was built for.\n\n"
         f"Description:\n{description}"
     )
     msg = client.messages.create(
@@ -1618,6 +1621,9 @@ async def api_save_historical_project(request: Request) -> dict[str, Any]:
         "material":        (body.get("material") or "").strip() or None,
         "roof":            (body.get("roof") or "").strip() or None,
         "lfrs":            (body.get("lfrs") or "").strip() or None,
+        "slab":            (body.get("slab") or "").strip() or None,
+        "foundation":      (body.get("foundation") or "").strip() or None,
+        "client":          (body.get("client") or "").strip() or None,
         "ahj":             (body.get("ahj") or "").strip() or None,
         "site_visit":      site_visit,
         "notes":           (body.get("notes") or "").strip() or None,
