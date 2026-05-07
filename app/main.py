@@ -2213,7 +2213,10 @@ def api_delete_time_entry(request: Request, entry_id: int) -> dict[str, Any]:
 def api_get_submission(engineer: str, start: str, end: str) -> dict[str, Any]:
     if not engineer or not start or not end:
         raise HTTPException(status_code=400, detail="engineer, start, end required.")
-    sub = db.get_submission(engineer, start)
+    try:
+        sub = db.get_submission(engineer, start)
+    except Exception:
+        sub = None
     if not sub:
         return {"status": "DRAFT", "engineer": engineer, "period_start": start, "period_end": end}
     return sub

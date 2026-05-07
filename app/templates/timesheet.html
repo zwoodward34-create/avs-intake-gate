@@ -261,9 +261,9 @@
     var banner = document.getElementById('ts-submit-banner');
     if (!eng) { banner.style.display = 'none'; _lockedPeriod = false; return; }
     fetch('/api/timesheet/submission?engineer=' + eng + '&start=' + start + '&end=' + end)
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : Promise.resolve({status: 'DRAFT'}))
       .then(sub => renderSubmissionBanner(sub, eng, start, end, liveHours || 0))
-      .catch(() => { banner.style.display = 'none'; });
+      .catch(() => renderSubmissionBanner({status: 'DRAFT'}, eng, start, end, liveHours || 0));
   }
 
   function renderSubmissionBanner(sub, eng, start, end, liveHours) {
