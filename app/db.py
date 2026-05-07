@@ -1173,7 +1173,13 @@ def submit_period(engineer: str, period_start: str, period_end: str, total_hours
             .eq("id", existing["id"])
             .execute()
         )
-        return resp.data[0]
+        if resp.data:
+            return resp.data[0]
+        # Supabase may omit RETURNING rows in some RLS configs — re-fetch
+        result = get_submission(engineer, period_start)
+        if result:
+            return result
+        return {**existing, "status": "SUBMITTED", "total_hours": total_hours, "submitted_at": now}
     resp = (
         _client()
         .table("timesheet_submissions")
@@ -1189,7 +1195,13 @@ def submit_period(engineer: str, period_start: str, period_end: str, total_hours
         })
         .execute()
     )
-    return resp.data[0]
+    if resp.data:
+        return resp.data[0]
+    # Re-fetch in case RETURNING was suppressed
+    result = get_submission(engineer, period_start)
+    if result:
+        return result
+    raise RuntimeError(f"Failed to create submission for {engineer}/{period_start}")
 
 
 def review_submission(submission_id: int, action: str, reviewer_notes: Optional[str] = None) -> dict[str, Any]:

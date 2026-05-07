@@ -253,7 +253,7 @@ _ROLE_HOME = {
 }
 
 # Pages each role may visit (admin implicit everywhere)
-_EMPLOYEE_PAGES = {"/timesheet", "/calendar", "/time-off"}
+_EMPLOYEE_PAGES = {"/timesheet", "/calendar", "/time-off", "/past-projects"}
 _OFFICE_PAGES   = {"/timesheet", "/calendar", "/time-off",
                    "/billing-queue", "/payroll-export", "/burn-health", "/capacity",
                    "/approvals"}
@@ -953,7 +953,10 @@ def mo_queue(request: Request) -> HTMLResponse:
         })
 
     pending_invoices = db.get_pending_invoice_approvals()
-    timesheet_queue  = db.get_enriched_review_queue()
+    try:
+        timesheet_queue = db.get_enriched_review_queue()
+    except Exception:
+        timesheet_queue = []
     return templates.TemplateResponse(
         "mo_queue.html",
         {
