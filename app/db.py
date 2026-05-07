@@ -2582,6 +2582,28 @@ def get_enriched_review_queue() -> list[dict[str, Any]]:
     return result
 
 
+def get_all_recent_submissions(limit: int = 30) -> list[dict[str, Any]]:
+    """All submissions (any status), newest first, enriched."""
+    resp = (
+        _client()
+        .table("timesheet_submissions")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    rows = resp.data or []
+    result = []
+    for r in rows:
+        eng = r.get("engineer_initials", "")
+        result.append({
+            **r,
+            "engineer_name": TEAM_FULL_NAMES.get(eng, eng),
+            "engineer_color": TEAM_COLORS.get(eng, "#888"),
+        })
+    return result
+
+
 # ── Profiles (RBAC) ───────────────────────────────────────────────────────────
 
 VALID_ROLES = {"admin", "billing", "engineer", "drafter"}

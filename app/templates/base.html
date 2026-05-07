@@ -56,11 +56,15 @@
             Mo's Queue
             {% set _mc = pending_mo_count() %}
             {% set _ic = pending_invoice_count() %}
-            {% set _tc = pending_review_count() %}
-            {% set _total = _mc + _ic + _tc %}
+            {% set _total = _mc + _ic %}
             {% if _total > 0 %}
               <span class="nav-badge">{{ _total }}</span>
             {% endif %}
+          </a>
+          <a class="nav-item {% if request.url.path == '/approvals' %}active{% endif %}" href="/approvals">
+            Approvals
+            {% set _ac = pending_review_count() %}
+            {% if _ac > 0 %}<span class="nav-badge">{{ _ac }}</span>{% endif %}
           </a>
           <a class="nav-item {% if request.url.path == '/payroll-export' %}active{% endif %}" href="/payroll-export">
             Payroll Export

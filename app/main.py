@@ -255,7 +255,8 @@ _ROLE_HOME = {
 # Pages each role may visit (admin implicit everywhere)
 _EMPLOYEE_PAGES = {"/timesheet", "/calendar", "/time-off"}
 _OFFICE_PAGES   = {"/timesheet", "/calendar", "/time-off",
-                   "/billing-queue", "/payroll-export", "/burn-health", "/capacity"}
+                   "/billing-queue", "/payroll-export", "/burn-health", "/capacity",
+                   "/approvals"}
 
 _ROLE_ALLOWED: dict[str, set[str]] = {
     "admin":          None,   # None = unrestricted
@@ -2250,6 +2251,43 @@ async def api_review_submission(request: Request, submission_id: int) -> dict[st
 @app.get("/api/timesheet/review-queue")
 def api_review_queue() -> list[dict[str, Any]]:
     return db.get_review_queue()
+
+
+@app.get("/api/timesheet/all-submissions")
+def api_all_submissions() -> dict[str, Any]:
+    """Debug: return every submission row regardless of status."""
+    try:
+        resp = db._client().table("timesheet_submissions").select("*").order("created_at", desc=True).limit(50).execute()
+        rows = resp.data or []
+        return {"count": len(rows), "rows": rows, "table_exists": True}
+    except Exception as exc:
+        return {"count": 0, "rows": [], "table_exists": False, "error": str(exc)}
+
+
+@app.get("/approvals", response_class=HTMLResponse)
+def approvals_page(request: Request) -> HTMLResponse:
+    if redir := _check_page_access(request, "/approvals"): return redir
+    error = None
+    submitted: list[dict] = []
+    all_recent: list[dict] = []
+    approved_count = 0
+    total_count = 0
+    try:
+        submitted  = db.get_enriched_review_queue()
+        all_recent = db.get_all_recent_submissions(30)
+        approved_count = sum(1 for r in all_recent if r.get("status") == "APPROVED")
+        total_count    = len(all_recent)
+    except Exception as exc:
+        error = str(exc)
+    return templates.TemplateResponse("approvals.html", {
+        "request":        request,
+        "submitted":      submitted,
+        "all_recent":     all_recent,
+        "approved_count": approved_count,
+        "total_count":    total_count,
+        "error":          error,
+        "title":          "Timesheet Approvals — AVS",
+    })
 
 
 @app.get("/api/active-projects")

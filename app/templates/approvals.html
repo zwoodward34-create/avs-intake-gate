@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-eyebrow">Admin</div>
+<h1 style="margin:4px 0 18px;font-size:1.6rem;font-weight:800;letter-spacing:-.3px">Timesheet Approvals</h1>
+
+{% if error %}
+<div style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.4);border-radius:8px;padding:14px 18px;margin-bottom:20px;color:var(--bad);font-size:13px">
+  <strong>Database error:</strong> {{ error }}<br>
+  <span style="color:var(--muted);font-size:12px;margin-top:4px;display:block">
+    Run <code>scripts/migrate_002_timesheet_submissions.sql</code> in the Supabase SQL Editor, then reload.
+  </span>
+</div>
+{% endif %}
+
+{% if not error %}
+<div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+  <div class="card" style="padding:14px 20px;flex:1;min-width:120px;text-align:center">
+    <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--warn)">{{ submitted|length }}</div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-top:4px">Awaiting Approval</div>
+  </div>
+  <div class="card" style="padding:14px 20px;flex:1;min-width:120px;text-align:center">
+    <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--good)">{{ approved_count }}</div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-top:4px">Approved This Period</div>
+  </div>
+  <div class="card" style="padding:14px 20px;flex:1;min-width:120px;text-align:center">
+    <div style="font-size:28px;font-weight:900;font-family:var(--mono)">{{ total_count }}</div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-top:4px">Total Submissions</div>
+  </div>
+</div>
+
+{# ── Pending Approvals ── #}
+<div class="card" style="padding:0;margin-bottom:20px;overflow:hidden">
+  <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+    <div style="font-size:15px;font-weight:700">Pending Approval</div>
+    {% if submitted %}
+    <span style="background:rgba(251,191,36,.15);color:#fbbf24;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">{{ submitted|length }} pending</span>
+    {% endif %}
+  </div>
+  {% if not submitted %}
+  <div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">
+    No timesheets awaiting approval.<br>
+    <span style="font-size:12px">Engineers must click "Submit for Review" on the Timesheet page first.</span>
+  </div>
+  {% else %}
+  <table class="table" style="margin:0">
+    <thead>
+      <tr>
+        <th>Engineer</th>
+        <th>Period</th>
+        <th>Hours</th>
+        <th>Submitted</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sub in submitted %}
+      <tr id="approval-row-{{ sub.id }}">
+        <td>
+          <span style="display:inline-flex;align-items:center;gap:7px">
+            <span style="width:24px;height:24px;border-radius:50%;background:{{ sub.engineer_color }}22;color:{{ sub.engineer_color }};font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;border:1px solid {{ sub.engineer_color }}44">{{ sub.engineer_initials }}</span>
+            <span style="font-weight:600">{{ sub.engineer_name }}</span>
+          </span>
+        </td>
+        <td style="font-family:var(--mono);font-size:12px">{{ sub.period_start }} – {{ sub.period_end }}</td>
+        <td style="font-family:var(--mono);font-weight:700">{{ "%.1f"|format(sub.total_hours or 0) }}h</td>
+        <td style="color:var(--muted);font-size:12px">{{ sub.submitted_at[:10] if sub.submitted_at else '—' }}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-primary" type="button"
+              id="apr-btn-{{ sub.id }}"
+              onclick="doApprove({{ sub.id }})"
+              style="font-size:11px;padding:4px 12px;background:var(--good);border-color:var(--good)">
+              Approve
+            </button>
+            <button class="btn" type="button"
+              onclick="doReject({{ sub.id }})"
+              style="font-size:11px;padding:4px 12px;color:var(--bad);border-color:var(--bad)">
+              Reject
+            </button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+{# ── Recent history ── #}
+{% if all_recent %}
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
+    <div style="font-size:14px;font-weight:700">Recent Submissions</div>
+  </div>
+  <table class="table" style="margin:0">
+    <thead>
+      <tr><th>Engineer</th><th>Period</th><th>Hours</th><th>Status</th><th>Reviewed</th></tr>
+    </thead>
+    <tbody>
+      {% for sub in all_recent %}
+      <tr>
+        <td style="font-weight:600">{{ sub.engineer_name }}</td>
+        <td style="font-family:var(--mono);font-size:12px">{{ sub.period_start }} – {{ sub.period_end }}</td>
+        <td style="font-family:var(--mono)">{{ "%.1f"|format(sub.total_hours or 0) }}h</td>
+        <td>
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;
+            {% if sub.status == 'APPROVED' %}background:oklch(94% 0.06 145);color:var(--good)
+            {% elif sub.status == 'SUBMITTED' %}background:rgba(251,191,36,.12);color:#fbbf24
+            {% elif sub.status == 'REJECTED' %}background:rgba(248,113,113,.12);color:var(--bad)
+            {% else %}background:rgba(255,255,255,.06);color:var(--muted){% endif %}">
+            {{ sub.status }}
+          </span>
+        </td>
+        <td style="color:var(--muted);font-size:12px">{{ sub.reviewed_at[:10] if sub.reviewed_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endif %}{# end if not error #}
+
+<script>
+(function() {
+  async function reviewRow(subId, action, notes) {
+    var resp = await fetch('/api/timesheet/review/' + subId, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: action, notes: notes || ''}),
+    });
+    if (!resp.ok) {
+      var e = await resp.json().catch(()=>({}));
+      throw new Error(e.detail || 'Request failed');
+    }
+    return resp.json();
+  }
+
+  window.doApprove = async function(subId) {
+    var btn = document.getElementById('apr-btn-' + subId);
+    if (btn) { btn.disabled = true; btn.textContent = 'Approving…'; }
+    try {
+      await reviewRow(subId, 'approve', '');
+      var row = document.getElementById('approval-row-' + subId);
+      if (row) { row.style.opacity = '0'; row.style.transition = 'opacity .3s'; setTimeout(() => row.remove(), 310); }
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Approve'; }
+      alert('Error: ' + e.message);
+    }
+  };
+
+  window.doReject = async function(subId) {
+    var reason = prompt('Reason for rejection (optional):');
+    if (reason === null) return;
+    try {
+      await reviewRow(subId, 'reject', reason);
+      var row = document.getElementById('approval-row-' + subId);
+      if (row) { row.style.opacity = '0'; row.style.transition = 'opacity .3s'; setTimeout(() => row.remove(), 310); }
+    } catch(e) { alert('Error: ' + e.message); }
+  };
+})();
+</script>
+
+{% endblock %}
