@@ -2211,6 +2211,49 @@ def timesheet_page(request: Request) -> HTMLResponse:
 
 # ── Payroll Export ────────────────────────────────────────────────────────────
 
+@app.get("/billing-queue", response_class=HTMLResponse)
+def billing_queue_page(request: Request) -> HTMLResponse:
+    if redir := _require_auth(request): return redir
+    user = _session_user(request)
+    if user and user["role"] not in ("admin", "office_manager"):
+        return RedirectResponse("/timesheet", status_code=302)
+    start, end = _current_pay_period()
+    pending_invoices = db.get_pending_invoice_approvals()
+    timecard_summary = db.get_firm_timecard_summary(start, end)
+    today_entries    = db.list_time_entries_today()
+    submitted  = sum(1 for e in timecard_summary if e["submission_status"] == "SUBMITTED")
+    approved   = sum(1 for e in timecard_summary if e["submission_status"] == "APPROVED")
+    not_started = sum(1 for e in timecard_summary if e["submission_status"] == "NOT_STARTED")
+    today_total = round(sum(e["today_hours"] for e in timecard_summary), 1)
+    return templates.TemplateResponse(
+        "billing_queue.html",
+        {
+            "request":          request,
+            "title":            "Billing & Payroll — AVS",
+            "now_local":        _now_local_iso(),
+            "period_start":     start,
+            "period_end":       end,
+            "pending_invoices": pending_invoices,
+            "timecard_summary": timecard_summary,
+            "today_entries":    today_entries,
+            "submitted":        submitted,
+            "approved":         approved,
+            "not_started":      not_started,
+            "today_total":      today_total,
+            "staff_count":      len(timecard_summary),
+        },
+    )
+
+
+@app.get("/api/payroll/all-timecards")
+def api_all_timecards(request: Request) -> list[dict[str, Any]]:
+    user = _session_user(request)
+    if not user or user["role"] not in ("admin", "office_manager"):
+        raise HTTPException(status_code=403, detail="Access Denied: You do not have payroll oversight permissions.")
+    start, end = _current_pay_period()
+    return db.get_firm_timecard_summary(start, end)
+
+
 @app.get("/payroll-export", response_class=HTMLResponse)
 def payroll_export_page(request: Request) -> HTMLResponse:
     if redir := _require_auth(request): return redir

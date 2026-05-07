@@ -2728,3 +2728,89 @@ def count_billing_queue_pending(assigned_to: Optional[str] = None) -> int:
         q = q.eq("assigned_to", assigned_to.upper())
     resp = q.execute()
     return resp.count or 0
+
+
+# ── Natalie's Dashboard Data ──────────────────────────────────────────────────
+
+_ALL_STAFF: list[str] = ["MK", "NK", "RO", "JW", "JR", "JK", "RK", "RS", "SW", "JP"]
+
+
+def get_firm_timecard_summary(period_start: str, period_end: str) -> list[dict[str, Any]]:
+    """Per-engineer hours + submission status for the given pay period."""
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("engineer_initials,hours,entry_date")
+        .gte("entry_date", period_start)
+        .lte("entry_date", period_end)
+        .execute()
+    )
+    entries = te_resp.data or []
+
+    sub_resp = (
+        _client()
+        .table("timesheet_submissions")
+        .select("engineer_initials,status,submitted_at,period_start")
+        .eq("period_start", period_start)
+        .execute()
+    )
+    subs = {r["engineer_initials"]: r for r in (sub_resp.data or [])}
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    hours_by_eng: dict[str, float] = {}
+    today_by_eng: dict[str, float] = {}
+    for e in entries:
+        ini = e["engineer_initials"]
+        h = float(e["hours"] or 0)
+        hours_by_eng[ini] = hours_by_eng.get(ini, 0.0) + h
+        if e["entry_date"] == today:
+            today_by_eng[ini] = today_by_eng.get(ini, 0.0) + h
+
+    result = []
+    for ini in _ALL_STAFF:
+        sub = subs.get(ini, {})
+        result.append({
+            "initials":          ini,
+            "role":              ENGINEER_ROLES.get(ini, ""),
+            "color":             TEAM_COLORS.get(ini, "#888"),
+            "period_hours":      round(hours_by_eng.get(ini, 0.0), 1),
+            "today_hours":       round(today_by_eng.get(ini, 0.0), 1),
+            "submission_status": sub.get("status", "NOT_STARTED"),
+            "submitted_at":      sub.get("submitted_at"),
+        })
+    return result
+
+
+def list_time_entries_today() -> list[dict[str, Any]]:
+    """All time entries for today, enriched with project name."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("*")
+        .eq("entry_date", today)
+        .order("id", desc=True)
+        .execute()
+    )
+    entries = te_resp.data or []
+    if not entries:
+        return []
+
+    intake_ids = list({e["intake_id"] for e in entries if e.get("intake_id")})
+    if intake_ids:
+        intake_resp = (
+            _client()
+            .table("intakes")
+            .select("id,project_name,project_number")
+            .in_("id", intake_ids)
+            .execute()
+        )
+        intake_map = {i["id"]: i for i in (intake_resp.data or [])}
+    else:
+        intake_map = {}
+
+    for e in entries:
+        intake = intake_map.get(e.get("intake_id"), {})
+        e["project_name"]   = intake.get("project_name", "—")
+        e["project_number"] = e.get("project_number") or intake.get("project_number", "—")
+    return entries

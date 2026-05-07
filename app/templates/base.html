@@ -70,6 +70,18 @@
           </a>
         </div>
 
+        {% set _nav_user = request.session.get('user') %}
+        {% if _nav_user and _nav_user.role in ('admin', 'office_manager') %}
+        <div class="nav-group">
+          <div class="nav-group-label">Billing &amp; Payroll</div>
+          <a class="nav-item {% if request.url.path == '/billing-queue' %}active{% endif %}" href="/billing-queue">
+            Natalie's Hub
+            {% set _bq = pending_invoice_count() %}
+            {% if _bq > 0 %}<span class="nav-badge">{{ _bq }}</span>{% endif %}
+          </a>
+        </div>
+        {% endif %}
+
         <div class="nav-group">
           <div class="nav-group-label">Admin</div>
           <a class="nav-item {% if request.url.path == '/reports' %}active{% endif %}" href="/reports">Reports</a>

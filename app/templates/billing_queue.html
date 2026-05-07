@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-eyebrow">Billing &amp; Payroll Hub</div>
+<h1 style="margin:4px 0 4px;font-size:1.6rem;font-weight:800;letter-spacing:-.3px">Natalie's Dashboard</h1>
+<div class="subtle small" style="margin-bottom:24px">Pay period {{ period_start }} → {{ period_end }}</div>
+
+{# ── Bento row 1: Invoicing + Payroll Status ──────────────────────────────── #}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+  {# Invoicing Tile #}
+  <div class="card" style="padding:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Invoicing</div>
+        <div style="font-size:18px;font-weight:800;margin-top:2px">Pending Triggers</div>
+      </div>
+      {% if pending_invoices %}
+      <span style="background:oklch(95% 0.06 68);color:oklch(40% 0.12 68);border:1px solid oklch(85% 0.08 68);font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">{{ pending_invoices|length }} pending</span>
+      {% else %}
+      <span style="background:var(--good-surface,oklch(94% 0.06 145));color:var(--good);border:1px solid oklch(80% 0.09 145);font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">All clear</span>
+      {% endif %}
+    </div>
+
+    {% if pending_invoices %}
+    <div style="display:flex;flex-direction:column;gap:8px">
+      {% for inv in pending_invoices %}
+      {% set intake = inv.intake %}
+      <a href="/intakes/{{ inv.intake_id }}" style="display:block;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);border-radius:8px;padding:12px 14px;text-decoration:none;transition:border-color .15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='rgba(255,255,255,.10)'">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;font-family:var(--mono);font-weight:700;color:var(--accent)">{{ intake.project_number or '—' }}</span>
+          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,183,77,.12);color:#ffb74d;border:1px solid rgba(255,183,77,.3);padding:1px 7px;border-radius:3px">{{ inv.billing_phase_code }}</span>
+        </div>
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">{{ intake.project_name or '—' }}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span class="subtle small">{{ intake.client_name or '—' }}</span>
+          {% if inv.fee_amount %}
+          <span style="font-size:13px;font-weight:800;font-family:var(--mono);color:var(--good)">${{ "{:,.0f}".format(inv.fee_amount) }}</span>
+          {% endif %}
+        </div>
+        {% if inv.hours_check %}
+        {% set hc = inv.hours_check %}
+        <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+          <div style="flex:1;height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden">
+            <div style="height:100%;width:{{ [hc.pct_used, 100]|min }}%;background:{% if hc.pct_used >= 100 %}var(--bad){% elif hc.pct_used >= 80 %}#ffb74d{% else %}var(--good){% endif %};transition:width .3s"></div>
+          </div>
+          <span style="font-size:10px;font-family:var(--mono);color:var(--muted);white-space:nowrap">{{ hc.hours_used }}h / {{ hc.budgeted_hours }}h</span>
+        </div>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="padding:28px 0;text-align:center;color:var(--muted);font-size:13px">
+      No billing phases awaiting approval.
+    </div>
+    {% endif %}
+  </div>
+
+  {# Payroll Status Tile #}
+  <div class="card" style="padding:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Payroll</div>
+        <div style="font-size:18px;font-weight:800;margin-top:2px">Timecard Status</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:{% if not_started > 0 %}var(--warn){% else %}var(--good){% endif %}">{{ staff_count - not_started }}/{{ staff_count }}</div>
+        <div class="subtle small">submitted or approved</div>
+      </div>
+    </div>
+
+    {# Summary bar #}
+    <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;margin-bottom:14px;gap:2px">
+      {% if approved > 0 %}<div style="flex:{{ approved }};background:var(--good)"></div>{% endif %}
+      {% if submitted > 0 %}<div style="flex:{{ submitted }};background:#ffb74d"></div>{% endif %}
+      {% if not_started > 0 %}<div style="flex:{{ not_started }};background:rgba(255,255,255,.12)"></div>{% endif %}
+    </div>
+    <div style="display:flex;gap:14px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:50%;background:var(--good);display:inline-block"></span>Approved {{ approved }}</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:50%;background:#ffb74d;display:inline-block"></span>Submitted {{ submitted }}</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.2);display:inline-block"></span>Pending {{ not_started }}</div>
+    </div>
+
+    {# Per-engineer rows #}
+    <div style="display:flex;flex-direction:column;gap:6px">
+      {% for eng in timecard_summary %}
+      {% set status = eng.submission_status %}
+      <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:{{ eng.color }}22;color:{{ eng.color }};font-size:11px;font-weight:700;flex-shrink:0;border:1px solid {{ eng.color }}44">{{ eng.initials }}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:var(--text)">{{ eng.initials }}</div>
+          <div style="font-size:11px;color:var(--muted)">{{ eng.role }}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:12px;font-family:var(--mono);font-weight:700">{{ eng.period_hours }}h</div>
+          <div style="font-size:10px;color:var(--muted)">this period</div>
+        </div>
+        <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;flex-shrink:0;white-space:nowrap;
+          {% if status == 'APPROVED' %}background:oklch(94% 0.06 145);color:var(--good);
+          {% elif status == 'SUBMITTED' %}background:rgba(255,183,77,.12);color:#ffb74d;
+          {% elif status == 'DRAFT' %}background:rgba(79,142,247,.10);color:var(--accent);
+          {% else %}background:rgba(255,255,255,.06);color:var(--muted);{% endif %}">
+          {% if status == 'NOT_STARTED' %}—{% else %}{{ status }}{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+
+{# ── Bento row 2: Today's Time Feed ──────────────────────────────────────────#}
+<div class="card" style="padding:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Live Feed</div>
+      <div style="font-size:18px;font-weight:800;margin-top:2px">Hours Logged Today</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:22px;font-weight:900;font-family:var(--mono)">{{ today_total }}h</div>
+      <div class="subtle small">firm total</div>
+    </div>
+  </div>
+
+  {% if today_entries %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Engineer</th>
+        <th>Project</th>
+        <th>Phase</th>
+        <th>Hours</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in today_entries %}
+      {% set color = e.engineer_initials | default('') %}
+      <tr>
+        <td>
+          <span style="display:inline-flex;align-items:center;gap:6px">
+            <span style="width:8px;height:8px;border-radius:50%;background:{{ e.engineer_initials }};display:inline-block"></span>
+            <span style="font-weight:600">{{ e.engineer_initials }}</span>
+          </span>
+        </td>
+        <td>
+          {% if e.intake_id %}
+          <a href="/intakes/{{ e.intake_id }}" style="font-size:12px">
+            {% if e.project_number and e.project_number != '—' %}<span style="font-family:var(--mono);font-weight:700;color:var(--accent)">{{ e.project_number }}</span> · {% endif %}
+            {{ e.project_name }}
+          </a>
+          {% else %}
+          <span class="subtle">{{ e.project_number or '—' }}</span>
+          {% endif %}
+        </td>
+        <td style="font-family:var(--mono);font-weight:700;font-size:12px">{{ e.phase_code or '—' }}</td>
+        <td style="font-family:var(--mono);font-weight:700">{{ "%.1f"|format(e.hours|float) }}h</td>
+        <td class="subtle small">{{ e.notes or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="padding:28px 0;text-align:center;color:var(--muted);font-size:13px">No hours logged today yet.</div>
+  {% endif %}
+</div>
+
+{% endblock %}
