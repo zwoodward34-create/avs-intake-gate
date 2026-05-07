@@ -208,13 +208,52 @@
           ASSIGN ENGINEERS — PROJECTED CAPACITY
         </div>
         <div class="mo-capacity-bars" id="capacity-bars-{{ intake.id }}">
-          <button class="btn" id="capacity-btn-{{ intake.id }}"
-                  onclick="moLoadCapacity({{ intake.id }})"
-                  style="margin:4px 0">
-            See Capacity
-          </button>
+          <div class="mo-capacity-loading">Loading capacity…</div>
         </div>
         <div class="mo-conflict-warnings" id="conflict-warnings-{{ intake.id }}" style="display:none;"></div>
+      </div>
+
+      {# Calendar Event Creation — shown after capacity loads #}
+      <div id="mo-cal-section-{{ intake.id }}" style="display:none;margin-top:16px;padding:14px 16px;background:var(--card-bg-deeper);border:1px solid var(--border);border-radius:8px">
+        <div class="mo-section-label" style="margin-bottom:12px">CREATE CALENDAR EVENT</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="field" style="margin:0">
+            <label style="font-size:11px">Project #</label>
+            <input type="text" id="mo-cal-proj-{{ intake.id }}"
+                   value="{{ intake.project_number or '' }}" placeholder="e.g. 9771">
+          </div>
+          <div class="field" style="margin:0">
+            <label style="font-size:11px">Client</label>
+            <input type="text" id="mo-cal-client-{{ intake.id }}"
+                   value="{{ intake.client_name or '' }}">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="field" style="margin:0">
+            <label style="font-size:11px">Phase</label>
+            <select id="mo-cal-phase-{{ intake.id }}">
+              {% for p in valid_phases %}<option value="{{ p }}"{% if p == 'IFP' %} selected{% endif %}>{{ p }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field" style="margin:0">
+            <label style="font-size:11px">Tier (1–5)</label>
+            <select id="mo-cal-tier-{{ intake.id }}">
+              <option value="">— Auto —</option>
+              <option value="1">1 — Minor</option>
+              <option value="2">2 — Small</option>
+              <option value="3">3 — Standard</option>
+              <option value="4">4 — Large</option>
+              <option value="5">5 — Major</option>
+            </select>
+          </div>
+        </div>
+        <div id="mo-cal-save-ok-{{ intake.id }}"  style="display:none;background:rgba(22,163,74,.1);border:1px solid rgba(22,163,74,.4);border-radius:6px;padding:8px 12px;font-size:13px;font-weight:700;color:#16a34a;margin-bottom:8px">✓ Calendar event saved!</div>
+        <div id="mo-cal-save-err-{{ intake.id }}" style="display:none;color:#f87171;font-size:12px;font-weight:600;margin-bottom:8px"></div>
+        <button type="button" class="btn btn-primary" id="mo-cal-save-btn-{{ intake.id }}"
+                onclick="moSaveCalEvent({{ intake.id }})"
+                style="font-size:12px">
+          Save to Calendar
+        </button>
       </div>
 
     </div>
@@ -308,6 +347,12 @@
 
     if (action === 'proceed') {
       if (proceedPanel) proceedPanel.style.display = 'block';
+      // Auto-load capacity so the tracker is immediately visible
+      const startEl = document.getElementById('window-start-' + intakeId);
+      const endEl   = document.getElementById('window-end-'   + intakeId);
+      const start = startEl && startEl.value ? startEl.value : null;
+      const end   = endEl   && endEl.value   ? endEl.value   : null;
+      moLoadCapacity(intakeId, start, end);
     } else {
       const labelMap = {
         'info':       'WHAT INFORMATION IS NEEDED?',
@@ -370,7 +415,6 @@
   };
 
   window.moUpdateCapacity = function (intakeId) {
-    if (!moCapacityCache[intakeId]) return;
     const startEl = document.getElementById('window-start-' + intakeId);
     const endEl   = document.getElementById('window-end-'   + intakeId);
     const start = startEl ? startEl.value : '';
@@ -427,6 +471,10 @@
     container.innerHTML =
       renderPool('Engineering Pool', data.engineering_pool) +
       renderPool('Drafting Pool', data.drafting_pool);
+
+    // Reveal the calendar event creation section once engineers are visible
+    const calSec = document.getElementById('mo-cal-section-' + intakeId);
+    if (calSec) calSec.style.display = 'block';
   }
 
   // ─── Conflict Warnings ───────────────────────────────────────────────────────
@@ -591,6 +639,77 @@
   };
 
   // ─── Badge + empty state helpers ────────────────────────────────────────────
+  // ─── Save Calendar Event from Mo's proceed panel ─────────────────────────────
+  window.moSaveCalEvent = async function (intakeId) {
+    const card    = document.getElementById('mo-card-' + intakeId);
+    const startEl = document.getElementById('window-start-' + intakeId);
+    const endEl   = document.getElementById('window-end-'   + intakeId);
+    const projEl  = document.getElementById('mo-cal-proj-'  + intakeId);
+    const clientEl= document.getElementById('mo-cal-client-'+ intakeId);
+    const phaseEl = document.getElementById('mo-cal-phase-' + intakeId);
+    const tierEl  = document.getElementById('mo-cal-tier-'  + intakeId);
+    const okEl    = document.getElementById('mo-cal-save-ok-' + intakeId);
+    const errEl   = document.getElementById('mo-cal-save-err-'+ intakeId);
+    const saveBtn = document.getElementById('mo-cal-save-btn-'+ intakeId);
+
+    okEl.style.display = 'none'; errEl.style.display = 'none';
+
+    const start = startEl ? startEl.value : '';
+    const end   = endEl   ? endEl.value   : '';
+    if (!start || !end) {
+      errEl.textContent = 'Set project window start and end dates above.';
+      errEl.style.display = 'block'; return;
+    }
+    if (end < start) {
+      errEl.textContent = 'End date must be on or after start date.';
+      errEl.style.display = 'block'; return;
+    }
+
+    const team = card
+      ? Array.from(card.querySelectorAll('.mo-capacity-checkbox:checked')).map(cb => cb.value)
+      : [];
+    if (!team.length) {
+      errEl.textContent = 'Select at least one engineer from the capacity tracker above.';
+      errEl.style.display = 'block'; return;
+    }
+
+    const tierRaw = tierEl ? tierEl.value : '';
+    const payload = {
+      project_number: projEl  ? projEl.value.trim()  : '',
+      client:         clientEl? clientEl.value.trim() : '',
+      location:       '',
+      phase:          phaseEl ? phaseEl.value : 'IFP',
+      tier:           tierRaw ? parseInt(tierRaw) : null,
+      phase_jump:     false,
+      team,
+      project_type:   '',
+      start_date:     start + 'T00:00:00Z',
+      end_date:       end   + 'T23:59:59Z',
+      is_ooo:         false,
+    };
+
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+    try {
+      const r = await fetch('/api/calendar/events', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        errEl.textContent = e.detail || 'Save failed.';
+        errEl.style.display = 'block';
+      } else {
+        okEl.style.display = 'block';
+        saveBtn.textContent = '✓ Saved';
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error — please try again.';
+      errEl.style.display = 'block';
+      saveBtn.disabled = false; saveBtn.textContent = 'Save to Calendar';
+    }
+  };
+
   function _decrementBadge() {
     const badge = document.getElementById('queue-badge');
     if (!badge) return;
