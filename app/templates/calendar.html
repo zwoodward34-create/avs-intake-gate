@@ -355,6 +355,80 @@
     <div class="modal-actions" style="margin-top:18px">
       <button class="btn btn-danger" id="event-detail-delete-btn" style="margin-right:auto">Delete Event</button>
       <button class="btn" id="event-detail-close-btn">Close</button>
+      <button class="btn btn-primary" id="event-detail-edit-btn">Edit Event</button>
+    </div>
+  </div>
+</div>
+
+<!-- Phase Event Edit Modal -->
+<div class="modal-overlay" id="phase-edit-modal">
+  <div class="modal" style="max-width:480px">
+    <button class="modal-close" id="phase-edit-close">✕</button>
+    <h3>Edit Calendar Event</h3>
+    <div class="field">
+      <label for="pe-project-number">Project #</label>
+      <input type="text" id="pe-project-number" placeholder="e.g. 9771">
+    </div>
+    <div class="two-col">
+      <div class="field">
+        <label for="pe-client">Client</label>
+        <input type="text" id="pe-client" placeholder="e.g. Sprouts">
+      </div>
+      <div class="field">
+        <label for="pe-location">Location</label>
+        <input type="text" id="pe-location" placeholder="e.g. Hutto, TX">
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="field">
+        <label for="pe-phase">Phase</label>
+        <select id="pe-phase">
+          {% for p in valid_phases %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="pe-tier">Tier (1–5)</label>
+        <select id="pe-tier">
+          <option value="">— No tier —</option>
+          <option value="1">1 — Minor</option>
+          <option value="2">2 — Small</option>
+          <option value="3">3 — Standard</option>
+          <option value="4">4 — Large</option>
+          <option value="5">5 — Major</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Team</label>
+      <div class="team-select-wrapper" id="pe-team-wrapper">
+        <button type="button" class="team-select-trigger" id="pe-team-trigger">
+          <span class="team-select-placeholder" id="pe-team-placeholder">Select team members…</span>
+        </button>
+        <div class="team-dropdown" id="pe-team-dropdown">
+          {% for m in team_members %}
+          <div class="team-option" data-member="{{ m }}" id="pe-opt-{{ m }}">
+            <span class="team-option-dot" data-member="{{ m }}">{{ m }}</span>
+            <span class="team-option-label">{{ m }}</span>
+            <span class="team-option-check" style="display:none">✓</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="field">
+        <label for="pe-start">Start Date</label>
+        <input type="date" id="pe-start">
+      </div>
+      <div class="field">
+        <label for="pe-end">End Date</label>
+        <input type="date" id="pe-end">
+      </div>
+    </div>
+    <div id="pe-error" style="display:none;color:#f87171;font-size:12px;font-weight:600;margin-top:6px"></div>
+    <div class="modal-actions">
+      <button class="btn" id="pe-cancel">Cancel</button>
+      <button class="btn btn-primary" id="pe-save">Update Event</button>
     </div>
   </div>
 </div>
@@ -805,6 +879,7 @@
   // ── Event Detail Modal (phase events) ─────────────────────────
   const eventDetailOverlay = document.getElementById('event-detail-overlay');
   let _detailEventId = null;
+  let _detailEvent   = null;
 
   // Compute inline background from the cal-cN class by creating a temp element
   function getClassBg(className) {
@@ -820,6 +895,7 @@
 
   function openPhaseEventDetail(ev, ci) {
     _detailEventId = ev.id;
+    _detailEvent   = ev;
     const colorClass = 'cal-c' + (ci !== undefined ? ci : projectColor(ev.project_number));
     document.getElementById('event-detail-swatch').style.background = getClassBg(colorClass);
     document.getElementById('event-detail-title').textContent =
@@ -855,6 +931,138 @@
       closeEventDetail();
       loadCalendar();
     } catch (err) { alert('Network error.'); }
+  });
+
+  // ── Edit button on event detail ───────────────────────────────
+  document.getElementById('event-detail-edit-btn').addEventListener('click', () => {
+    if (!_detailEvent) return;
+    closeEventDetail();
+    openPhaseEdit(_detailEvent);
+  });
+
+  // ── Phase Event Edit Modal ────────────────────────────────────
+  const phaseEditOverlay = document.getElementById('phase-edit-modal');
+  const TEAM_COLORS_PE   = {{ team_colors | safe }};
+  let _peSelectedTeam    = new Set();
+
+  function peRenderTrigger() {
+    const trigger = document.getElementById('pe-team-trigger');
+    trigger.innerHTML = '';
+    if (_peSelectedTeam.size === 0) {
+      const ph = document.createElement('span');
+      ph.className = 'team-select-placeholder';
+      ph.textContent = 'Select team members…';
+      trigger.appendChild(ph);
+    } else {
+      [..._peSelectedTeam].forEach(m => {
+        const av = document.createElement('div');
+        av.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:${TEAM_COLORS_PE[m]||'#9ca3af'};font-size:9px;font-weight:800;color:#fff;margin-right:3px`;
+        av.title = m;
+        av.textContent = m;
+        trigger.appendChild(av);
+      });
+    }
+  }
+
+  function peSyncChecks() {
+    phaseEditOverlay.querySelectorAll('.team-option').forEach(opt => {
+      const m = opt.dataset.member;
+      const check = opt.querySelector('.team-option-check');
+      if (_peSelectedTeam.has(m)) { opt.classList.add('selected'); check.style.display = ''; }
+      else { opt.classList.remove('selected'); check.style.display = 'none'; }
+    });
+  }
+
+  document.getElementById('pe-team-trigger').addEventListener('click', e => {
+    e.stopPropagation();
+    document.getElementById('pe-team-dropdown').classList.toggle('open');
+  });
+  phaseEditOverlay.querySelectorAll('#pe-team-dropdown .team-option').forEach(opt => {
+    opt.addEventListener('click', e => {
+      e.stopPropagation();
+      const m = opt.dataset.member;
+      if (_peSelectedTeam.has(m)) _peSelectedTeam.delete(m);
+      else _peSelectedTeam.add(m);
+      peSyncChecks();
+      peRenderTrigger();
+    });
+  });
+  document.addEventListener('click', () => {
+    document.getElementById('pe-team-dropdown').classList.remove('open');
+  });
+
+  function openPhaseEdit(ev) {
+    _peSelectedTeam = new Set(ev.team || []);
+    peSyncChecks();
+    peRenderTrigger();
+
+    document.getElementById('pe-project-number').value = ev.project_number || '';
+    document.getElementById('pe-client').value         = ev.client || '';
+    document.getElementById('pe-location').value       = ev.location || '';
+    document.getElementById('pe-phase').value          = ev.phase_code || ev.phase || 'IFP';
+    document.getElementById('pe-tier').value           = ev.tier ? String(ev.tier) : '';
+    // Dates come as "YYYY-MM-DD" or full ISO — slice to date part
+    document.getElementById('pe-start').value = (ev.start_date || '').slice(0, 10);
+    document.getElementById('pe-end').value   = (ev.end_date   || '').slice(0, 10);
+    document.getElementById('pe-error').style.display = 'none';
+    phaseEditOverlay.classList.add('open');
+  }
+
+  function closePhaseEdit() { phaseEditOverlay.classList.remove('open'); }
+  document.getElementById('phase-edit-close').addEventListener('click', closePhaseEdit);
+  document.getElementById('pe-cancel').addEventListener('click', closePhaseEdit);
+  phaseEditOverlay.addEventListener('click', e => { if (e.target === phaseEditOverlay) closePhaseEdit(); });
+
+  document.getElementById('pe-save').addEventListener('click', async () => {
+    const start = document.getElementById('pe-start').value;
+    const end   = document.getElementById('pe-end').value;
+    const team  = [..._peSelectedTeam];
+    const errEl = document.getElementById('pe-error');
+    errEl.style.display = 'none';
+
+    if (!start || !end)  { errEl.textContent = 'Start and end dates are required.'; errEl.style.display = 'block'; return; }
+    if (end < start)     { errEl.textContent = 'End date must be on or after start date.'; errEl.style.display = 'block'; return; }
+    if (!team.length)    { errEl.textContent = 'Please select at least one team member.'; errEl.style.display = 'block'; return; }
+
+    const tierRaw = document.getElementById('pe-tier').value;
+    const payload = {
+      project_number: document.getElementById('pe-project-number').value.trim(),
+      client:         document.getElementById('pe-client').value.trim(),
+      location:       document.getElementById('pe-location').value.trim(),
+      phase:          document.getElementById('pe-phase').value,
+      tier:           tierRaw ? parseInt(tierRaw) : null,
+      phase_jump:     false,
+      team,
+      project_type:   '',
+      start_date:     start + 'T00:00:00Z',
+      end_date:       end   + 'T23:59:59Z',
+      is_ooo:         false,
+    };
+
+    const saveBtn = document.getElementById('pe-save');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    try {
+      const r = await fetch(`/api/calendar/events/${_detailEventId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        errEl.textContent = e.detail || 'Save failed.';
+        errEl.style.display = 'block';
+      } else {
+        closePhaseEdit();
+        loadCalendar();
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error — please try again.';
+      errEl.style.display = 'block';
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Update Event';
+    }
   });
 
   // ── Init ──────────────────────────────────────────────────────

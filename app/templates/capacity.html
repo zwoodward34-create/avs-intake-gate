@@ -740,6 +740,8 @@
   const PHASE_COLORS = {{ phase_colors | safe }};
   const TEAM_COLORS  = {{ team_colors | safe }};
 
+  let _lastProj = null;
+
   const overlay = document.createElement('div');
   overlay.className = 'proj-detail-overlay';
   overlay.id = 'proj-detail-overlay';
@@ -755,8 +757,16 @@
   document.getElementById('proj-detail-close').addEventListener('click', () => overlay.classList.remove('open'));
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
 
+  // Delegated click for the Edit button rendered inside pd-body
+  document.getElementById('pd-body').addEventListener('click', e => {
+    if (e.target.closest('.pd-edit-btn') && _lastProj) {
+      overlay.classList.remove('open');
+      if (window.openEditModal) window.openEditModal(_lastProj);
+    }
+  });
+
   window.openProjectDetail = function (proj) {
-    window.openProjectDetail._last = proj;
+    _lastProj = proj;
     document.getElementById('pd-title').textContent = proj.title || '—';
     const phaseColor = PHASE_COLORS[proj.phase] || '#9ca3af';
 
@@ -767,6 +777,8 @@
     const teamHtml = (proj.team || []).map(m =>
       `<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:${TEAM_COLORS[m]||'#9ca3af'};font-size:9px;font-weight:800;color:#fff;margin-right:3px" title="${m}">${m}</span>`
     ).join('');
+
+    const isRealEvent = proj.event_id && !String(proj.event_id).startsWith('intake-');
 
     document.getElementById('pd-body').innerHTML = `
       <div class="proj-detail-row">
@@ -793,9 +805,9 @@
         <span class="proj-detail-label">WEU Load</span>
         <span class="proj-detail-value" style="font-family:'JetBrains Mono',var(--mono),monospace">${proj.effective_load.toFixed(2)} WEU${proj.phase_jump ? ' <span class="project-jump-tag">+QA</span>' : ''}</span>
       </div>
-      ${proj.event_id ? `
+      ${isRealEvent ? `
       <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-        <button onclick="window.openEditModal(window.openProjectDetail._last)" class="btn" style="width:100%;font-size:12px">Edit Event</button>
+        <button class="btn pd-edit-btn" style="width:100%;font-size:12px">Edit Event</button>
       </div>` : ''}
     `;
     overlay.classList.add('open');
@@ -983,9 +995,6 @@
     document.getElementById('ae-start').value = proj.start_date || today();
     document.getElementById('ae-end').value = proj.end_date || today();
     document.getElementById('ae-save-error').style.display = 'none';
-
-    // Close the detail popup first, then open edit modal
-    document.getElementById('proj-detail-overlay').classList.remove('open');
     overlay.classList.add('open');
   };
 
