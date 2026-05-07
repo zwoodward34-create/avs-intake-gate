@@ -257,23 +257,19 @@
   // ── Submission status ────────────────────────────────────────────────────────
   var _lockedPeriod = false;
 
-  function loadSubmissionStatus(eng, start, end) {
+  function loadSubmissionStatus(eng, start, end, liveHours) {
     var banner = document.getElementById('ts-submit-banner');
     if (!eng) { banner.style.display = 'none'; _lockedPeriod = false; return; }
     fetch('/api/timesheet/submission?engineer=' + eng + '&start=' + start + '&end=' + end)
       .then(r => r.json())
-      .then(sub => renderSubmissionBanner(sub, eng, start, end))
+      .then(sub => renderSubmissionBanner(sub, eng, start, end, liveHours || 0))
       .catch(() => { banner.style.display = 'none'; });
   }
 
-  // Store current banner state so updateBannerHours can patch it
-  var _bannerState = null;
-
-  function renderSubmissionBanner(sub, eng, start, end) {
+  function renderSubmissionBanner(sub, eng, start, end, liveHours) {
     var banner = document.getElementById('ts-submit-banner');
     var status = (sub.status || 'DRAFT').toUpperCase();
     _lockedPeriod = (status === 'SUBMITTED' || status === 'APPROVED');
-    _bannerState  = {sub, eng, start, end, status};
 
     var statusColors = {
       DRAFT:    {bg:'rgba(79,142,247,.10)', border:'rgba(79,142,247,.25)', text:'var(--accent)'},
@@ -282,6 +278,9 @@
       REJECTED: {bg:'rgba(248,113,113,.10)',border:'rgba(248,113,113,.3)', text:'var(--bad)'},
     };
     var sc = statusColors[status] || statusColors.DRAFT;
+
+    // For DRAFT, use live hours from loaded entries; for other statuses use the stored total
+    var displayHours = (status === 'DRAFT') ? (liveHours || 0) : (parseFloat(sub.total_hours) || 0);
 
     var metaLine = '';
     if (status === 'SUBMITTED' && sub.submitted_at) {
@@ -292,19 +291,23 @@
     } else if (status === 'REJECTED' && sub.reviewer_notes) {
       metaLine = sub.reviewer_notes;
     } else if (status === 'DRAFT') {
-      metaLine = 'Log your hours for this period, then submit for Mo\'s approval.';
+      metaLine = displayHours > 0
+        ? 'Hours logged — ready to submit for Mo\'s approval.'
+        : 'Log your hours for this period, then submit for Mo\'s approval.';
     }
 
-    var hoursHtml = sub.total_hours != null
-      ? `<span id="banner-hours" style="font-size:20px;font-weight:900;font-family:var(--mono)">${parseFloat(sub.total_hours).toFixed(1)}h</span>`
-      : `<span id="banner-hours" style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--muted)">—</span>`;
+    var hoursHtml = `<span style="font-size:20px;font-weight:900;font-family:var(--mono);color:${displayHours > 0 ? 'var(--text)' : 'var(--muted)'}">${displayHours.toFixed(1)}h</span>`;
 
     var actionHtml = '';
     if (status === 'DRAFT' || status === 'REJECTED') {
-      var btnLabel = status === 'REJECTED' ? 'Re-submit for Review' : 'Submit for Review';
-      actionHtml = `<button class="btn btn-primary" type="button" id="submit-btn"
+      var canSubmit = (status === 'REJECTED') || (displayHours > 0);
+      var btnLabel = status === 'REJECTED'
+        ? 'Re-submit for Review'
+        : (displayHours > 0 ? 'Submit ' + displayHours.toFixed(1) + 'h for Review' : 'No hours to submit');
+      actionHtml = `<button class="btn btn-primary" type="button"
         onclick="submitPeriod('${eng}','${start}','${end}')"
-        style="white-space:nowrap;padding:8px 20px;font-size:13px;font-weight:700">${btnLabel}</button>`;
+        ${canSubmit ? '' : 'disabled'}
+        style="white-space:nowrap;padding:8px 20px;font-size:13px;font-weight:700${canSubmit ? '' : ';opacity:.45;cursor:not-allowed'}">${btnLabel}</button>`;
     } else if (status === 'SUBMITTED') {
       if (_currentUserRole === 'admin') {
         actionHtml = `
@@ -338,20 +341,6 @@
         ${hoursHtml}
         ${actionHtml}
       </div>`;
-    banner.style.display = 'flex';
-  }
-
-  function updateBannerHours(totalHours) {
-    var el = document.getElementById('banner-hours');
-    if (el && _bannerState && _bannerState.status === 'DRAFT') {
-      el.textContent = totalHours > 0 ? totalHours.toFixed(1) + 'h' : '0h';
-      el.style.color = totalHours > 0 ? 'var(--text)' : 'var(--muted)';
-      // Also update the submit button label
-      var btn = document.getElementById('submit-btn');
-      if (btn) btn.textContent = totalHours > 0
-        ? `Submit ${totalHours.toFixed(1)}h for Review`
-        : 'Submit for Review';
-    }
   }
 
   window.submitPeriod = function(eng, start, end) {
@@ -386,8 +375,9 @@
 
     document.getElementById('ts-table-wrap').innerHTML =
       '<div class="ts-empty">Loading…</div>';
-
-    loadSubmissionStatus(eng, start, end);
+    // Hide banner until entries are known (avoids stale hours display)
+    document.getElementById('ts-submit-banner').style.display = 'none';
+    _lockedPeriod = false;
 
     var params = new URLSearchParams({start, end});
     if (eng) params.append('engineer', eng);
@@ -396,9 +386,9 @@
       .then(r => r.json())
       .then(entries => {
         renderTable(entries);
-        // Update banner with live hours count after entries load
+        // Pass live hours so banner shows accurate count immediately
         var liveHours = entries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
-        updateBannerHours(liveHours);
+        loadSubmissionStatus(eng, start, end, liveHours);
       })
       .catch(() => {
         document.getElementById('ts-table-wrap').innerHTML =
