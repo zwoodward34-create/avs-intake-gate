@@ -349,7 +349,16 @@
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({engineer: eng, period_start: start, period_end: end}),
     })
-    .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.detail || 'Submit failed'); }); return r.json(); })
+    .then(r => {
+      if (!r.ok) {
+        return r.text().then(text => {
+          var msg = 'Submit failed';
+          try { msg = JSON.parse(text).detail || msg; } catch (_) {}
+          throw new Error(msg);
+        });
+      }
+      return r.json();
+    })
     .then(sub => { renderSubmissionBanner(sub, eng, start, end); loadEntries(); })
     .catch(e => alert(e.message));
   };

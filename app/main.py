@@ -2236,7 +2236,10 @@ async def api_submit_period(request: Request) -> dict[str, Any]:
     total_hours = round(sum(float(e["hours"]) for e in entries), 2)
     if total_hours == 0:
         raise HTTPException(status_code=400, detail="No hours logged for this period.")
-    sub = db.submit_period(engineer, period_start, period_end, total_hours)
+    try:
+        sub = db.submit_period(engineer, period_start, period_end, total_hours)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not save submission: {exc}")
     return sub
 
 
