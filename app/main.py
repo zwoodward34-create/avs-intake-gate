@@ -279,6 +279,16 @@ def _require_role(request: Request, *allowed: str) -> Optional[RedirectResponse]
     return None
 
 
+_EMPLOYEE_ROLES = {"employee", "engineer", "drafter"}
+
+def _enforce_own_entries(request: Request, engineer_initials: str) -> None:
+    """Raise 403 if a non-admin user tries to touch another engineer's entries."""
+    user = _session_user(request) or {}
+    if user.get("role") in _EMPLOYEE_ROLES:
+        if engineer_initials.upper() != (user.get("initials") or "").upper():
+            raise HTTPException(status_code=403, detail="You can only log time for yourself.")
+
+
 def _check_page_access(request: Request, path: str) -> Optional[RedirectResponse]:
     """Generic per-page guard based on _ROLE_ALLOWED table."""
     if redir := _require_auth(request):
@@ -2128,6 +2138,7 @@ async def api_create_time_entry(request: Request) -> dict[str, Any]:
     notes = _as_str(str(body.get("notes") or ""))
     if not engineer:
         raise HTTPException(status_code=400, detail="engineer_initials is required.")
+    _enforce_own_entries(request, engineer)
     if not project_number:
         raise HTTPException(status_code=400, detail="project_number is required.")
     if not phase_code:
@@ -2161,6 +2172,7 @@ async def api_update_time_entry(request: Request, entry_id: int) -> dict[str, An
     entry = db.get_time_entry(entry_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Not found.")
+    _enforce_own_entries(request, entry["engineer_initials"])
     if db.is_period_locked(entry["engineer_initials"], entry["entry_date"]):
         raise HTTPException(status_code=403, detail="This pay period has been submitted for review and is locked.")
     body = await request.json()
@@ -2176,10 +2188,11 @@ async def api_update_time_entry(request: Request, entry_id: int) -> dict[str, An
 
 
 @app.delete("/api/time-entries/{entry_id}")
-def api_delete_time_entry(entry_id: int) -> dict[str, Any]:
+def api_delete_time_entry(request: Request, entry_id: int) -> dict[str, Any]:
     entry = db.get_time_entry(entry_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Not found.")
+    _enforce_own_entries(request, entry["engineer_initials"])
     if db.is_period_locked(entry["engineer_initials"], entry["entry_date"]):
         raise HTTPException(status_code=403, detail="This pay period has been submitted for review and is locked.")
     db.delete_time_entry(entry_id)
@@ -2206,6 +2219,7 @@ async def api_submit_period(request: Request) -> dict[str, Any]:
     period_end = (body.get("period_end") or "").strip()
     if not engineer or not period_start or not period_end:
         raise HTTPException(status_code=400, detail="engineer, period_start, period_end required.")
+    _enforce_own_entries(request, engineer)
     # Compute total hours for this engineer/period
     entries = db.list_time_entries(start=period_start, end=period_end, engineer=engineer)
     total_hours = round(sum(float(e["hours"]) for e in entries), 2)
@@ -2255,7 +2269,8 @@ def timesheet_page(request: Request) -> HTMLResponse:
             "valid_phases": db.VALID_PHASES,
             "default_period_start": start,
             "default_period_end": end,
-            "current_user_role": current_user.get("role", ""),
+            "current_user_role":     current_user.get("role", ""),
+            "current_user_initials": current_user.get("initials", ""),
         },
     )
 

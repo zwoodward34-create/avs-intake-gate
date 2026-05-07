@@ -117,12 +117,19 @@
 <div class="ts-controls">
   <div class="field">
     <label>Engineer</label>
+    {% set _is_employee = current_user_role not in ('admin', 'office_manager', 'billing') %}
+    {% if _is_employee %}
+    <select id="eng-select" disabled style="opacity:.7;cursor:not-allowed">
+      <option value="{{ current_user_initials }}" selected>{{ current_user_initials }}</option>
+    </select>
+    {% else %}
     <select id="eng-select">
       <option value="">— All Engineers —</option>
       {% for m in team_members %}
         <option value="{{ m }}">{{ m }}</option>
       {% endfor %}
     </select>
+    {% endif %}
   </div>
   <div class="field">
     <label>Period Start</label>
@@ -146,12 +153,18 @@
   <div class="form-row">
     <div class="field" style="min-width:90px; max-width:110px">
       <label>Engineer *</label>
+      {% if current_user_role not in ('admin', 'office_manager', 'billing') %}
+      <select id="add-eng" disabled style="opacity:.7;cursor:not-allowed">
+        <option value="{{ current_user_initials }}" selected>{{ current_user_initials }}</option>
+      </select>
+      {% else %}
       <select id="add-eng">
         <option value="">—</option>
         {% for m in team_members %}
           <option value="{{ m }}">{{ m }}</option>
         {% endfor %}
       </select>
+      {% endif %}
     </div>
     <div class="field" style="min-width:160px; max-width:240px">
       <label>Project *</label>
@@ -197,7 +210,8 @@
 (function() {
   const PHASE_COLORS    = {{ phase_colors_json | safe }};
   const TEAM_FULL_NAMES = {{ team_full_names_json | safe }};
-  var _currentUserRole  = {{ current_user_role | tojson }};
+  var _currentUserRole     = {{ current_user_role | tojson }};
+  var _currentUserInitials = {{ current_user_initials | tojson }};
   var activeProjects = [];  // [{intake_id, project_number, client, project_name, phases}]
 
   // Load projects when engineer changes
@@ -517,8 +531,14 @@
   };
 
   // Initial load
-  loadActiveProjects('');
-  loadEntries();
+  var _isEmployee = !['admin','office_manager','billing'].includes(_currentUserRole);
+  if (_isEmployee && _currentUserInitials) {
+    loadActiveProjects(_currentUserInitials);
+    loadEntries();
+  } else {
+    loadActiveProjects('');
+    loadEntries();
+  }
 })();
 </script>
 
