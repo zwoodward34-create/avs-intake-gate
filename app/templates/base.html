@@ -56,7 +56,8 @@
             Mo's Queue
             {% set _mc = pending_mo_count() %}
             {% set _ic = pending_invoice_count() %}
-            {% set _total = _mc + _ic %}
+            {% set _tc = pending_review_count() %}
+            {% set _total = _mc + _ic + _tc %}
             {% if _total > 0 %}
               <span class="nav-badge">{{ _total }}</span>
             {% endif %}

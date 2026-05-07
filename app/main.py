@@ -952,10 +952,7 @@ def mo_queue(request: Request) -> HTMLResponse:
         })
 
     pending_invoices = db.get_pending_invoice_approvals()
-    try:
-        timesheet_queue = db.get_enriched_review_queue()
-    except Exception:
-        timesheet_queue = []
+    timesheet_queue  = db.get_enriched_review_queue()
     return templates.TemplateResponse(
         "mo_queue.html",
         {
