@@ -54,6 +54,7 @@
   <div id="ap-body" style="display:none; margin-top:18px">
     <div class="field" style="margin-bottom:14px">
       <label for="ap-desc">Describe the project in plain English</label>
+
       <textarea id="ap-desc" rows="6" style="width:100%; box-sizing:border-box; resize:vertical; font-family:inherit; font-size:14px; padding:10px; border:1px solid var(--border); border-radius:6px; background:var(--surface)"
         placeholder="E.g. 'The Broadway Mixed-Use Conversion, completed in 2019 in Phoenix AZ. 5-story wood-frame over concrete podium, gable roof, lateral system was wood shear walls, AHJ was City of Phoenix Building Services.'"></textarea>
     </div>
@@ -68,38 +69,48 @@
           <input id="ap-project-name" type="text" style="width:100%; box-sizing:border-box">
         </div>
         <div class="field">
-          <label>Location</label>
-          <input id="ap-location" type="text" style="width:100%; box-sizing:border-box">
+          <label>Project Number</label>
+          <input id="ap-project-number" type="text" style="width:100%; box-sizing:border-box">
         </div>
       </div>
       <div class="row row-2" style="margin-bottom:12px">
+        <div class="field">
+          <label>Location</label>
+          <input id="ap-location" type="text" style="width:100%; box-sizing:border-box">
+        </div>
         <div class="field">
           <label>Year Completed</label>
           <input id="ap-year" type="text" style="width:100%; box-sizing:border-box">
         </div>
+      </div>
+      <div class="row row-2" style="margin-bottom:12px">
         <div class="field">
           <label>Project Type</label>
           <input id="ap-project-type" type="text" style="width:100%; box-sizing:border-box">
         </div>
-      </div>
-      <div class="row row-2" style="margin-bottom:12px">
         <div class="field">
           <label>Material</label>
           <input id="ap-material" type="text" style="width:100%; box-sizing:border-box">
         </div>
+      </div>
+      <div class="row row-2" style="margin-bottom:12px">
         <div class="field">
           <label>Roof System</label>
           <input id="ap-roof" type="text" style="width:100%; box-sizing:border-box">
         </div>
-      </div>
-      <div class="row row-2" style="margin-bottom:12px">
         <div class="field">
           <label>LFRS</label>
           <input id="ap-lfrs" type="text" style="width:100%; box-sizing:border-box">
         </div>
+      </div>
+      <div class="row row-2" style="margin-bottom:12px">
         <div class="field">
           <label>AHJ</label>
           <input id="ap-ahj" type="text" style="width:100%; box-sizing:border-box">
+        </div>
+        <div class="field" style="display:flex; align-items:center; gap:10px; padding-top:22px">
+          <input id="ap-site-visit" type="checkbox" style="width:18px; height:18px; cursor:pointer">
+          <label for="ap-site-visit" style="margin:0; cursor:pointer">Site Visit Conducted</label>
         </div>
       </div>
       <div class="field" style="margin-bottom:16px">
@@ -142,16 +153,18 @@ function analyzeProject() {
     return r.json();
   })
   .then(function(data) {
-    document.getElementById('ap-project-name').value = data.project_name || '';
-    document.getElementById('ap-location').value     = data.location || '';
-    document.getElementById('ap-year').value         = data.year_completed || '';
-    document.getElementById('ap-project-type').value = data.project_type || '';
-    document.getElementById('ap-material').value     = data.material || '';
-    document.getElementById('ap-roof').value         = data.roof || '';
-    document.getElementById('ap-lfrs').value         = data.lfrs || '';
-    document.getElementById('ap-ahj').value          = data.ahj || '';
-    document.getElementById('ap-notes').value        = data.notes || '';
-    document.getElementById('ap-form').style.display = 'block';
+    document.getElementById('ap-project-name').value   = data.project_name || '';
+    document.getElementById('ap-project-number').value = data.project_number || '';
+    document.getElementById('ap-location').value        = data.location || '';
+    document.getElementById('ap-year').value            = data.year_completed || '';
+    document.getElementById('ap-project-type').value   = data.project_type || '';
+    document.getElementById('ap-material').value        = data.material || '';
+    document.getElementById('ap-roof').value            = data.roof || '';
+    document.getElementById('ap-lfrs').value            = data.lfrs || '';
+    document.getElementById('ap-ahj').value             = data.ahj || '';
+    document.getElementById('ap-site-visit').checked   = data.site_visit === true;
+    document.getElementById('ap-notes').value           = data.notes || '';
+    document.getElementById('ap-form').style.display   = 'block';
     status.textContent = 'Done.';
   })
   .catch(function(e) { status.textContent = e.message; })
@@ -163,6 +176,7 @@ function saveHistoricalProject() {
   status.textContent = 'Saving…';
   var payload = {
     project_name:    document.getElementById('ap-project-name').value.trim(),
+    project_number:  document.getElementById('ap-project-number').value.trim(),
     location:        document.getElementById('ap-location').value.trim(),
     year_completed:  document.getElementById('ap-year').value.trim(),
     project_type:    document.getElementById('ap-project-type').value.trim(),
@@ -170,6 +184,7 @@ function saveHistoricalProject() {
     roof:            document.getElementById('ap-roof').value.trim(),
     lfrs:            document.getElementById('ap-lfrs').value.trim(),
     ahj:             document.getElementById('ap-ahj').value.trim(),
+    site_visit:      document.getElementById('ap-site-visit').checked,
     notes:           document.getElementById('ap-notes').value.trim(),
     raw_description: document.getElementById('ap-desc').value.trim(),
   };

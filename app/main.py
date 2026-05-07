@@ -1507,22 +1507,17 @@ async def api_nl_search_projects(request: Request) -> dict[str, Any]:
     import anthropic as _anthropic
     client = _anthropic.Anthropic(api_key=api_key)
     prompt = (
-        "You are helping search a structural engineering project database.\n"
-        "Extract search filters from the user's query. Return ONLY a JSON object with these keys "
-        "(use empty string \"\" if not mentioned):\n"
-        "  type (BTS or TI only), wallSystem, roof, slab, foundation, company\n\n"
-        "Known values:\n"
-        "- type: BTS, TI\n"
-        "- wallSystem: Cast in Place Concrete, Concrete Tilt Panels, Masonry, Wood, Concrete\n"
-        "- roof: Steel, Wood, Hybrid, Concrete Slab\n"
-        "- slab: Slab on Grade, Structural Slab, Elevated Slab\n"
-        "- foundation: Spread Footing, Piers\n"
-        "- company: any company or client name mentioned\n\n"
+        "Extract search keywords from this structural engineering project search query.\n"
+        "Return ONLY a JSON array of strings — individual keywords or short phrases.\n"
+        "Include variations, abbreviations, and synonyms "
+        "(e.g. for 'wood frame' include ['wood', 'wood frame', 'timber', 'light frame']; "
+        "for 'tilt-up' include ['tilt', 'tilt panel', 'tilt up', 'tilt-up', 'concrete tilt']; "
+        "for 'BTS' include ['bts', 'build to suit']; for 'TI' include ['ti', 'tenant improvement']).\n\n"
         f"Query: {query}"
     )
     msg = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=256,
+        max_tokens=300,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = msg.content[0].text.strip()
@@ -1531,13 +1526,38 @@ async def api_nl_search_projects(request: Request) -> dict[str, Any]:
         if raw.startswith("json"):
             raw = raw[4:]
     try:
-        filters = _json.loads(raw.strip())
+        keywords = _json.loads(raw.strip())
+        if not isinstance(keywords, list):
+            keywords = [str(keywords)]
     except _json.JSONDecodeError:
-        filters = {}
+        keywords = [query]
+
     try:
-        return project_search.search_projects(filters, limit=500)
+        data = project_search.get_projects()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+    normalized_kw = [kw.lower().strip() for kw in keywords if str(kw).strip()]
+    scored: list[tuple[int, dict]] = []
+    for row in data["rows"]:
+        haystack = " ".join(str(v).lower() for v in row.values() if v)
+        score = sum(1 for kw in normalized_kw if kw in haystack)
+        if score > 0:
+            scored.append((score, row))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    matches = [row for _, row in scored[:500]]
+
+    return {
+        "ok": True,
+        "headers": data["headers"],
+        "col_map": data["col_map"],
+        "type_options": data["type_options"],
+        "total": data["total"],
+        "returned": len(matches),
+        "truncated": len(matches) >= 500,
+        "rows": matches,
+    }
 
 
 @app.post("/api/analyze-project")
@@ -1554,7 +1574,9 @@ async def api_analyze_project(request: Request) -> dict[str, Any]:
     prompt = (
         "Extract technical details from the following project description.\n"
         "Return ONLY a JSON object with these exact keys (use null if unknown):\n"
-        "  project_name, location, year_completed, project_type, material, roof, lfrs, ahj, notes\n\n"
+        "  project_name, project_number, location, year_completed, project_type,\n"
+        "  material, roof, lfrs, ahj, site_visit, notes\n\n"
+        "For site_visit: return true if a site visit is mentioned, false if explicitly not done, null if unknown.\n\n"
         f"Description:\n{description}"
     )
     msg = client.messages.create(
@@ -1580,8 +1602,16 @@ async def api_save_historical_project(request: Request) -> dict[str, Any]:
         year = int(body["year_completed"]) if body.get("year_completed") else None
     except (ValueError, TypeError):
         year = None
+    site_visit_raw = body.get("site_visit")
+    if isinstance(site_visit_raw, bool):
+        site_visit = site_visit_raw
+    elif isinstance(site_visit_raw, str):
+        site_visit = site_visit_raw.lower() in ("true", "yes", "1") if site_visit_raw else None
+    else:
+        site_visit = None
     record = {
         "project_name":    (body.get("project_name") or "").strip() or None,
+        "project_number":  (body.get("project_number") or "").strip() or None,
         "location":        (body.get("location") or "").strip() or None,
         "year_completed":  year,
         "project_type":    (body.get("project_type") or "").strip() or None,
@@ -1589,6 +1619,7 @@ async def api_save_historical_project(request: Request) -> dict[str, Any]:
         "roof":            (body.get("roof") or "").strip() or None,
         "lfrs":            (body.get("lfrs") or "").strip() or None,
         "ahj":             (body.get("ahj") or "").strip() or None,
+        "site_visit":      site_visit,
         "notes":           (body.get("notes") or "").strip() or None,
         "raw_description": (body.get("raw_description") or "").strip() or None,
     }
