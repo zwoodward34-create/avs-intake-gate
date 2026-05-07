@@ -2194,6 +2194,7 @@ def timesheet_page(request: Request) -> HTMLResponse:
     if redir := _require_auth(request): return redir
     import json as _json
     start, end = _current_pay_period()
+    current_user = _session_user(request) or {}
     return templates.TemplateResponse(
         "timesheet.html",
         {
@@ -2205,6 +2206,7 @@ def timesheet_page(request: Request) -> HTMLResponse:
             "valid_phases": db.VALID_PHASES,
             "default_period_start": start,
             "default_period_end": end,
+            "current_user_role": current_user.get("role", ""),
         },
     )
 

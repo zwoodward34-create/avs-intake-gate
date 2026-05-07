@@ -197,6 +197,7 @@
 (function() {
   const PHASE_COLORS    = {{ phase_colors_json | safe }};
   const TEAM_FULL_NAMES = {{ team_full_names_json | safe }};
+  var _currentUserRole  = {{ current_user_role | tojson }};
   var activeProjects = [];  // [{intake_id, project_number, client, project_name, phases}]
 
   // Load projects when engineer changes
@@ -277,7 +278,19 @@
     if (status === 'DRAFT' || status === 'REJECTED') {
       actionHtml = `<button class="btn btn-primary" type="button" onclick="submitPeriod('${eng}','${start}','${end}')" style="white-space:nowrap;font-size:12px">Submit for Review</button>`;
     } else if (status === 'SUBMITTED') {
-      actionHtml = `<span style="font-size:12px;color:var(--warn)">⏳ Awaiting approval</span>`;
+      if (_currentUserRole === 'admin') {
+        actionHtml = `
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-primary" type="button"
+              onclick="reviewPeriod('${sub.id}','APPROVED',null,'${eng}','${start}','${end}')"
+              style="white-space:nowrap;font-size:12px;background:var(--good);border-color:var(--good)">Approve</button>
+            <button class="btn" type="button"
+              onclick="reviewPeriod('${sub.id}','REJECTED',prompt('Reason for rejection (optional):'),'${eng}','${start}','${end}')"
+              style="white-space:nowrap;font-size:12px;color:var(--bad);border-color:var(--bad)">Reject</button>
+          </div>`;
+      } else {
+        actionHtml = `<span style="font-size:12px;color:var(--warn)">⏳ Awaiting approval</span>`;
+      }
     } else if (status === 'APPROVED') {
       actionHtml = `<span style="font-size:12px;color:var(--good)">✓ Period locked</span>`;
     }
@@ -303,6 +316,18 @@
       body: JSON.stringify({engineer: eng, period_start: start, period_end: end}),
     })
     .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.detail || 'Submit failed'); }); return r.json(); })
+    .then(sub => { renderSubmissionBanner(sub, eng, start, end); loadEntries(); })
+    .catch(e => alert(e.message));
+  };
+
+  window.reviewPeriod = function(submissionId, action, notes, eng, start, end) {
+    if (action === 'REJECTED' && notes === null) return; // cancelled prompt
+    fetch('/api/timesheet/review/' + submissionId, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: action, notes: notes || ''}),
+    })
+    .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.detail || 'Review failed'); }); return r.json(); })
     .then(sub => { renderSubmissionBanner(sub, eng, start, end); loadEntries(); })
     .catch(e => alert(e.message));
   };
