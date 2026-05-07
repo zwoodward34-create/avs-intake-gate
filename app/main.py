@@ -1027,6 +1027,10 @@ async def api_mo_review_json(request: Request, intake_id: int) -> dict:
         _ifp   = body.get("proposed_end_date")   or (intake.ifp_due_date         if intake else None)
         _team  = body.get("assigned_engineers") or []
         if _start and _ifp and project_number:
+            # Infer tier from the freshly-updated intake so the WEU heatmap
+            # reflects complexity from the moment Mo approves.
+            _fresh_intake = db.get_intake(intake_id)
+            _tier = db.infer_tier_from_intake(_fresh_intake) if _fresh_intake else 3
             try:
                 db.generate_phase_calendar_events(
                     intake_id=intake_id,
@@ -1036,6 +1040,7 @@ async def api_mo_review_json(request: Request, intake_id: int) -> dict:
                     team=_team,
                     weu_hours=40.0,
                     replace_existing=True,
+                    tier=_tier,
                 )
             except Exception:
                 pass  # non-fatal: can be regenerated manually

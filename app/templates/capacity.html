@@ -582,6 +582,7 @@
       renderCapacity(data);
     } catch (e) { console.error('Capacity fetch error', e); }
   }
+  window.fetchCapacity = fetchCapacity;
 
   function statusColor(status) { return STATUS_COLORS[status] || '#9ca3af'; }
 
@@ -755,6 +756,7 @@
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
 
   window.openProjectDetail = function (proj) {
+    window.openProjectDetail._last = proj;
     document.getElementById('pd-title').textContent = proj.title || '—';
     const phaseColor = PHASE_COLORS[proj.phase] || '#9ca3af';
 
@@ -791,9 +793,14 @@
         <span class="proj-detail-label">WEU Load</span>
         <span class="proj-detail-value" style="font-family:'JetBrains Mono',var(--mono),monospace">${proj.effective_load.toFixed(2)} WEU${proj.phase_jump ? ' <span class="project-jump-tag">+QA</span>' : ''}</span>
       </div>
+      ${proj.event_id ? `
+      <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+        <button onclick="window.openEditModal(window.openProjectDetail._last)" class="btn" style="width:100%;font-size:12px">Edit Event</button>
+      </div>` : ''}
     `;
     overlay.classList.add('open');
   };
+
 })();
 
 // ── Add Calendar Event modal ──────────────────────────────────
@@ -819,7 +826,7 @@
   overlay.innerHTML = `
     <div class="cap-modal">
       <button class="cap-modal-close" id="ae-close">✕</button>
-      <h3>Add Calendar Event</h3>
+      <h3 id="ae-modal-title">Add Calendar Event</h3>
       <div class="field">
         <label for="ae-project-number">Project #</label>
         <input type="text" id="ae-project-number" placeholder="e.g. 9771">
@@ -880,6 +887,7 @@
   document.body.appendChild(overlay);
 
   let selectedTeam = new Set();
+  let editEventId = null;
 
   function pad(n) { return String(n).padStart(2, '0'); }
   function today() {
@@ -940,6 +948,9 @@
   });
 
   function openModal() {
+    editEventId = null;
+    document.getElementById('ae-modal-title').textContent = 'Add Calendar Event';
+    document.getElementById('ae-save').textContent = 'Save Event';
     selectedTeam.clear();
     syncTeamChecks();
     renderTeamTrigger();
@@ -953,6 +964,30 @@
     document.getElementById('ae-save-error').style.display = 'none';
     overlay.classList.add('open');
   }
+
+  window.openEditModal = function(proj) {
+    if (!proj || !proj.event_id) return;
+    editEventId = proj.event_id;
+    document.getElementById('ae-modal-title').textContent = 'Edit Calendar Event';
+    document.getElementById('ae-save').textContent = 'Update Event';
+
+    selectedTeam = new Set(proj.team || []);
+    syncTeamChecks();
+    renderTeamTrigger();
+
+    document.getElementById('ae-project-number').value = proj.project_number || '';
+    document.getElementById('ae-client').value = proj.client || '';
+    document.getElementById('ae-location').value = proj.location || '';
+    document.getElementById('ae-phase').value = proj.phase || 'IFP';
+    document.getElementById('ae-tier').value = proj.tier ? String(proj.tier) : '';
+    document.getElementById('ae-start').value = proj.start_date || today();
+    document.getElementById('ae-end').value = proj.end_date || today();
+    document.getElementById('ae-save-error').style.display = 'none';
+
+    // Close the detail popup first, then open edit modal
+    document.getElementById('proj-detail-overlay').classList.remove('open');
+    overlay.classList.add('open');
+  };
 
   function closeModal() { overlay.classList.remove('open'); }
 
@@ -991,8 +1026,10 @@
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving…';
     try {
-      const res = await fetch('/api/calendar/events', {
-        method: 'POST',
+      const url    = editEventId ? `/api/calendar/events/${editEventId}` : '/api/calendar/events';
+      const method = editEventId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -1002,13 +1039,14 @@
         errEl.style.display = 'block';
       } else {
         closeModal();
+        if (window.fetchCapacity) window.fetchCapacity();
       }
     } catch (e) {
       errEl.textContent = 'Network error — please try again.';
       errEl.style.display = 'block';
     } finally {
       saveBtn.disabled = false;
-      saveBtn.textContent = 'Save Event';
+      saveBtn.textContent = editEventId ? 'Update Event' : 'Save Event';
     }
   });
 })();

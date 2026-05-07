@@ -2039,6 +2039,44 @@ def count_working_days(start: date, end: date) -> int:
     return total
 
 
+def infer_tier_from_intake(intake: "IntakeRow") -> int:
+    """
+    Derive a WEU tier (1–5) from the approved fee and complexity signals.
+
+    Tier scale:
+      1 – Minor assessment / sub-$15k
+      2 – Small project  $15k–$30k
+      3 – Standard       $30k–$60k   (most TI and new-construction)
+      4 – Large          $60k–$100k
+      5 – Major          $100k+
+    """
+    fee = float(getattr(intake, "mo_fee_override", None) or 0)
+    if fee >= 100_000:
+        tier = 5
+    elif fee >= 60_000:
+        tier = 4
+    elif fee >= 30_000:
+        tier = 3
+    elif fee >= 15_000:
+        tier = 2
+    else:
+        tier = 2  # minimum for any approved project
+
+    # Bump by one for explicitly high-complexity flags (cap at 5)
+    try:
+        answers = intake.answers  # parsed property
+        complexity = str(answers.get("complexity_estimate") or "").lower()
+        project_type = str(answers.get("project_type") or "").lower()
+        if "high" in complexity or "complex" in complexity:
+            tier = min(tier + 1, 5)
+        if project_type in ("healthcare", "historic", "high_rise"):
+            tier = min(tier + 1, 5)
+    except Exception:
+        pass
+
+    return tier
+
+
 def generate_phase_calendar_events(
     intake_id: int,
     project_number: str,
@@ -2047,6 +2085,7 @@ def generate_phase_calendar_events(
     team: list[str],
     weu_hours: float = 40.0,
     replace_existing: bool = True,
+    tier: Optional[int] = None,
 ) -> list[dict]:
     """
     Generate one calendar_events row per phase for a project.
@@ -2089,6 +2128,7 @@ def generate_phase_calendar_events(
             "start_date":     phase_start.isoformat() + "T00:00:00Z",
             "end_date":       phase_end.isoformat()   + "T23:59:59Z",
             "weu_hours":      round(weu_hours * DEFAULT_PHASE_SPLITS[phase], 1),
+            "tier":           tier,
             "team":           team,
             "is_legacy":      False,
             "is_ooo":         False,
@@ -2118,6 +2158,7 @@ def generate_phase_calendar_events(
             "start_date":     phase_start.isoformat() + "T00:00:00Z",
             "end_date":       phase_end.isoformat()   + "T23:59:59Z",
             "weu_hours":      round(weu_hours * DEFAULT_PHASE_SPLITS[phase], 1),
+            "tier":           tier,
             "team":           team,
             "is_legacy":      False,
             "is_ooo":         False,

@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS invoices (
 
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "service role full access" ON invoices
+CREATE POLICY "service role full access" ON invoices
     FOR ALL
     USING (auth.role() = 'service_role')
     WITH CHECK (auth.role() = 'service_role');
