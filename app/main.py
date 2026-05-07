@@ -617,21 +617,8 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
         except (ValueError, AttributeError):
             pass
 
-    # Default open accordion sections
-    c = intake.red_flag_counts
+    # All accordion sections default to collapsed — user expands what they need
     default_open: set[str] = set()
-    if not intake.mo_decision:
-        default_open.add("summary")
-    if c.get("critical", 0) > 0 or c.get("high", 0) > 0:
-        default_open.add("flags")
-    if intake.mo_decision:
-        default_open.add("mo")
-    if intake.status in ("PROCEED_TO_PROPOSAL", "PROCEED_WITH_CONDITIONS"):
-        default_open.add("proposal")
-        if intake.project_number:
-            default_open.add("budget")
-    if not default_open:
-        default_open.add("summary")
 
     return templates.TemplateResponse(
         "intake_view.html",
@@ -2026,12 +2013,29 @@ def capacity_page(request: Request) -> HTMLResponse:
 
 
 @app.get("/api/capacity")
-def api_capacity() -> dict:
-    import json as _json
-    from datetime import date
-    today = date.today().isoformat()
-    events = db.list_calendar_events(start=today + "T00:00:00Z")
-    snapshot = weu_engine.get_capacity_snapshot([e.to_dict() for e in events])
+def api_capacity(week_start: Optional[str] = None) -> dict:
+    from datetime import date, timedelta
+    if week_start:
+        try:
+            ws = date.fromisoformat(week_start)
+        except ValueError:
+            ws = date.today()
+    else:
+        ws = date.today()
+    ws = ws - timedelta(days=ws.weekday())   # snap to Monday
+    we = ws + timedelta(days=6)              # through Sunday
+
+    events = db.list_calendar_events(
+        start=ws.isoformat() + "T00:00:00Z",
+        end=we.isoformat()   + "T23:59:59Z",
+    )
+    event_dicts = [e.to_dict() for e in events]
+    covered_pns = {e.get("project_number") for e in event_dicts if e.get("project_number")}
+    intake_events = db.get_active_intake_pseudo_events(covered_pns)
+
+    snapshot = weu_engine.get_capacity_snapshot(event_dicts + intake_events)
+    snapshot["week_start"] = ws.isoformat()
+    snapshot["week_end"]   = we.isoformat()
     return snapshot
 
 
@@ -2479,6 +2483,18 @@ def billing_queue_page(request: Request) -> HTMLResponse:
     except Exception:
         pending_invoices = []
     try:
+        pending_billables = db.get_pending_billables()
+    except Exception:
+        pending_billables = []
+    try:
+        recent_invoices = db.get_all_invoices(limit=30)
+    except Exception:
+        recent_invoices = []
+    try:
+        burn_vs_bill = db.get_burn_vs_bill()
+    except Exception:
+        burn_vs_bill = []
+    try:
         timecard_summary = db.get_firm_timecard_summary(start, end)
     except Exception:
         timecard_summary = []
@@ -2506,27 +2522,32 @@ def billing_queue_page(request: Request) -> HTMLResponse:
     approved    = sum(1 for e in timecard_summary if e["submission_status"] == "APPROVED")
     not_started = sum(1 for e in timecard_summary if e["submission_status"] == "NOT_STARTED")
     today_total = round(sum(e["today_hours"] for e in timecard_summary), 1)
+    profit_risk_count = sum(1 for p in burn_vs_bill if p.get("profit_risk"))
     return templates.TemplateResponse(
         "billing_queue.html",
         {
-            "request":          request,
-            "title":            "Billing & Payroll — AVS",
-            "now_local":        _now_local_iso(),
-            "period_start":     start,
-            "period_end":       end,
-            "pending_invoices": pending_invoices,
-            "timecard_summary": timecard_summary,
-            "today_entries":    today_entries,
-            "submitted":        submitted,
-            "approved":         approved,
-            "not_started":      not_started,
-            "today_total":      today_total,
-            "staff_count":      len(timecard_summary),
-            "team_colors":      db.TEAM_COLORS,
-            "payroll_audit":    payroll_audit,
-            "cash_flow":        cash_flow,
-            "stale_projects":   stale_projects,
-            "utilization":      utilization,
+            "request":            request,
+            "title":              "Billing & Payroll — AVS",
+            "now_local":          _now_local_iso(),
+            "period_start":       start,
+            "period_end":         end,
+            "pending_invoices":   pending_invoices,
+            "pending_billables":  pending_billables,
+            "recent_invoices":    recent_invoices,
+            "burn_vs_bill":       burn_vs_bill,
+            "profit_risk_count":  profit_risk_count,
+            "timecard_summary":   timecard_summary,
+            "today_entries":      today_entries,
+            "submitted":          submitted,
+            "approved":           approved,
+            "not_started":        not_started,
+            "today_total":        today_total,
+            "staff_count":        len(timecard_summary),
+            "team_colors":        db.TEAM_COLORS,
+            "payroll_audit":      payroll_audit,
+            "cash_flow":          cash_flow,
+            "stale_projects":     stale_projects,
+            "utilization":        utilization,
         },
     )
 
@@ -2667,6 +2688,60 @@ async def api_mark_invoiced(request: Request, intake_id: int, billing_phase_code
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     return {"ok": True, "invoiced_by": invoiced_by}
+
+
+@app.get("/api/invoice-preview/{intake_id}/{phase_code}")
+async def api_invoice_preview(request: Request, intake_id: int, phase_code: str) -> dict[str, Any]:
+    if not _session_user(request):
+        raise HTTPException(status_code=401)
+    try:
+        return db.get_invoice_preview(intake_id, phase_code)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/invoices")
+async def api_create_invoice(request: Request) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    body = await request.json()
+    intake_id  = body.get("intake_id")
+    phase_code = body.get("phase_code")
+    amount     = body.get("amount")
+    notes      = str(body.get("notes") or "")
+    if not intake_id or not phase_code or amount is None:
+        raise HTTPException(status_code=422, detail="intake_id, phase_code, amount required")
+    try:
+        return db.create_invoice(
+            int(intake_id), phase_code, float(amount),
+            user.get("initials", "NK"), notes,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.patch("/api/invoices/{invoice_id}/status")
+async def api_update_invoice_status(request: Request, invoice_id: int) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    body   = await request.json()
+    status = str(body.get("status") or "")
+    if status not in ("draft", "sent", "paid"):
+        raise HTTPException(status_code=422, detail="status must be draft, sent, or paid")
+    db.update_invoice_status(invoice_id, status, user.get("initials", ""))
+    return {"ok": True}
+
+
+@app.get("/api/burn-vs-bill")
+async def api_burn_vs_bill(request: Request) -> list[dict[str, Any]]:
+    if not _session_user(request):
+        raise HTTPException(status_code=401)
+    try:
+        return db.get_burn_vs_bill()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/api/projects/{intake_id}/billing-phases/{billing_phase_code}/approve-invoice")

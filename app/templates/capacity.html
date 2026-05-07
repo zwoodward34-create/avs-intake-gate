@@ -464,7 +464,22 @@
 
 <div class="cap-header">
   <h2>Capacity &amp; WEU Heatmap</h2>
-  <div style="display:flex;align-items:center;gap:10px">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+
+    {# Week navigator #}
+    <div style="display:flex;align-items:center;gap:4px;background:var(--card-bg-deeper);border:1px solid var(--border);border-radius:8px;padding:3px 6px">
+      <button id="week-prev" title="Previous week"
+        style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:2px 6px;border-radius:4px;line-height:1;transition:color .15s"
+        onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">‹</button>
+      <span id="week-label" style="font-size:12px;font-weight:600;font-family:var(--mono);color:var(--text);min-width:170px;text-align:center;white-space:nowrap">—</span>
+      <button id="week-next" title="Next week"
+        style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:2px 6px;border-radius:4px;line-height:1;transition:color .15s"
+        onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">›</button>
+      <button id="week-today" title="Jump to current week"
+        style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;letter-spacing:.05em;transition:color .15s"
+        onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">TODAY</button>
+    </div>
+
     <button class="btn btn-primary" id="add-cal-event-btn">+ Add Calendar Event</button>
     <div class="cap-refresh-info" id="refresh-info">Refreshing in <span id="countdown">60</span>s</div>
   </div>
@@ -500,6 +515,55 @@
     over_allocated: '#7f1d1d',
   };
 
+  // ── Week state ─────────────────────────────────────────────
+  function isoMonday(d) {
+    const dt = new Date(d);
+    const day = dt.getUTCDay();            // 0=Sun … 6=Sat
+    const diff = day === 0 ? -6 : 1 - day; // shift to Monday
+    const mon = new Date(dt);
+    mon.setUTCDate(dt.getUTCDate() + diff);
+    return mon.toISOString().slice(0, 10);
+  }
+
+  function addDays(iso, n) {
+    const d = new Date(iso + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function fmtDate(iso) {
+    const d = new Date(iso + 'T00:00:00Z');
+    return MONTH_ABBR[d.getUTCMonth()] + ' ' + d.getUTCDate();
+  }
+
+  let currentWeekStart = isoMonday(new Date().toISOString().slice(0, 10));
+
+  function updateWeekLabel() {
+    const sun = addDays(currentWeekStart, 6);
+    document.getElementById('week-label').textContent =
+      fmtDate(currentWeekStart) + ' – ' + fmtDate(sun);
+  }
+
+  document.getElementById('week-prev').addEventListener('click', () => {
+    currentWeekStart = addDays(currentWeekStart, -7);
+    updateWeekLabel();
+    fetchCapacity();
+  });
+  document.getElementById('week-next').addEventListener('click', () => {
+    currentWeekStart = addDays(currentWeekStart, 7);
+    updateWeekLabel();
+    fetchCapacity();
+  });
+  document.getElementById('week-today').addEventListener('click', () => {
+    currentWeekStart = isoMonday(new Date().toISOString().slice(0, 10));
+    updateWeekLabel();
+    fetchCapacity();
+  });
+
+  updateWeekLabel();
+
+  // ── Auto-refresh ────────────────────────────────────────────
   let countdown = 60;
   let countdownEl = document.getElementById('countdown');
 
@@ -512,7 +576,7 @@
 
   async function fetchCapacity() {
     try {
-      const res = await fetch('/api/capacity');
+      const res = await fetch('/api/capacity?week_start=' + currentWeekStart);
       if (!res.ok) return;
       const data = await res.json();
       renderCapacity(data);
@@ -638,8 +702,24 @@
     const banner = document.getElementById('no-tier-banner');
     banner.classList.toggle('visible', data.summary.events_without_tier > 0);
 
+    // Week sub-label under main heading
+    if (data.week_start) {
+      const sun = addDays(data.week_start, 6);
+      document.getElementById('week-label').textContent =
+        fmtDate(data.week_start) + ' – ' + fmtDate(sun);
+    }
+
     const content = document.getElementById('cap-content');
     content.innerHTML = '';
+
+    const totalEvents = data.summary.total_active_events;
+    if (totalEvents === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'padding:48px;text-align:center;color:var(--muted);font-size:13px';
+      empty.innerHTML = 'No projects or calendar events active for this week.<br><span style="font-size:11px">Use ‹ › to browse other weeks, or add a calendar event.</span>';
+      content.appendChild(empty);
+    }
+
     renderPool(data.engineering, 'Engineering Pool', content);
     renderPool(data.drafting,    'Drafting Pool',    content);
   }

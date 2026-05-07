@@ -1,14 +1,66 @@
 {% extends "base.html" %}
 {% block content %}
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
 <div class="page-eyebrow">Billing &amp; Payroll Hub</div>
 <h1 style="margin:4px 0 4px;font-size:1.6rem;font-weight:800;letter-spacing:-.3px">Natalie's Dashboard</h1>
 <div class="subtle small" style="margin-bottom:24px">Pay period {{ period_start }} → {{ period_end }}</div>
 
+{# ── Pending Billables Action Queue ───────────────────────────────────────────#}
+{% if pending_billables %}
+<div class="card" style="padding:0;margin-bottom:16px;overflow:hidden;border:1px solid rgba(99,179,237,.25)">
+  <div style="padding:16px 20px;border-bottom:1px solid rgba(99,179,237,.15);display:flex;align-items:center;justify-content:space-between">
+    <div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#63b3ed">Action Required</div>
+      <div style="font-size:18px;font-weight:800;margin-top:2px">Pending Billables</div>
+    </div>
+    <span style="background:rgba(99,179,237,.12);color:#63b3ed;border:1px solid rgba(99,179,237,.3);font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">{{ pending_billables|length }} ready to invoice</span>
+  </div>
+  <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+    {% for b in pending_billables %}
+    {% set intake = b.intake %}
+    <div id="billable-{{ b.intake_id }}-{{ b.billing_phase_code }}"
+         style="background:rgba(255,255,255,.04);border:1px solid {% if b.billing_phase_code == 'retainer' %}rgba(239,68,68,.35){% else %}rgba(255,255,255,.09){% endif %};border-radius:8px;padding:14px 16px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;flex-wrap:wrap">
+            <a href="/intakes/{{ b.intake_id }}" style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);text-decoration:none">{{ intake.project_number or '—' }}</a>
+            {% if b.billing_phase_code == 'retainer' %}
+            <span style="font-size:10px;font-weight:700;background:rgba(239,68,68,.18);color:#f87171;border:1px solid rgba(239,68,68,.4);padding:1px 7px;border-radius:3px">⚠ RETAINER MISSING</span>
+            {% else %}
+            <span style="font-size:10px;font-weight:700;background:rgba(99,179,237,.12);color:#63b3ed;border:1px solid rgba(99,179,237,.3);padding:1px 7px;border-radius:3px">{{ b.billing_phase_code }}</span>
+            {% endif %}
+          </div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">{{ intake.project_name or '—' }}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">{{ intake.client_name or '—' }}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--good)">${{ "{:,.0f}".format(b.amount_due) }}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:1px">due this invoice</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0;padding:8px 10px;background:rgba(255,255,255,.03);border-radius:6px;font-size:11px">
+        <div><div style="color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Contract</div><div style="font-family:var(--mono);font-weight:700">${{ "{:,.0f}".format(b.total_contract) }}</div></div>
+        <div><div style="color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Prev Billed</div><div style="font-family:var(--mono);font-weight:700">${{ "{:,.0f}".format(b.prev_billed) }}</div></div>
+        <div><div style="color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Balance</div><div style="font-family:var(--mono);font-weight:700">${{ "{:,.0f}".format(b.balance_to_finish) }}</div></div>
+      </div>
+      <button onclick="openInvoiceModal({{ b.intake_id }}, '{{ b.billing_phase_code }}')"
+        style="width:100%;padding:7px 0;border-radius:6px;border:1px solid rgba(99,179,237,.4);background:rgba(99,179,237,.08);color:#63b3ed;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.03em;transition:all .15s"
+        onmouseover="this.style.background='rgba(99,179,237,.16)';this.style.borderColor='rgba(99,179,237,.7)'"
+        onmouseout="this.style.background='rgba(99,179,237,.08)';this.style.borderColor='rgba(99,179,237,.4)'">
+        Generate Invoice →
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {# ── Bento row 1: Invoicing + Payroll Status ──────────────────────────────── #}
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
 
-  {# Invoicing Tile #}
+  {# Invoicing Tile — Mo's approval queue #}
   <div class="card" style="padding:20px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
       <div>
@@ -82,7 +134,6 @@
       </div>
     </div>
 
-    {# Summary bar #}
     <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;margin-bottom:14px;gap:2px">
       {% if approved > 0 %}<div style="flex:{{ approved }};background:var(--good)"></div>{% endif %}
       {% if submitted > 0 %}<div style="flex:{{ submitted }};background:#ffb74d"></div>{% endif %}
@@ -94,7 +145,6 @@
       <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.2);display:inline-block"></span>Pending {{ not_started }}</div>
     </div>
 
-    {# Per-engineer rows #}
     <div style="display:flex;flex-direction:column;gap:6px">
       {% for eng in timecard_summary %}
       {% set status = eng.submission_status %}
@@ -122,8 +172,8 @@
 
 </div>
 
-{# ── Bento row 2: Today's Time Feed ──────────────────────────────────────────#}
-<div class="card" style="padding:20px">
+{# ── Today's Time Feed ────────────────────────────────────────────────────────#}
+<div class="card" style="padding:20px;margin-bottom:16px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <div>
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Live Feed</div>
@@ -139,11 +189,7 @@
   <table class="table">
     <thead>
       <tr>
-        <th>Engineer</th>
-        <th>Project</th>
-        <th>Phase</th>
-        <th>Hours</th>
-        <th>Notes</th>
+        <th>Engineer</th><th>Project</th><th>Phase</th><th>Hours</th><th>Notes</th>
       </tr>
     </thead>
     <tbody>
@@ -178,62 +224,80 @@
   {% endif %}
 </div>
 
-{# ── Bento row 3: Insight mini-tiles ─────────────────────────────────────────#}
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+{# ── Insight Tiles (4-col) ────────────────────────────────────────────────────#}
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:16px">
 
-  {# Cash Flow Forecast #}
+  {# Cash Flow #}
   <div class="card" style="padding:18px">
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Cash Flow Forecast</div>
-    <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--good)">
-      ${{ "{:,.0f}".format(cash_flow.total) }}
-    </div>
+    <div style="font-size:26px;font-weight:900;font-family:var(--mono);color:var(--good)">${{ "{:,.0f}".format(cash_flow.total) }}</div>
     <div class="subtle small" style="margin-top:4px">{{ cash_flow.count }} phase{{ 's' if cash_flow.count != 1 else '' }} ready to bill</div>
   </div>
 
   {# Stale Projects #}
   <div class="card" style="padding:18px">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Stale Projects <span style="font-weight:400;color:var(--muted)">› 14 days no activity</span></div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Stale Projects <span style="font-weight:400">› 14d</span></div>
     {% if stale_projects %}
-    <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:{% if stale_projects|length > 3 %}var(--bad){% else %}#ffb74d{% endif %}">{{ stale_projects|length }}</div>
-    <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;max-height:90px;overflow-y:auto">
+    <div style="font-size:26px;font-weight:900;font-family:var(--mono);color:{% if stale_projects|length > 3 %}var(--bad){% else %}#ffb74d{% endif %}">{{ stale_projects|length }}</div>
+    <div style="margin-top:8px;display:flex;flex-direction:column;gap:3px;max-height:72px;overflow-y:auto">
       {% for p in stale_projects %}
-      <a href="/intakes/{{ p.id }}" style="font-size:11px;color:var(--muted);text-decoration:none;display:flex;align-items:center;gap:6px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">
-        <span style="font-family:var(--mono);color:var(--accent)">{{ p.project_number or '—' }}</span>
-        <span>{{ (p.project_name or '—')[:28] }}</span>
+      <a href="/intakes/{{ p.id }}" style="font-size:11px;color:var(--muted);text-decoration:none" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">
+        <span style="font-family:var(--mono);color:var(--accent)">{{ p.project_number or '—' }}</span> {{ (p.project_name or '')[:22] }}
       </a>
       {% endfor %}
     </div>
     {% else %}
-    <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--good)">0</div>
+    <div style="font-size:26px;font-weight:900;font-family:var(--mono);color:var(--good)">0</div>
     <div class="subtle small" style="margin-top:4px">All projects active</div>
     {% endif %}
   </div>
 
-  {# Utilization Heatmap #}
+  {# Utilization #}
   <div class="card" style="padding:18px">
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Team Utilization</div>
-    <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:{% if utilization.billable_pct >= 75 %}var(--good){% elif utilization.billable_pct >= 50 %}#ffb74d{% else %}var(--bad){% endif %}">
-      {{ utilization.billable_pct }}%
-    </div>
+    <div style="font-size:26px;font-weight:900;font-family:var(--mono);color:{% if utilization.billable_pct >= 75 %}var(--good){% elif utilization.billable_pct >= 50 %}#ffb74d{% else %}var(--bad){% endif %}">{{ utilization.billable_pct }}%</div>
     <div class="subtle small" style="margin-top:4px">billable this period</div>
-    <div style="margin-top:10px;height:6px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,.08);display:flex;gap:2px">
-      {% if utilization.billable > 0 %}
-      <div style="flex:{{ utilization.billable }};background:var(--good);border-radius:3px 0 0 3px"></div>
-      {% endif %}
-      {% if utilization.admin > 0 %}
-      <div style="flex:{{ utilization.admin }};background:rgba(255,255,255,.18);border-radius:0 3px 3px 0"></div>
-      {% endif %}
+    <div style="margin-top:10px;height:5px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,.08);display:flex">
+      {% if utilization.billable > 0 %}<div style="flex:{{ utilization.billable }};background:var(--good)"></div>{% endif %}
+      {% if utilization.admin > 0 %}<div style="flex:{{ utilization.admin }};background:rgba(255,255,255,.18)"></div>{% endif %}
     </div>
-    <div style="display:flex;gap:12px;margin-top:6px">
-      <span style="font-size:10px;color:var(--muted)"><span style="color:var(--good)">●</span> {{ utilization.billable }}h billable</span>
-      <span style="font-size:10px;color:var(--muted)"><span style="color:rgba(255,255,255,.4)">●</span> {{ utilization.admin }}h admin</span>
+    <div style="display:flex;gap:10px;margin-top:6px">
+      <span style="font-size:10px;color:var(--muted)"><span style="color:var(--good)">●</span> {{ utilization.billable }}h</span>
+      <span style="font-size:10px;color:var(--muted)"><span style="color:rgba(255,255,255,.3)">●</span> {{ utilization.admin }}h admin</span>
     </div>
+  </div>
+
+  {# Burn vs Bill #}
+  <div class="card" style="padding:18px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Burn vs Bill</div>
+    {% if profit_risk_count > 0 %}
+    <div style="font-size:26px;font-weight:900;font-family:var(--mono);color:var(--bad)">{{ profit_risk_count }} risk</div>
+    <div style="font-size:11px;color:var(--bad);margin-top:4px;font-weight:600">Projects over-burning</div>
+    {% elif burn_vs_bill %}
+    <div style="font-size:26px;font-weight:900;font-family:var(--mono);color:var(--good)">OK</div>
+    <div class="subtle small" style="margin-top:4px">All projects in range</div>
+    {% else %}
+    <div style="font-size:26px;font-weight:900;font-family:var(--mono);color:var(--muted)">—</div>
+    <div class="subtle small" style="margin-top:4px">No active projects</div>
+    {% endif %}
+    {% if burn_vs_bill %}
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:4px;max-height:70px;overflow-y:auto">
+      {% for p in burn_vs_bill[:4] %}
+      <div style="display:flex;align-items:center;justify-content:space-between;font-size:10px">
+        <a href="/intakes/{{ p.intake_id }}" style="font-family:var(--mono);color:var(--accent);text-decoration:none">{{ p.project_number }}</a>
+        <span style="font-family:var(--mono);font-weight:700;color:{% if p.profit_risk %}var(--bad){% else %}var(--good){% endif %}">
+          {% if p.ratio is not none %}{{ p.ratio }}×{% else %}—{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 
 </div>
 
-{# ── Bento row 4: Payroll Audit ───────────────────────────────────────────────#}
-<div class="card" style="padding:20px">
+{# ── Payroll Audit ─────────────────────────────────────────────────────────── #}
+<div class="card" style="padding:20px;margin-bottom:16px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
     <div>
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Payroll Audit</div>
@@ -247,8 +311,7 @@
   <table class="table">
     <thead>
       <tr>
-        <th>Engineer</th>
-        <th>Status</th>
+        <th>Engineer</th><th>Status</th>
         <th style="text-align:right">Total Hours</th>
         <th style="text-align:right">Billable Hours</th>
         <th style="text-align:right">Billable %</th>
@@ -290,8 +353,7 @@
           {% else %}
             {% set disc_reason = eng.initials ~ " has an unusual hours pattern (" ~ eng.total_hours ~ "h) that doesn't match expected utilization for this period." %}
           {% endif %}
-          <button onclick="showDiscrepancy(this)"
-            data-reason="{{ disc_reason }}"
+          <button onclick="showDiscrepancy(this)" data-reason="{{ disc_reason }}"
             style="background:none;border:none;cursor:pointer;font-size:13px;font-weight:700;color:#f87171;padding:2px 6px;border-radius:4px;transition:background .15s"
             onmouseover="this.style.background='rgba(239,68,68,.12)'"
             onmouseout="this.style.background='none'">⚠</button>
@@ -305,6 +367,194 @@
   </table>
 </div>
 
+{# ── Burn vs Bill Detail Table ─────────────────────────────────────────────── #}
+{% if burn_vs_bill %}
+<div class="card" style="padding:20px;margin-bottom:16px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Financial Health</div>
+      <div style="font-size:18px;font-weight:800;margin-top:2px">Burn vs Bill</div>
+    </div>
+    <div style="font-size:11px;color:var(--muted)">ratio = (hours × $150) ÷ invoiced</div>
+  </div>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Project</th><th>Client</th>
+        <th style="text-align:right">Burn (est.)</th>
+        <th style="text-align:right">Total Invoiced</th>
+        <th style="text-align:right">Ratio</th>
+        <th style="text-align:center">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in burn_vs_bill %}
+      <tr style="{% if p.profit_risk %}background:rgba(239,68,68,.05);{% endif %}">
+        <td>
+          <a href="/intakes/{{ p.intake_id }}" style="font-size:12px;text-decoration:none">
+            <span style="font-family:var(--mono);font-weight:700;color:var(--accent)">{{ p.project_number }}</span>
+            <span style="color:var(--text);margin-left:5px">{{ p.project_name[:30] }}</span>
+          </a>
+        </td>
+        <td class="subtle small">{{ p.client_name }}</td>
+        <td style="text-align:right;font-family:var(--mono);font-weight:700">${{ "{:,.0f}".format(p.burn) }}</td>
+        <td style="text-align:right;font-family:var(--mono)">${{ "{:,.0f}".format(p.billed) }}</td>
+        <td style="text-align:right;font-family:var(--mono);font-weight:700;color:{% if p.profit_risk %}var(--bad){% elif p.ratio is not none and p.ratio > 0.8 %}#ffb74d{% else %}var(--good){% endif %}">
+          {% if p.ratio is not none %}{{ p.ratio }}×{% else %}—{% endif %}
+        </td>
+        <td style="text-align:center">
+          {% if p.profit_risk %}
+          <span style="font-size:10px;font-weight:700;background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);padding:2px 7px;border-radius:3px">PROFIT RISK</span>
+          {% elif p.ratio is none %}
+          <span style="font-size:10px;color:var(--muted)">No invoices yet</span>
+          {% else %}
+          <span style="font-size:10px;font-weight:700;background:oklch(94% 0.06 145);color:var(--good);padding:2px 7px;border-radius:3px">ON TRACK</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ── Recent Invoices ───────────────────────────────────────────────────────── #}
+{% if recent_invoices %}
+<div class="card" style="padding:20px">
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Invoice Ledger</div>
+  <div style="font-size:18px;font-weight:800;margin-bottom:14px">Recent Invoices</div>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Invoice #</th><th>Project</th><th>Phase</th>
+        <th style="text-align:right">Amount</th>
+        <th style="text-align:center">Status</th>
+        <th>Created</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for inv in recent_invoices %}
+      {% set intake = inv.intake %}
+      <tr id="inv-row-{{ inv.id }}">
+        <td style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent)">{{ inv.invoice_number }}</td>
+        <td>
+          <a href="/intakes/{{ inv.intake_id }}" style="font-size:12px;text-decoration:none">
+            <span style="font-family:var(--mono);color:var(--accent)">{{ intake.project_number or '—' }}</span>
+            <span style="color:var(--text);margin-left:4px">{{ (intake.project_name or '—')[:28] }}</span>
+          </a>
+        </td>
+        <td style="font-size:11px;font-weight:700;color:var(--muted)">{{ inv.phase_label }}</td>
+        <td style="text-align:right;font-family:var(--mono);font-weight:700;color:var(--good)">${{ "{:,.0f}".format(inv.amount|float) }}</td>
+        <td style="text-align:center">
+          <span id="inv-status-badge-{{ inv.id }}" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;
+            {% if inv.status == 'paid' %}background:oklch(94% 0.06 145);color:var(--good);
+            {% elif inv.status == 'sent' %}background:rgba(99,179,237,.12);color:#63b3ed;border:1px solid rgba(99,179,237,.3);
+            {% else %}background:rgba(255,255,255,.06);color:var(--muted);{% endif %}">
+            {{ inv.status|upper }}
+          </span>
+        </td>
+        <td style="color:var(--muted);font-size:12px">{{ inv.created_at[:10] if inv.created_at else '—' }}</td>
+        <td>
+          <div style="display:flex;gap:5px">
+            {% if inv.status == 'draft' %}
+            <button onclick="updateInvoiceStatus({{ inv.id }}, 'sent')"
+              style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;cursor:pointer;background:rgba(99,179,237,.10);color:#63b3ed;border:1px solid rgba(99,179,237,.3);transition:all .15s"
+              onmouseover="this.style.background='rgba(99,179,237,.2)'"
+              onmouseout="this.style.background='rgba(99,179,237,.10)'">Mark Sent</button>
+            {% elif inv.status == 'sent' %}
+            <button onclick="updateInvoiceStatus({{ inv.id }}, 'paid')"
+              style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;cursor:pointer;background:rgba(52,211,153,.10);color:var(--good);border:1px solid rgba(52,211,153,.3);transition:all .15s"
+              onmouseover="this.style.background='rgba(52,211,153,.2)'"
+              onmouseout="this.style.background='rgba(52,211,153,.10)'">Mark Paid</button>
+            {% endif %}
+            <button onclick="downloadInvoicePDF({{ inv.id }}, '{{ inv.invoice_number }}', {{ inv.intake_id }}, '{{ inv.phase_label }}', {{ inv.amount }})"
+              style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;cursor:pointer;background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,.12);transition:all .15s"
+              onmouseover="this.style.color='var(--text)';this.style.background='rgba(255,255,255,.07)'"
+              onmouseout="this.style.color='var(--muted)';this.style.background='transparent'">PDF</button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ── Invoice Confirmation Modal ────────────────────────────────────────────── #}
+<div id="invoice-modal-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9000;backdrop-filter:blur(3px)" onclick="closeInvoiceModal()"></div>
+<div id="invoice-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9001;width:min(560px,94vw);background:var(--surface);border:1px solid rgba(255,255,255,.13);border-radius:14px;padding:28px 30px;box-shadow:0 24px 64px rgba(0,0,0,.6)">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px">
+    <div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:4px">New Invoice</div>
+      <div style="font-size:1.25rem;font-weight:800" id="modal-title">Generate Invoice</div>
+    </div>
+    <button onclick="closeInvoiceModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:22px;line-height:1;padding:2px 6px;border-radius:4px" onmouseover="this.style.background='rgba(255,255,255,.07)'" onmouseout="this.style.background='none'">×</button>
+  </div>
+
+  {# Firm + Client header #}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;padding:14px 16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;font-size:12px">
+    <div>
+      <div style="font-weight:700;color:var(--text);margin-bottom:4px">A.V. Schwan &amp; Associates</div>
+      <div style="color:var(--muted)">Structural Engineering</div>
+      <div style="color:var(--muted)">Phoenix, AZ</div>
+    </div>
+    <div id="modal-client-block" style="text-align:right">
+      <div style="font-weight:600;color:var(--text)" id="modal-client-name">—</div>
+      <div style="font-family:var(--mono);color:var(--accent);font-weight:700" id="modal-project-number">—</div>
+      <div style="color:var(--muted)" id="modal-project-name">—</div>
+    </div>
+  </div>
+
+  {# Phase table #}
+  <div style="margin-bottom:16px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">Fee Schedule</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="border-bottom:1px solid rgba(255,255,255,.10)">
+          <th style="padding:5px 8px;text-align:left;color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Phase</th>
+          <th style="padding:5px 8px;text-align:right;color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.05em">% of Contract</th>
+          <th style="padding:5px 8px;text-align:right;color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Phase Fee</th>
+          <th style="padding:5px 8px;text-align:right;color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Due This Period</th>
+        </tr>
+      </thead>
+      <tbody id="modal-phase-rows"></tbody>
+    </table>
+  </div>
+
+  {# Summary #}
+  <div style="padding:12px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:20px;display:flex;flex-direction:column;gap:6px;font-size:12px">
+    <div style="display:flex;justify-content:space-between">
+      <span style="color:var(--muted)">Total Contract Amount</span>
+      <span style="font-family:var(--mono);font-weight:700" id="modal-total-contract">$0</span>
+    </div>
+    <div style="display:flex;justify-content:space-between">
+      <span style="color:var(--muted)">Total Previously Billed</span>
+      <span style="font-family:var(--mono)" id="modal-prev-billed">$0</span>
+    </div>
+    <div style="height:1px;background:rgba(255,255,255,.10);margin:2px 0"></div>
+    <div style="display:flex;justify-content:space-between;font-size:14px">
+      <span style="font-weight:700">Total Due This Invoice</span>
+      <span style="font-family:var(--mono);font-weight:900;color:var(--good)" id="modal-amount-due">$0</span>
+    </div>
+    <div style="display:flex;justify-content:space-between">
+      <span style="color:var(--muted)">Balance to Finish</span>
+      <span style="font-family:var(--mono);color:var(--muted)" id="modal-balance">$0</span>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px">
+    <button onclick="confirmGenerateInvoice()" id="modal-confirm-btn"
+      style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer;transition:opacity .15s"
+      onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+      Confirm &amp; Create Invoice
+    </button>
+    <button onclick="closeInvoiceModal()" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:transparent;color:var(--muted);font-size:13px;cursor:pointer">Cancel</button>
+  </div>
+  <div id="modal-status" style="margin-top:10px;font-size:12px;color:var(--muted);text-align:center;min-height:18px"></div>
+</div>
+
+{# ── Discrepancy Popover ───────────────────────────────────────────────────── #}
 <div id="disc-popover" style="display:none;position:fixed;z-index:9999;max-width:320px;background:var(--surface);border:1px solid rgba(239,68,68,.4);border-radius:10px;padding:14px 16px;box-shadow:0 8px 32px rgba(0,0,0,.4)">
   <div style="display:flex;align-items:flex-start;gap:10px">
     <span style="font-size:18px;flex-shrink:0;margin-top:1px">⚠</span>
@@ -318,6 +568,13 @@
 </div>
 
 <script>
+// ── State ──────────────────────────────────────────────────────────────────
+var _modalIntakeId   = null;
+var _modalPhaseCode  = null;
+var _modalAmountDue  = 0;
+var _modalPreview    = null;
+
+// ── Discrepancy popover ────────────────────────────────────────────────────
 function showDiscrepancy(btn) {
   var pop = document.getElementById('disc-popover');
   var msg = document.getElementById('disc-popover-msg');
@@ -337,6 +594,7 @@ document.addEventListener('click', function(e) {
   }
 });
 
+// ── Legacy mark-invoiced (for pending triggers tile) ───────────────────────
 function markInvoiced(intakeId, phaseCode, btn) {
   if (!confirm('Mark ' + phaseCode.toUpperCase() + ' phase as invoiced?')) return;
   btn.disabled = true;
@@ -352,18 +610,302 @@ function markInvoiced(intakeId, phaseCode, btn) {
   })
   .then(function() {
     var card = document.getElementById('inv-' + intakeId + '-' + phaseCode);
-    if (card) {
-      card.style.opacity = '0.4';
-      card.style.pointerEvents = 'none';
-      btn.textContent = '✓ Invoiced';
-      btn.style.color = 'var(--good)';
-    }
+    if (card) { card.style.opacity = '0.4'; card.style.pointerEvents = 'none'; btn.textContent = '✓ Invoiced'; btn.style.color = 'var(--good)'; }
+  })
+  .catch(function(e) { btn.disabled = false; btn.textContent = '✓ Mark as Invoiced'; alert(e.message); });
+}
+
+// ── Invoice modal ──────────────────────────────────────────────────────────
+function fmt(n) { return '$' + Number(n).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0}); }
+
+function openInvoiceModal(intakeId, phaseCode) {
+  _modalIntakeId  = intakeId;
+  _modalPhaseCode = phaseCode;
+  document.getElementById('modal-status').textContent   = 'Loading…';
+  document.getElementById('modal-phase-rows').innerHTML = '';
+  document.getElementById('modal-confirm-btn').disabled = true;
+  document.getElementById('invoice-modal-backdrop').style.display = 'block';
+  document.getElementById('invoice-modal').style.display = 'block';
+
+  fetch('/api/invoice-preview/' + intakeId + '/' + phaseCode)
+    .then(function(r) { if (!r.ok) throw new Error('Failed to load preview'); return r.json(); })
+    .then(function(data) {
+      _modalPreview   = data;
+      _modalAmountDue = data.amount_due;
+
+      // header
+      var intake = data.intake || {};
+      document.getElementById('modal-title').textContent       = 'Invoice — ' + data.phase_label;
+      document.getElementById('modal-client-name').textContent  = intake.client_name || '—';
+      document.getElementById('modal-project-number').textContent = intake.project_number || '—';
+      document.getElementById('modal-project-name').textContent  = (intake.project_name || '—').substring(0, 40);
+
+      // phase rows
+      var tbody = document.getElementById('modal-phase-rows');
+      (data.phase_rows || []).forEach(function(row) {
+        var tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid rgba(255,255,255,.05)';
+        if (row.is_current) tr.style.background = 'rgba(99,179,237,.08)';
+        tr.innerHTML =
+          '<td style="padding:6px 8px;font-weight:' + (row.is_current ? '700' : '400') + ';color:' + (row.is_current ? 'var(--text)' : 'var(--muted)') + '">' + row.label + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-family:var(--mono);color:var(--muted)">' + row.pct_of_contract + '%</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-family:var(--mono)">' + fmt(row.phase_fee) + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-family:var(--mono);font-weight:' + (row.is_current ? '800' : '400') + ';color:' + (row.is_current ? 'var(--good)' : 'var(--muted)') + '">' +
+            (row.is_current ? fmt(data.amount_due) : '—') + '</td>';
+        tbody.appendChild(tr);
+      });
+
+      // summary
+      document.getElementById('modal-total-contract').textContent = fmt(data.total_contract);
+      document.getElementById('modal-prev-billed').textContent    = fmt(data.prev_billed);
+      document.getElementById('modal-amount-due').textContent     = fmt(data.amount_due);
+      document.getElementById('modal-balance').textContent        = fmt(data.balance_to_finish);
+
+      document.getElementById('modal-status').textContent   = '';
+      document.getElementById('modal-confirm-btn').disabled = false;
+    })
+    .catch(function(e) { document.getElementById('modal-status').textContent = 'Error: ' + e.message; });
+}
+
+function closeInvoiceModal() {
+  document.getElementById('invoice-modal-backdrop').style.display = 'none';
+  document.getElementById('invoice-modal').style.display = 'none';
+  _modalIntakeId = _modalPhaseCode = _modalPreview = null;
+}
+
+function confirmGenerateInvoice() {
+  if (!_modalIntakeId || !_modalPhaseCode) return;
+  var btn = document.getElementById('modal-confirm-btn');
+  var statusEl = document.getElementById('modal-status');
+  btn.disabled = true;
+  btn.textContent = 'Creating…';
+  statusEl.textContent = '';
+
+  fetch('/api/invoices', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({intake_id: _modalIntakeId, phase_code: _modalPhaseCode, amount: _modalAmountDue}),
+  })
+  .then(function(r) { if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Failed'); }); return r.json(); })
+  .then(function(data) {
+    statusEl.style.color = 'var(--good)';
+    statusEl.textContent = 'Invoice ' + data.invoice_number + ' created.';
+
+    // fade out the pending billable card
+    var card = document.getElementById('billable-' + _modalIntakeId + '-' + _modalPhaseCode);
+    if (card) { card.style.opacity = '0'; card.style.transition = 'opacity .4s'; setTimeout(function() { card.remove(); }, 420); }
+
+    // offer PDF download then close
+    var inv = _modalPreview;
+    var preview = {
+      invoice_number: data.invoice_number,
+      intake: (inv || {}).intake || {},
+      phase_label: (inv || {}).phase_label || _modalPhaseCode,
+      amount_due: _modalAmountDue,
+      total_contract: (inv || {}).total_contract || 0,
+      prev_billed: (inv || {}).prev_billed || 0,
+      balance_to_finish: (inv || {}).balance_to_finish || 0,
+      phase_rows: (inv || {}).phase_rows || [],
+    };
+    setTimeout(function() {
+      closeInvoiceModal();
+      generatePDF(preview);
+      setTimeout(function() { location.reload(); }, 1500);
+    }, 900);
   })
   .catch(function(e) {
     btn.disabled = false;
-    btn.textContent = '✓ Mark as Invoiced';
-    alert(e.message);
+    btn.textContent = 'Confirm & Create Invoice';
+    statusEl.style.color = 'var(--bad)';
+    statusEl.textContent = 'Error: ' + e.message;
   });
+}
+
+// ── Invoice status update ──────────────────────────────────────────────────
+function updateInvoiceStatus(invoiceId, newStatus) {
+  fetch('/api/invoices/' + invoiceId + '/status', {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status: newStatus}),
+  })
+  .then(function(r) { if (!r.ok) throw new Error('Update failed'); return r.json(); })
+  .then(function() {
+    var badge = document.getElementById('inv-status-badge-' + invoiceId);
+    if (badge) {
+      badge.textContent = newStatus.toUpperCase();
+      if (newStatus === 'paid') { badge.style.background = 'oklch(94% 0.06 145)'; badge.style.color = 'var(--good)'; badge.style.border = 'none'; }
+      else if (newStatus === 'sent') { badge.style.background = 'rgba(99,179,237,.12)'; badge.style.color = '#63b3ed'; badge.style.border = '1px solid rgba(99,179,237,.3)'; }
+    }
+    // reload to refresh action buttons
+    setTimeout(function() { location.reload(); }, 600);
+  })
+  .catch(function(e) { alert('Error: ' + e.message); });
+}
+
+// ── jsPDF invoice PDF ──────────────────────────────────────────────────────
+function generatePDF(data) {
+  if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
+    alert('PDF library not loaded. Invoice was saved — refresh to download from the ledger.');
+    return;
+  }
+  var jsPDF = window.jspdf ? window.jspdf.jsPDF : window.jsPDF;
+  var doc = new jsPDF({orientation:'portrait', unit:'pt', format:'letter'});
+  var intake = data.intake || {};
+  var margin = 48;
+  var pageW  = doc.internal.pageSize.getWidth();
+  var y = margin;
+
+  // Header bar
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, pageW, 72, 'F');
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(18);
+  doc.text('A.V. Schwan & Associates', margin, 34);
+  doc.setFontSize(9);
+  doc.setFont('helvetica','normal');
+  doc.setTextColor(160,180,210);
+  doc.text('Structural Engineering  |  Phoenix, AZ', margin, 50);
+  doc.setTextColor(99,179,237);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(11);
+  doc.text('INVOICE', pageW - margin, 38, {align:'right'});
+  doc.setTextColor(200,220,255);
+  doc.setFontSize(9);
+  doc.setFont('helvetica','normal');
+  doc.text(data.invoice_number, pageW - margin, 54, {align:'right'});
+
+  y = 96;
+
+  // Client / project block
+  doc.setTextColor(30,41,59);
+  doc.setFontSize(9);
+  doc.setFont('helvetica','bold');
+  doc.text('BILLED TO', margin, y);
+  doc.text('PROJECT', pageW / 2, y);
+  y += 14;
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(10);
+  doc.setTextColor(15,23,42);
+  doc.text(intake.client_name || '—', margin, y);
+  doc.text((intake.project_number || '—') + '  ' + (intake.project_name || '').substring(0,30), pageW / 2, y);
+  y += 12;
+  doc.setTextColor(100,116,139);
+  doc.setFontSize(9);
+  doc.text(intake.location_region || '', margin, y);
+  doc.text(data.phase_label || '', pageW / 2, y);
+
+  y += 28;
+
+  // Divider
+  doc.setDrawColor(226,232,240);
+  doc.line(margin, y, pageW - margin, y);
+  y += 16;
+
+  // Table header
+  var cols = [margin, 280, 380, pageW - margin];
+  doc.setFillColor(241,245,249);
+  doc.rect(margin - 4, y - 11, pageW - margin * 2 + 8, 18, 'F');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.setTextColor(100,116,139);
+  doc.text('PHASE DESCRIPTION', cols[0], y);
+  doc.text('% OF CONTRACT', cols[1], y);
+  doc.text('PHASE FEE', cols[2], y);
+  doc.text('DUE THIS PERIOD', cols[3], y, {align:'right'});
+  y += 14;
+  doc.setDrawColor(226,232,240);
+  doc.line(margin, y, pageW - margin, y);
+  y += 10;
+
+  // Phase rows
+  doc.setFontSize(9);
+  (data.phase_rows || []).forEach(function(row) {
+    if (row.is_current) {
+      doc.setFillColor(240,249,255);
+      doc.rect(margin - 4, y - 10, pageW - margin * 2 + 8, 16, 'F');
+    }
+    doc.setFont('helvetica', row.is_current ? 'bold' : 'normal');
+    doc.setTextColor(row.is_current ? 15 : 71, row.is_current ? 23 : 85, row.is_current ? 42 : 105);
+    doc.text(row.label, cols[0], y);
+    doc.setTextColor(100,116,139);
+    doc.setFont('helvetica','normal');
+    doc.text(row.pct_of_contract + '%', cols[1], y);
+    doc.text('$' + Number(row.phase_fee).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}), cols[2], y);
+    if (row.is_current) {
+      doc.setFont('helvetica','bold');
+      doc.setTextColor(22,101,52);
+      doc.text('$' + Number(data.amount_due).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}), cols[3], y, {align:'right'});
+    } else {
+      doc.text('—', cols[3], y, {align:'right'});
+    }
+    y += 18;
+  });
+
+  y += 6;
+  doc.setDrawColor(226,232,240);
+  doc.line(margin, y, pageW - margin, y);
+  y += 18;
+
+  // Summary block
+  var summaryData = [
+    ['Total Contract Amount', data.total_contract],
+    ['Total Previously Billed', data.prev_billed],
+  ];
+  doc.setFontSize(9);
+  summaryData.forEach(function(row) {
+    doc.setFont('helvetica','normal');
+    doc.setTextColor(100,116,139);
+    doc.text(row[0], pageW - margin - 200, y);
+    doc.setTextColor(30,41,59);
+    doc.text('$' + Number(row[1]).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}), pageW - margin, y, {align:'right'});
+    y += 14;
+  });
+
+  y += 4;
+  doc.setFillColor(240,249,255);
+  doc.rect(pageW - margin - 210, y - 12, 210 + margin - margin + 4, 22, 'F');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(10);
+  doc.setTextColor(15,23,42);
+  doc.text('Total Due This Invoice', pageW - margin - 200, y + 3);
+  doc.setTextColor(22,101,52);
+  doc.text('$' + Number(data.amount_due).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}), pageW - margin, y + 3, {align:'right'});
+
+  y += 20;
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100,116,139);
+  doc.text('Balance to Finish', pageW - margin - 200, y);
+  doc.setTextColor(30,41,59);
+  doc.text('$' + Number(data.balance_to_finish).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}), pageW - margin, y, {align:'right'});
+
+  // Footer
+  doc.setFontSize(8);
+  doc.setTextColor(160,170,185);
+  doc.text('A.V. Schwan & Associates  ·  avschwan.com  ·  Generated ' + new Date().toLocaleDateString(), pageW / 2, doc.internal.pageSize.getHeight() - 28, {align:'center'});
+
+  doc.save(data.invoice_number + '.pdf');
+}
+
+function downloadInvoicePDF(invoiceId, invoiceNumber, intakeId, phaseLabel, amount) {
+  // Re-fetch preview then generate PDF
+  fetch('/api/invoice-preview/' + intakeId + '/' + encodeURIComponent(phaseLabel))
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      if (!data) { alert('Could not load invoice data.'); return; }
+      generatePDF({
+        invoice_number: invoiceNumber,
+        intake: data.intake || {},
+        phase_label: data.phase_label || phaseLabel,
+        amount_due: amount,
+        total_contract: data.total_contract,
+        prev_billed: data.prev_billed,
+        balance_to_finish: data.balance_to_finish,
+        phase_rows: data.phase_rows || [],
+      });
+    })
+    .catch(function() { alert('PDF generation failed.'); });
 }
 </script>
 

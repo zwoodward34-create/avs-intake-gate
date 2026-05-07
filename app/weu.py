@@ -16,15 +16,15 @@ from typing import Optional
 CAPACITY_BASE = 10.0
 
 TEAM_CONFIG: dict[str, dict] = {
-    "MK": {"role": "President, PE",  "pool": "engineering", "multiplier": 0.2, "tax": 0.05, "is_eit": False, "mentor": None},
-    "NK": {"role": "Principal, PE",  "pool": "engineering", "multiplier": 1.0, "tax": 0.05, "is_eit": False, "mentor": None},
+    "MK": {"role": "President",      "pool": "engineering", "multiplier": 0.2, "tax": 0.05, "is_eit": False, "mentor": None},
+    "NK": {"role": "PE",             "pool": "engineering", "multiplier": 1.0, "tax": 0.05, "is_eit": False, "mentor": None},
     "RO": {"role": "Eng/PM, PE",     "pool": "engineering", "multiplier": 1.0, "tax": 0.05, "is_eit": False, "mentor": None},
     "JW": {"role": "Project Eng",    "pool": "engineering", "multiplier": 1.0, "tax": 0.05, "is_eit": False, "mentor": None},
     "RS": {"role": "CAD Mgr",        "pool": "drafting",    "multiplier": 1.0, "tax": 0.05, "is_eit": False, "mentor": None},
     "SW": {"role": "Sr CAD",         "pool": "drafting",    "multiplier": 1.0, "tax": 0.05, "is_eit": False, "mentor": None},
     "JP": {"role": "CAD Designer",   "pool": "drafting",    "multiplier": 0.8, "tax": 0.07, "is_eit": False, "mentor": None},
     "JR": {"role": "EIT",            "pool": "engineering", "multiplier": 0.8, "tax": 0.10, "is_eit": True,  "mentor": "NK"},
-    "JK": {"role": "EIT",            "pool": "engineering", "multiplier": 0.8, "tax": 0.10, "is_eit": True,  "mentor": "RO"},
+    "RK": {"role": "EIT",            "pool": "engineering", "multiplier": 0.8, "tax": 0.10, "is_eit": True,  "mentor": "RO"},
 }
 
 PHASE_COEFF: dict[str, float] = {

@@ -425,15 +425,15 @@ TEAM_COLORS = {
 }
 
 ENGINEER_ROLES = {
-    "MK": "Principal",
-    "NK": "Sr. Engineer",
+    "MK": "President",
+    "NK": "PE",
     "RS": "Engineer",
     "RO": "Engineer",
     "SW": "Engineer",
     "JP": "Designer",
     "JW": "Designer",
     "JR": "Project Manager",
-    "RK": "Engineer",
+    "RK": "EIT",
 }
 
 VALID_PHASES = list(PHASE_COLORS.keys())
@@ -691,7 +691,7 @@ TEAM_FULL_NAMES: dict[str, str] = {
     "JP": "J. Prado",
     "JW": "J. Woodward",
     "JR": "J. Rodriguez",
-    "RK": "R. Kline",
+    "RK": "R. Kanth",
 }
 
 
@@ -1000,6 +1000,99 @@ def list_active_projects(engineer: Optional[str] = None) -> list[dict[str, Any]]
             "phases":       phases,
         })
     return results
+
+
+# ── Capacity: intake-based pseudo-events ─────────────────────────────────────
+
+_VALID_PHASE_COEFF_KEYS = frozenset(
+    ["50%", "75%", "90%", "IFP", "RFP", "DD", "CA", "CD", "REV", "SD"]
+)
+
+
+def get_active_intake_pseudo_events(covered_project_numbers: set) -> list[dict[str, Any]]:
+    """
+    Return WEU-compatible event dicts for active intakes that have assigned_engineers
+    set but no corresponding calendar event (to avoid double-counting).
+    """
+    from datetime import date, timedelta
+
+    try:
+        resp = (
+            _client()
+            .table("intakes")
+            .select(
+                "id,project_number,project_name,client_name,location_region,"
+                "assigned_engineers,current_phase,proposed_start_date,proposed_end_date,"
+                "mo_fee_override"
+            )
+            .eq("status", "active")
+            .not_.is_("assigned_engineers", "null")
+            .execute()
+        )
+        intakes = resp.data or []
+    except Exception:
+        return []
+
+    today = date.today().isoformat()
+    far_future = (date.today() + timedelta(days=90)).isoformat()
+    result = []
+
+    for intake in intakes:
+        pn = intake.get("project_number") or ""
+        if pn and pn in covered_project_numbers:
+            continue  # already represented by a real calendar event
+
+        assigned_raw = intake.get("assigned_engineers")
+        if not assigned_raw:
+            continue
+        try:
+            team = json.loads(assigned_raw) if isinstance(assigned_raw, str) else assigned_raw
+        except Exception:
+            continue
+        if not isinstance(team, list) or not team:
+            continue
+
+        # Derive tier from approved fee
+        fee = float(intake.get("mo_fee_override") or 0)
+        if fee >= 100_000:
+            tier = 5
+        elif fee >= 60_000:
+            tier = 4
+        elif fee >= 30_000:
+            tier = 3
+        elif fee >= 15_000:
+            tier = 2
+        else:
+            tier = 3  # safe default
+
+        phase = intake.get("current_phase") or "IFP"
+        if phase not in _VALID_PHASE_COEFF_KEYS:
+            phase = "IFP"
+
+        start_dt = intake.get("proposed_start_date") or (today + "T00:00:00Z")
+        end_dt   = intake.get("proposed_end_date")   or (far_future + "T23:59:59Z")
+        if not start_dt.endswith("Z"):
+            start_dt += "T00:00:00Z"
+        if not end_dt.endswith("Z"):
+            end_dt += "T23:59:59Z"
+
+        result.append({
+            "id":             f"intake-{intake['id']}",
+            "project_number": pn,
+            "client":         intake.get("client_name") or "",
+            "location":       intake.get("location_region") or "",
+            "phase":          phase,
+            "team":           team,
+            "project_type":   "",
+            "tier":           tier,
+            "phase_jump":     False,
+            "start_date":     start_dt,
+            "end_date":       end_dt,
+            "is_ooo":         False,
+            "title":          f"{pn or '?'} – {intake.get('project_name') or intake.get('client_name', '')}",
+        })
+
+    return result
 
 
 # ── Payroll Export ───────────────────────────────────────────────────────────
@@ -1921,9 +2014,9 @@ _PHASE_COEFF: dict[str, float] = {
 _CAPACITY_BASE = 10.0
 _TEAM_MULTIPLIER: dict[str, float] = {
     "MK": 0.2, "NK": 1.0, "RO": 1.0, "JW": 1.0,
-    "RS": 1.0, "SW": 1.0, "JP": 0.8, "JR": 0.8, "JK": 0.8,
+    "RS": 1.0, "SW": 1.0, "JP": 0.8, "JR": 0.8, "RK": 0.8,
 }
-ENGINEERING_POOL = ["MK", "NK", "RO", "JW", "JR", "JK"]
+ENGINEERING_POOL = ["MK", "NK", "RO", "JW", "JR", "RK"]
 DRAFTING_POOL    = ["RS", "SW", "JP"]
 
 
@@ -2251,9 +2344,9 @@ def get_projected_capacity(
         "has_ooo":           ooo_days > 0,
         "ooo_bar_pct":       ooo_bar_pct,
         "role":              {
-            "MK": "President, PE", "NK": "Principal, PE", "RO": "Eng/PM, PE",
+            "MK": "President, PE", "NK": "PE",            "RO": "Eng/PM, PE",
             "JW": "Project Eng",   "RS": "CAD Mgr",       "SW": "Sr CAD",
-            "JP": "CAD Designer",  "JR": "EIT",           "JK": "EIT",
+            "JP": "CAD Designer",  "JR": "EIT",           "RK": "EIT",
         }.get(engineer_initials, ""),
     }
 
@@ -2858,7 +2951,7 @@ def count_billing_queue_pending(assigned_to: Optional[str] = None) -> int:
 
 # ── Natalie's Dashboard Data ──────────────────────────────────────────────────
 
-_ALL_STAFF: list[str] = ["MK", "NK", "RO", "JW", "JR", "JK", "RK", "RS", "SW", "JP"]
+_ALL_STAFF: list[str] = ["MK", "NK", "RO", "JW", "JR", "RK", "RS", "SW", "JP"]
 
 
 def get_firm_timecard_summary(period_start: str, period_end: str) -> list[dict[str, Any]]:
@@ -3062,4 +3155,287 @@ def get_payroll_audit(period_start: str, period_end: str) -> list[dict[str, Any]
             "status":         sub.get("status", "NOT_STARTED"),
             "discrepancy":    discrepancy,
         })
+    return result
+
+
+# ── Invoice System ────────────────────────────────────────────────────────────
+
+PHASE_FEE_PCT: dict[str, float] = {
+    "retainer": 0.15, "SD": 0.20, "DD": 0.30, "CD": 0.30, "CA": 0.10,
+}
+
+
+def _next_invoice_number() -> str:
+    year = datetime.now().year
+    resp = (
+        _client()
+        .table("invoices")
+        .select("invoice_number")
+        .ilike("invoice_number", f"AVS-{year}-%")
+        .order("invoice_number", desc=True)
+        .limit(1)
+        .execute()
+    )
+    rows = resp.data or []
+    if rows:
+        try:
+            seq = int(rows[0]["invoice_number"].split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            seq = 1
+    else:
+        seq = 1
+    return f"AVS-{year}-{seq:03d}"
+
+
+def get_pending_billables() -> list[dict[str, Any]]:
+    """Phases approved by Mo (invoice_approved) awaiting formal invoice generation."""
+    pbp_resp = (
+        _client()
+        .table("project_billing_phases")
+        .select("*")
+        .eq("status", "invoice_approved")
+        .order("invoice_approved_at", desc=True)
+        .execute()
+    )
+    rows = pbp_resp.data or []
+    if not rows:
+        return []
+
+    intake_ids = list({r["intake_id"] for r in rows})
+    intake_resp = (
+        _client()
+        .table("intakes")
+        .select("id,project_number,project_name,client_name,location_region,mo_fee_override")
+        .in_("id", intake_ids)
+        .execute()
+    )
+    intake_map = {i["id"]: i for i in (intake_resp.data or [])}
+
+    all_phases_resp = (
+        _client()
+        .table("project_billing_phases")
+        .select("intake_id,billing_phase_code,fee_amount,status")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    phases_by_intake: dict[int, list] = {}
+    for p in (all_phases_resp.data or []):
+        phases_by_intake.setdefault(p["intake_id"], []).append(p)
+
+    inv_resp = (
+        _client()
+        .table("invoices")
+        .select("intake_id,amount")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    invoiced_by_intake: dict[int, float] = {}
+    for inv in (inv_resp.data or []):
+        iid = inv["intake_id"]
+        invoiced_by_intake[iid] = invoiced_by_intake.get(iid, 0.0) + float(inv["amount"] or 0)
+
+    result = []
+    for r in rows:
+        intake = intake_map.get(r["intake_id"], {})
+        phases = phases_by_intake.get(r["intake_id"], [])
+        total_contract = sum(float(p.get("fee_amount") or 0) for p in phases)
+        prev_billed = invoiced_by_intake.get(r["intake_id"], 0.0)
+        amount_due = float(r.get("invoice_fee_override") or r.get("fee_amount") or 0)
+        balance = max(0.0, total_contract - prev_billed - amount_due)
+        result.append({
+            **r,
+            "intake": intake,
+            "total_contract": round(total_contract, 2),
+            "prev_billed": round(prev_billed, 2),
+            "amount_due": round(amount_due, 2),
+            "balance_to_finish": round(balance, 2),
+        })
+    return result
+
+
+def get_invoice_preview(intake_id: int, phase_code: str) -> dict[str, Any]:
+    """Full breakdown for the confirmation modal and PDF."""
+    pbp_resp = (
+        _client()
+        .table("project_billing_phases")
+        .select("billing_phase_code,fee_amount,fee_pct,invoice_fee_override")
+        .eq("intake_id", intake_id)
+        .execute()
+    )
+    phases = pbp_resp.data or []
+    total_contract = sum(float(p.get("fee_amount") or 0) for p in phases)
+    this_phase = next((p for p in phases if p["billing_phase_code"] == phase_code), {})
+    amount_due = float(this_phase.get("invoice_fee_override") or this_phase.get("fee_amount") or 0)
+    fee_pct = float(this_phase.get("fee_pct") or PHASE_FEE_PCT.get(phase_code, 0))
+
+    prev_billed = 0.0
+    try:
+        inv_resp = (
+            _client()
+            .table("invoices")
+            .select("amount")
+            .eq("intake_id", intake_id)
+            .execute()
+        )
+        prev_billed = sum(float(i.get("amount") or 0) for i in (inv_resp.data or []))
+    except Exception:
+        pass
+
+    intake_resp = (
+        _client()
+        .table("intakes")
+        .select("project_number,project_name,client_name,location_region")
+        .eq("id", intake_id)
+        .maybe_single()
+        .execute()
+    )
+    intake = intake_resp.data or {}
+
+    order_map = {c: i for i, c in enumerate(BILLING_PHASE_ORDER)}
+    phase_rows = sorted([{
+        "code": p["billing_phase_code"],
+        "label": BILLING_PHASE_LABELS.get(p["billing_phase_code"], p["billing_phase_code"]),
+        "phase_fee": round(float(p.get("fee_amount") or 0), 2),
+        "pct_of_contract": round(float(p.get("fee_pct") or 0) * 100, 0),
+        "is_current": p["billing_phase_code"] == phase_code,
+    } for p in phases], key=lambda x: order_map.get(x["code"], 99))
+
+    return {
+        "intake": intake,
+        "intake_id": intake_id,
+        "phase_code": phase_code,
+        "phase_label": BILLING_PHASE_LABELS.get(phase_code, phase_code),
+        "total_contract": round(total_contract, 2),
+        "prev_billed": round(prev_billed, 2),
+        "amount_due": round(amount_due, 2),
+        "balance_to_finish": round(max(0.0, total_contract - prev_billed - amount_due), 2),
+        "fee_pct": round(fee_pct * 100, 0),
+        "phase_rows": phase_rows,
+    }
+
+
+def create_invoice(
+    intake_id: int, phase_code: str, amount: float, created_by: str, notes: str = ""
+) -> dict[str, Any]:
+    invoice_number = _next_invoice_number()
+    now = _utc_now_iso()
+    resp = (
+        _client()
+        .table("invoices")
+        .insert({
+            "invoice_number": invoice_number,
+            "intake_id":      intake_id,
+            "phase_code":     phase_code,
+            "amount":         round(amount, 2),
+            "status":         "draft",
+            "created_by":     created_by,
+            "notes":          notes,
+            "created_at":     now,
+        })
+        .execute()
+    )
+    invoice_id = (resp.data or [{}])[0].get("id")
+    mark_billing_phase_invoiced(intake_id, phase_code, created_by)
+    try:
+        _client().table("intakes").update(
+            {"last_invoiced_at": now, "updated_at": now}
+        ).eq("id", intake_id).execute()
+    except Exception:
+        pass
+    return {"invoice_number": invoice_number, "invoice_id": invoice_id, "amount": amount}
+
+
+def get_all_invoices(limit: int = 50) -> list[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("invoices")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    rows = resp.data or []
+    if not rows:
+        return []
+    intake_ids = list({r["intake_id"] for r in rows})
+    intake_resp = (
+        _client()
+        .table("intakes")
+        .select("id,project_number,project_name,client_name")
+        .in_("id", intake_ids)
+        .execute()
+    )
+    intake_map = {i["id"]: i for i in (intake_resp.data or [])}
+    return [{
+        **r,
+        "intake": intake_map.get(r["intake_id"], {}),
+        "phase_label": BILLING_PHASE_LABELS.get(r.get("phase_code", ""), r.get("phase_code", "")),
+    } for r in rows]
+
+
+def update_invoice_status(invoice_id: int, status: str, updated_by: str) -> None:
+    now = _utc_now_iso()
+    patch: dict[str, Any] = {"status": status}
+    if status == "sent":
+        patch["sent_at"] = now
+    elif status == "paid":
+        patch["paid_at"] = now
+    _client().table("invoices").update(patch).eq("id", invoice_id).execute()
+
+
+def get_burn_vs_bill() -> list[dict[str, Any]]:
+    """Burn (hours × rate) vs invoiced amount per active project."""
+    intakes_resp = (
+        _client()
+        .table("intakes")
+        .select("id,project_number,project_name,client_name")
+        .eq("status", "active")
+        .execute()
+    )
+    intakes = intakes_resp.data or []
+    if not intakes:
+        return []
+    intake_ids = [i["id"] for i in intakes]
+
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("intake_id,hours")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    hours_by: dict[int, float] = {}
+    for e in (te_resp.data or []):
+        iid = e["intake_id"]
+        hours_by[iid] = hours_by.get(iid, 0.0) + float(e["hours"] or 0)
+
+    inv_resp = (
+        _client()
+        .table("invoices")
+        .select("intake_id,amount")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    billed_by: dict[int, float] = {}
+    for inv in (inv_resp.data or []):
+        iid = inv["intake_id"]
+        billed_by[iid] = billed_by.get(iid, 0.0) + float(inv["amount"] or 0)
+
+    result = []
+    for i in intakes:
+        iid = i["id"]
+        burn = round(hours_by.get(iid, 0.0) * BILLING_RATE, 2)
+        billed = round(billed_by.get(iid, 0.0), 2)
+        ratio = round(burn / billed, 3) if billed > 0 else None
+        result.append({
+            "intake_id":      iid,
+            "project_number": i.get("project_number") or "—",
+            "project_name":   i.get("project_name") or "—",
+            "client_name":    i.get("client_name") or "—",
+            "burn":           burn,
+            "billed":         billed,
+            "ratio":          ratio,
+            "profit_risk":    ratio is not None and ratio > 1.0,
+        })
+    result.sort(key=lambda x: (x["ratio"] or 0), reverse=True)
     return result
