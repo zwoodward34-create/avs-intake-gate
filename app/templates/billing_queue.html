@@ -283,7 +283,18 @@
         </td>
         <td style="text-align:center">
           {% if eng.discrepancy %}
-          <span style="font-size:11px;font-weight:700;color:#f87171" title="Hours outside expected range">⚠</span>
+          {% if eng.total_hours > 92 %}
+            {% set disc_reason = eng.initials ~ " logged " ~ eng.total_hours ~ "h this period — exceeds the expected 80h maximum (threshold: 92h). Verify no duplicate entries or unauthorized overtime." %}
+          {% elif eng.status == 'APPROVED' and eng.total_hours < 40 %}
+            {% set disc_reason = eng.initials ~ "'s timesheet was approved with only " ~ eng.total_hours ~ "h — well below the expected 80h for a full pay period. Confirm PTO, leave, or part-time schedule accounts for the shortfall." %}
+          {% else %}
+            {% set disc_reason = eng.initials ~ " has an unusual hours pattern (" ~ eng.total_hours ~ "h) that doesn't match expected utilization for this period." %}
+          {% endif %}
+          <button onclick="showDiscrepancy(this)"
+            data-reason="{{ disc_reason }}"
+            style="background:none;border:none;cursor:pointer;font-size:13px;font-weight:700;color:#f87171;padding:2px 6px;border-radius:4px;transition:background .15s"
+            onmouseover="this.style.background='rgba(239,68,68,.12)'"
+            onmouseout="this.style.background='none'">⚠</button>
           {% else %}
           <span style="color:var(--good);font-size:13px">✓</span>
           {% endif %}
@@ -294,7 +305,38 @@
   </table>
 </div>
 
+<div id="disc-popover" style="display:none;position:fixed;z-index:9999;max-width:320px;background:var(--surface);border:1px solid rgba(239,68,68,.4);border-radius:10px;padding:14px 16px;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+  <div style="display:flex;align-items:flex-start;gap:10px">
+    <span style="font-size:18px;flex-shrink:0;margin-top:1px">⚠</span>
+    <div>
+      <div style="font-size:12px;font-weight:700;color:#f87171;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Discrepancy Detected</div>
+      <div id="disc-popover-msg" style="font-size:13px;color:var(--text);line-height:1.5"></div>
+    </div>
+  </div>
+  <button onclick="document.getElementById('disc-popover').style.display='none'"
+    style="position:absolute;top:8px;right:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1">×</button>
+</div>
+
 <script>
+function showDiscrepancy(btn) {
+  var pop = document.getElementById('disc-popover');
+  var msg = document.getElementById('disc-popover-msg');
+  msg.textContent = btn.dataset.reason;
+  var rect = btn.getBoundingClientRect();
+  var top  = rect.bottom + window.scrollY + 8;
+  var left = rect.left + window.scrollX - 160 + rect.width / 2;
+  left = Math.max(12, Math.min(left, window.innerWidth - 340));
+  pop.style.top  = top + 'px';
+  pop.style.left = left + 'px';
+  pop.style.display = 'block';
+}
+document.addEventListener('click', function(e) {
+  var pop = document.getElementById('disc-popover');
+  if (pop && !pop.contains(e.target) && !e.target.closest('[onclick*="showDiscrepancy"]')) {
+    pop.style.display = 'none';
+  }
+});
+
 function markInvoiced(intakeId, phaseCode, btn) {
   if (!confirm('Mark ' + phaseCode.toUpperCase() + ' phase as invoiced?')) return;
   btn.disabled = true;
