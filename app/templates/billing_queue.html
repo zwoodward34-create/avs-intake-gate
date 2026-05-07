@@ -26,13 +26,18 @@
     <div style="display:flex;flex-direction:column;gap:8px">
       {% for inv in pending_invoices %}
       {% set intake = inv.intake %}
-      <a href="/intakes/{{ inv.intake_id }}" style="display:block;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);border-radius:8px;padding:12px 14px;text-decoration:none;transition:border-color .15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='rgba(255,255,255,.10)'">
+      <div id="inv-{{ inv.intake_id }}-{{ inv.billing_phase_code }}" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);border-radius:8px;padding:12px 14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <span style="font-size:12px;font-family:var(--mono);font-weight:700;color:var(--accent)">{{ intake.project_number or '—' }}</span>
-          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,183,77,.12);color:#ffb74d;border:1px solid rgba(255,183,77,.3);padding:1px 7px;border-radius:3px">{{ inv.billing_phase_code }}</span>
+          <a href="/intakes/{{ inv.intake_id }}" style="font-size:12px;font-family:var(--mono);font-weight:700;color:var(--accent);text-decoration:none">{{ intake.project_number or '—' }}</a>
+          <div style="display:flex;align-items:center;gap:5px">
+            {% if inv.billing_phase_code == 'retainer' %}
+            <span style="font-size:10px;font-weight:700;background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);padding:1px 6px;border-radius:3px">RETAINER</span>
+            {% endif %}
+            <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,183,77,.12);color:#ffb74d;border:1px solid rgba(255,183,77,.3);padding:1px 7px;border-radius:3px">{{ inv.billing_phase_code }}</span>
+          </div>
         </div>
         <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">{{ intake.project_name or '—' }}</div>
-        <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <span class="subtle small">{{ intake.client_name or '—' }}</span>
           {% if inv.fee_amount %}
           <span style="font-size:13px;font-weight:800;font-family:var(--mono);color:var(--good)">${{ "{:,.0f}".format(inv.fee_amount) }}</span>
@@ -41,14 +46,20 @@
         {% if inv.hours_check and inv.hours_check.budgeted > 0 %}
         {% set hc = inv.hours_check %}
         {% set hc_pct = [(hc.actual / hc.budgeted * 100)|round(1), 100]|min %}
-        <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+        <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
           <div style="flex:1;height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden">
             <div style="height:100%;width:{{ hc_pct }}%;background:{% if hc_pct >= 100 %}var(--bad){% elif hc_pct >= 80 %}#ffb74d{% else %}var(--good){% endif %};transition:width .3s"></div>
           </div>
           <span style="font-size:10px;font-family:var(--mono);color:var(--muted);white-space:nowrap">{{ hc.actual }}h / {{ hc.budgeted }}h</span>
         </div>
         {% endif %}
-      </a>
+        <button onclick="markInvoiced({{ inv.intake_id }}, '{{ inv.billing_phase_code }}', this)"
+          style="width:100%;padding:5px 0;border:1px solid rgba(255,255,255,.12);border-radius:5px;background:transparent;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s"
+          onmouseover="this.style.background='rgba(255,255,255,.07)';this.style.color='var(--text)'"
+          onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">
+          ✓ Mark as Invoiced
+        </button>
+      </div>
       {% endfor %}
     </div>
     {% else %}
@@ -166,5 +177,152 @@
   <div style="padding:28px 0;text-align:center;color:var(--muted);font-size:13px">No hours logged today yet.</div>
   {% endif %}
 </div>
+
+{# ── Bento row 3: Insight mini-tiles ─────────────────────────────────────────#}
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+
+  {# Cash Flow Forecast #}
+  <div class="card" style="padding:18px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Cash Flow Forecast</div>
+    <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--good)">
+      ${{ "{:,.0f}".format(cash_flow.total) }}
+    </div>
+    <div class="subtle small" style="margin-top:4px">{{ cash_flow.count }} phase{{ 's' if cash_flow.count != 1 else '' }} ready to bill</div>
+  </div>
+
+  {# Stale Projects #}
+  <div class="card" style="padding:18px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Stale Projects <span style="font-weight:400;color:var(--muted)">› 14 days no activity</span></div>
+    {% if stale_projects %}
+    <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:{% if stale_projects|length > 3 %}var(--bad){% else %}#ffb74d{% endif %}">{{ stale_projects|length }}</div>
+    <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;max-height:90px;overflow-y:auto">
+      {% for p in stale_projects %}
+      <a href="/intakes/{{ p.id }}" style="font-size:11px;color:var(--muted);text-decoration:none;display:flex;align-items:center;gap:6px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">
+        <span style="font-family:var(--mono);color:var(--accent)">{{ p.project_number or '—' }}</span>
+        <span>{{ (p.project_name or '—')[:28] }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--good)">0</div>
+    <div class="subtle small" style="margin-top:4px">All projects active</div>
+    {% endif %}
+  </div>
+
+  {# Utilization Heatmap #}
+  <div class="card" style="padding:18px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Team Utilization</div>
+    <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:{% if utilization.billable_pct >= 75 %}var(--good){% elif utilization.billable_pct >= 50 %}#ffb74d{% else %}var(--bad){% endif %}">
+      {{ utilization.billable_pct }}%
+    </div>
+    <div class="subtle small" style="margin-top:4px">billable this period</div>
+    <div style="margin-top:10px;height:6px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,.08);display:flex;gap:2px">
+      {% if utilization.billable > 0 %}
+      <div style="flex:{{ utilization.billable }};background:var(--good);border-radius:3px 0 0 3px"></div>
+      {% endif %}
+      {% if utilization.admin > 0 %}
+      <div style="flex:{{ utilization.admin }};background:rgba(255,255,255,.18);border-radius:0 3px 3px 0"></div>
+      {% endif %}
+    </div>
+    <div style="display:flex;gap:12px;margin-top:6px">
+      <span style="font-size:10px;color:var(--muted)"><span style="color:var(--good)">●</span> {{ utilization.billable }}h billable</span>
+      <span style="font-size:10px;color:var(--muted)"><span style="color:rgba(255,255,255,.4)">●</span> {{ utilization.admin }}h admin</span>
+    </div>
+  </div>
+
+</div>
+
+{# ── Bento row 4: Payroll Audit ───────────────────────────────────────────────#}
+<div class="card" style="padding:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Payroll Audit</div>
+      <div style="font-size:18px;font-weight:800;margin-top:2px">Master Approval Table</div>
+    </div>
+    {% set discrepancy_count = payroll_audit | selectattr('discrepancy') | list | length %}
+    {% if discrepancy_count > 0 %}
+    <span style="background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.3);font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">{{ discrepancy_count }} discrepanc{{ 'ies' if discrepancy_count != 1 else 'y' }}</span>
+    {% endif %}
+  </div>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Engineer</th>
+        <th>Status</th>
+        <th style="text-align:right">Total Hours</th>
+        <th style="text-align:right">Billable Hours</th>
+        <th style="text-align:right">Billable %</th>
+        <th style="text-align:center">Flag</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for eng in payroll_audit %}
+      <tr style="{% if eng.discrepancy %}background:rgba(239,68,68,.05);{% endif %}">
+        <td>
+          <span style="display:inline-flex;align-items:center;gap:7px">
+            <span style="width:8px;height:8px;border-radius:50%;background:{{ eng.color }};display:inline-block;flex-shrink:0"></span>
+            <span style="font-weight:600">{{ eng.initials }}</span>
+            <span class="subtle" style="font-size:11px">{{ eng.role }}</span>
+          </span>
+        </td>
+        <td>
+          <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;
+            {% if eng.status == 'APPROVED' %}background:oklch(94% 0.06 145);color:var(--good);
+            {% elif eng.status == 'SUBMITTED' %}background:rgba(255,183,77,.12);color:#ffb74d;
+            {% elif eng.status == 'DRAFT' %}background:rgba(79,142,247,.10);color:var(--accent);
+            {% else %}background:rgba(255,255,255,.06);color:var(--muted);{% endif %}">
+            {% if eng.status == 'NOT_STARTED' %}—{% else %}{{ eng.status }}{% endif %}
+          </span>
+        </td>
+        <td style="text-align:right;font-family:var(--mono);font-weight:700">{{ eng.total_hours }}h</td>
+        <td style="text-align:right;font-family:var(--mono)">{{ eng.billable_hours }}h</td>
+        <td style="text-align:right">
+          <span style="font-family:var(--mono);font-weight:700;color:{% if eng.billable_pct >= 75 %}var(--good){% elif eng.billable_pct >= 50 %}#ffb74d{% else %}var(--muted){% endif %}">
+            {{ eng.billable_pct }}%
+          </span>
+        </td>
+        <td style="text-align:center">
+          {% if eng.discrepancy %}
+          <span style="font-size:11px;font-weight:700;color:#f87171" title="Hours outside expected range">⚠</span>
+          {% else %}
+          <span style="color:var(--good);font-size:13px">✓</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+function markInvoiced(intakeId, phaseCode, btn) {
+  if (!confirm('Mark ' + phaseCode.toUpperCase() + ' phase as invoiced?')) return;
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  fetch('/api/projects/' + intakeId + '/billing-phases/' + phaseCode + '/mark-invoiced', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: '{}',
+  })
+  .then(function(r) {
+    if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Failed'); });
+    return r.json();
+  })
+  .then(function() {
+    var card = document.getElementById('inv-' + intakeId + '-' + phaseCode);
+    if (card) {
+      card.style.opacity = '0.4';
+      card.style.pointerEvents = 'none';
+      btn.textContent = '✓ Invoiced';
+      btn.style.color = 'var(--good)';
+    }
+  })
+  .catch(function(e) {
+    btn.disabled = false;
+    btn.textContent = '✓ Mark as Invoiced';
+    alert(e.message);
+  });
+}
+</script>
 
 {% endblock %}

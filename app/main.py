@@ -2487,6 +2487,22 @@ def billing_queue_page(request: Request) -> HTMLResponse:
         today_entries = db.list_time_entries_today()
     except Exception:
         today_entries = []
+    try:
+        payroll_audit = db.get_payroll_audit(start, end)
+    except Exception:
+        payroll_audit = []
+    try:
+        cash_flow = db.get_cash_flow_forecast()
+    except Exception:
+        cash_flow = {"total": 0.0, "count": 0}
+    try:
+        stale_projects = db.get_stale_projects(days=14)
+    except Exception:
+        stale_projects = []
+    try:
+        utilization = db.get_utilization_summary(start, end)
+    except Exception:
+        utilization = {"total": 0.0, "billable": 0.0, "admin": 0.0, "billable_pct": 0.0}
     submitted   = sum(1 for e in timecard_summary if e["submission_status"] == "SUBMITTED")
     approved    = sum(1 for e in timecard_summary if e["submission_status"] == "APPROVED")
     not_started = sum(1 for e in timecard_summary if e["submission_status"] == "NOT_STARTED")
@@ -2508,6 +2524,10 @@ def billing_queue_page(request: Request) -> HTMLResponse:
             "today_total":      today_total,
             "staff_count":      len(timecard_summary),
             "team_colors":      db.TEAM_COLORS,
+            "payroll_audit":    payroll_audit,
+            "cash_flow":        cash_flow,
+            "stale_projects":   stale_projects,
+            "utilization":      utilization,
         },
     )
 
@@ -2637,6 +2657,17 @@ async def api_advance_production_phase(request: Request, intake_id: int) -> dict
     if not note:
         raise HTTPException(status_code=400, detail="note required")
     return db.advance_production_phase(intake_id, to_phase, completed_by or "SYSTEM", note)
+
+
+@app.post("/api/projects/{intake_id}/billing-phases/{billing_phase_code}/mark-invoiced")
+async def api_mark_invoiced(request: Request, intake_id: int, billing_phase_code: str) -> dict[str, Any]:
+    user = _session_user(request)
+    invoiced_by = (user or {}).get("initials") or "NK"
+    try:
+        db.mark_billing_phase_invoiced(intake_id, billing_phase_code, invoiced_by)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"ok": True, "invoiced_by": invoiced_by}
 
 
 @app.post("/api/projects/{intake_id}/billing-phases/{billing_phase_code}/approve-invoice")

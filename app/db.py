@@ -2913,3 +2913,126 @@ def list_time_entries_today() -> list[dict[str, Any]]:
         e["project_name"]   = intake.get("project_name", "—")
         e["project_number"] = e.get("project_number") or intake.get("project_number", "—")
     return entries
+
+
+# ── Natalie Dashboard helpers ─────────────────────────────────────────────────
+
+def mark_billing_phase_invoiced(intake_id: int, billing_phase_code: str, invoiced_by: str) -> None:
+    now = _utc_now_iso()
+    _client().table("project_billing_phases").update({
+        "status":      "invoiced",
+        "invoiced_at": now,
+        "invoiced_by": invoiced_by,
+        "updated_at":  now,
+    }).eq("intake_id", intake_id).eq("billing_phase_code", billing_phase_code).execute()
+
+
+def get_cash_flow_forecast() -> dict[str, Any]:
+    resp = (
+        _client()
+        .table("project_billing_phases")
+        .select("billing_phase_code,fee_amount,status,intake_id")
+        .in_("status", ["complete_pending_approval", "invoice_approved"])
+        .execute()
+    )
+    rows = resp.data or []
+    total = sum(float(r.get("fee_amount") or 0) for r in rows)
+    return {"total": round(total, 2), "count": len(rows)}
+
+
+def get_stale_projects(days: int = 14) -> list[dict[str, Any]]:
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+    intakes_resp = (
+        _client()
+        .table("intakes")
+        .select("id,project_number,project_name,client_name,current_phase")
+        .eq("status", "active")
+        .execute()
+    )
+    intakes = intakes_resp.data or []
+    if not intakes:
+        return []
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("intake_id")
+        .gte("entry_date", cutoff)
+        .not_.is_("intake_id", "null")
+        .execute()
+    )
+    recent_ids = {e["intake_id"] for e in (te_resp.data or [])}
+    return [i for i in intakes if i["id"] not in recent_ids]
+
+
+def get_utilization_summary(period_start: str, period_end: str) -> dict[str, Any]:
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("hours,intake_id")
+        .gte("entry_date", period_start)
+        .lte("entry_date", period_end)
+        .execute()
+    )
+    entries = te_resp.data or []
+    total    = sum(float(e["hours"] or 0) for e in entries)
+    billable = sum(float(e["hours"] or 0) for e in entries if e.get("intake_id"))
+    admin    = total - billable
+    pct      = round(billable / total * 100, 1) if total > 0 else 0.0
+    return {
+        "total":        round(total, 1),
+        "billable":     round(billable, 1),
+        "admin":        round(admin, 1),
+        "billable_pct": pct,
+    }
+
+
+def get_payroll_audit(period_start: str, period_end: str) -> list[dict[str, Any]]:
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("engineer_initials,hours,intake_id")
+        .gte("entry_date", period_start)
+        .lte("entry_date", period_end)
+        .execute()
+    )
+    entries = te_resp.data or []
+    sub_resp = (
+        _client()
+        .table("timesheet_submissions")
+        .select("engineer_initials,status,total_hours")
+        .eq("period_start", period_start)
+        .execute()
+    )
+    subs = {r["engineer_initials"]: r for r in (sub_resp.data or [])}
+
+    total_by_eng: dict[str, float] = {}
+    billable_by_eng: dict[str, float] = {}
+    for e in entries:
+        ini = e["engineer_initials"]
+        h = float(e["hours"] or 0)
+        total_by_eng[ini] = total_by_eng.get(ini, 0.0) + h
+        if e.get("intake_id"):
+            billable_by_eng[ini] = billable_by_eng.get(ini, 0.0) + h
+
+    EXPECTED = 80.0
+    result = []
+    for ini in _ALL_STAFF:
+        total    = round(total_by_eng.get(ini, 0.0), 1)
+        billable = round(billable_by_eng.get(ini, 0.0), 1)
+        pct      = round(billable / total * 100, 1) if total > 0 else 0.0
+        sub      = subs.get(ini, {})
+        discrepancy = total > EXPECTED * 1.15 or (
+            sub.get("status") == "APPROVED" and total < EXPECTED * 0.5
+        )
+        result.append({
+            "initials":       ini,
+            "role":           ENGINEER_ROLES.get(ini, ""),
+            "color":          TEAM_COLORS.get(ini, "#888"),
+            "total_hours":    total,
+            "billable_hours": billable,
+            "billable_pct":   pct,
+            "status":         sub.get("status", "NOT_STARTED"),
+            "discrepancy":    discrepancy,
+        })
+    return result
