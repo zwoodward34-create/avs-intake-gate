@@ -2218,11 +2218,20 @@ def billing_queue_page(request: Request) -> HTMLResponse:
     if user and user["role"] not in ("admin", "office_manager"):
         return RedirectResponse("/timesheet", status_code=302)
     start, end = _current_pay_period()
-    pending_invoices = db.get_pending_invoice_approvals()
-    timecard_summary = db.get_firm_timecard_summary(start, end)
-    today_entries    = db.list_time_entries_today()
-    submitted  = sum(1 for e in timecard_summary if e["submission_status"] == "SUBMITTED")
-    approved   = sum(1 for e in timecard_summary if e["submission_status"] == "APPROVED")
+    try:
+        pending_invoices = db.get_pending_invoice_approvals()
+    except Exception:
+        pending_invoices = []
+    try:
+        timecard_summary = db.get_firm_timecard_summary(start, end)
+    except Exception:
+        timecard_summary = []
+    try:
+        today_entries = db.list_time_entries_today()
+    except Exception:
+        today_entries = []
+    submitted   = sum(1 for e in timecard_summary if e["submission_status"] == "SUBMITTED")
+    approved    = sum(1 for e in timecard_summary if e["submission_status"] == "APPROVED")
     not_started = sum(1 for e in timecard_summary if e["submission_status"] == "NOT_STARTED")
     today_total = round(sum(e["today_hours"] for e in timecard_summary), 1)
     return templates.TemplateResponse(
@@ -2241,6 +2250,7 @@ def billing_queue_page(request: Request) -> HTMLResponse:
             "not_started":      not_started,
             "today_total":      today_total,
             "staff_count":      len(timecard_summary),
+            "team_colors":      db.TEAM_COLORS,
         },
     )
 
