@@ -1108,16 +1108,19 @@ def get_payroll_data(start: str, end: str) -> dict[str, Any]:
 # ── Timesheet Submissions ─────────────────────────────────────────────────────
 
 def get_submission(engineer: str, period_start: str) -> Optional[dict[str, Any]]:
-    resp = (
-        _client()
-        .table("timesheet_submissions")
-        .select("*")
-        .eq("engineer_initials", engineer)
-        .eq("period_start", period_start)
-        .maybe_single()
-        .execute()
-    )
-    return resp.data
+    try:
+        resp = (
+            _client()
+            .table("timesheet_submissions")
+            .select("*")
+            .eq("engineer_initials", engineer)
+            .eq("period_start", period_start)
+            .maybe_single()
+            .execute()
+        )
+        return resp.data if resp is not None else None
+    except Exception:
+        return None
 
 
 def get_or_create_submission(engineer: str, period_start: str, period_end: str) -> dict[str, Any]:
