@@ -31,11 +31,16 @@
 
 {# ── Pending Approvals ── #}
 <div class="card" style="padding:0;margin-bottom:20px;overflow:hidden">
-  <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+  <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
     <div style="font-size:15px;font-weight:700">Pending Approval</div>
-    {% if submitted %}
-    <span style="background:rgba(251,191,36,.15);color:#fbbf24;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">{{ submitted|length }} pending</span>
-    {% endif %}
+    <div style="display:flex;align-items:center;gap:8px">
+      {% if submitted %}
+      <span style="background:rgba(251,191,36,.15);color:#fbbf24;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">{{ submitted|length }} pending</span>
+      {% endif %}
+      <span style="font-size:11px;color:var(--muted);font-weight:600">Sort:</span>
+      <button onclick="sortTable('name')" id="sort-name" class="btn" style="font-size:11px;padding:3px 10px">By Employee</button>
+      <button onclick="sortTable('project')" id="sort-project" class="btn" style="font-size:11px;padding:3px 10px">By Project</button>
+    </div>
   </div>
   {% if not submitted %}
   <div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">
@@ -46,16 +51,19 @@
   <table class="table" style="margin:0">
     <thead>
       <tr>
-        <th>Engineer</th>
+        <th data-col="name">Engineer</th>
         <th>Period</th>
         <th>Hours</th>
+        <th data-col="project">Projects</th>
         <th>Submitted</th>
         <th>Actions</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="approval-tbody">
       {% for sub in submitted %}
-      <tr id="approval-row-{{ sub.id }}">
+      <tr id="approval-row-{{ sub.id }}"
+          data-name="{{ sub.engineer_name }}"
+          data-project="{{ (sub.projects[0].project_number if sub.projects else '') }}">
         <td>
           <span style="display:inline-flex;align-items:center;gap:7px">
             <span style="width:24px;height:24px;border-radius:50%;background:{{ sub.engineer_color }}22;color:{{ sub.engineer_color }};font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;border:1px solid {{ sub.engineer_color }}44">{{ sub.engineer_initials }}</span>
@@ -64,6 +72,20 @@
         </td>
         <td style="font-family:var(--mono);font-size:12px">{{ sub.period_start }} – {{ sub.period_end }}</td>
         <td style="font-family:var(--mono);font-weight:700">{{ "%.1f"|format(sub.total_hours or 0) }}h</td>
+        <td>
+          {% if sub.projects %}
+          <div style="display:flex;flex-direction:column;gap:3px">
+            {% for p in sub.projects %}
+            <a href="/intakes/{{ p.id }}" style="font-size:11px;text-decoration:none;display:flex;align-items:center;gap:5px" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+              <span style="font-family:var(--mono);font-weight:700;color:var(--accent);white-space:nowrap">{{ p.project_number or '—' }}</span>
+              <span style="color:var(--text)">{{ (p.project_name or '—')[:30] }}</span>
+            </a>
+            {% endfor %}
+          </div>
+          {% else %}
+          <span style="color:var(--muted);font-size:12px">No project entries</span>
+          {% endif %}
+        </td>
         <td style="color:var(--muted);font-size:12px">{{ sub.submitted_at[:10] if sub.submitted_at else '—' }}</td>
         <td>
           <div style="display:flex;gap:6px">
@@ -123,6 +145,22 @@
 {% endif %}{# end if not error #}
 
 <script>
+function sortTable(col) {
+  var tbody = document.getElementById('approval-tbody');
+  if (!tbody) return;
+  var rows = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort(function(a, b) {
+    return (a.dataset[col] || '').localeCompare(b.dataset[col] || '');
+  });
+  rows.forEach(function(r) { tbody.appendChild(r); });
+  document.querySelectorAll('#sort-name, #sort-project').forEach(function(btn) {
+    btn.style.borderColor = '';
+    btn.style.color = '';
+  });
+  var active = document.getElementById('sort-' + col);
+  if (active) { active.style.borderColor = 'var(--accent)'; active.style.color = 'var(--accent)'; }
+}
+
 (function() {
   async function reviewRow(subId, action, notes) {
     var resp = await fetch('/api/timesheet/review/' + subId, {

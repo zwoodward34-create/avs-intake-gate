@@ -149,8 +149,7 @@ templates.env.globals["pending_mo_count"] = lambda: len(db.list_pending_mo())
 
 def _timesheet_period_count() -> int:
     try:
-        start, end = _current_pay_period()
-        return db.count_timesheet_period_entries(start, end)
+        return db.count_pending_review()
     except Exception:
         return 0
 

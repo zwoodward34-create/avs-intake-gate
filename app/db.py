@@ -688,7 +688,7 @@ TEAM_FULL_NAMES: dict[str, str] = {
     "RS": "R. Schwan",
     "RO": "R. Ochoa",
     "SW": "S. Woodward",
-    "JP": "J. Peterson",
+    "JP": "J. Prado",
     "JW": "J. Woodward",
     "JR": "J. Rodriguez",
     "RK": "R. Kline",
@@ -2584,15 +2584,42 @@ def get_potential_hours_for_intake(intake_id: int) -> dict[str, float]:
 
 
 def get_enriched_review_queue() -> list[dict[str, Any]]:
-    """SUBMITTED timesheet submissions enriched with full engineer name."""
+    """SUBMITTED timesheet submissions enriched with full engineer name and projects."""
     rows = get_review_queue()
     result = []
     for r in rows:
         eng = r.get("engineer_initials", "")
+        period_start = r.get("period_start", "")
+        period_end   = r.get("period_end", "")
+        projects: list[dict] = []
+        try:
+            te_resp = (
+                _client()
+                .table("time_entries")
+                .select("intake_id")
+                .eq("engineer_initials", eng)
+                .gte("entry_date", period_start)
+                .lte("entry_date", period_end)
+                .not_.is_("intake_id", "null")
+                .execute()
+            )
+            intake_ids = list({e["intake_id"] for e in (te_resp.data or [])})
+            if intake_ids:
+                pr = (
+                    _client()
+                    .table("intakes")
+                    .select("id,project_number,project_name")
+                    .in_("id", intake_ids)
+                    .execute()
+                )
+                projects = pr.data or []
+        except Exception:
+            pass
         result.append({
             **r,
-            "engineer_name": TEAM_FULL_NAMES.get(eng, eng),
+            "engineer_name":  TEAM_FULL_NAMES.get(eng, eng),
             "engineer_color": TEAM_COLORS.get(eng, "#888"),
+            "projects":       projects,
         })
     return result
 
