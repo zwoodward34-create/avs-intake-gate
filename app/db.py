@@ -468,6 +468,8 @@ class CalendarEventRow:
     updated_at: str
     tier: Optional[int] = None
     phase_jump: bool = False
+    is_legacy: bool = True      # False = weu_hours-based event from generate_phase_calendar_events
+    weu_hours: float = 0.0      # pre-calculated WEU hours for non-legacy events
 
     @property
     def title(self) -> str:
@@ -499,6 +501,8 @@ class CalendarEventRow:
             "is_ooo": self.is_ooo,
             "tier": self.tier,
             "phase_jump": self.phase_jump,
+            "is_legacy": self.is_legacy,
+            "weu_hours": self.weu_hours,
             "metadata": self.metadata,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -508,6 +512,9 @@ class CalendarEventRow:
 
     @classmethod
     def from_dict(cls, d: dict) -> "CalendarEventRow":
+        is_legacy = d.get("is_legacy")
+        if is_legacy is None:
+            is_legacy = True  # rows created before this field existed are legacy
         return cls(
             id=d["id"],
             project_number=d.get("project_number") or "",
@@ -521,6 +528,8 @@ class CalendarEventRow:
             is_ooo=bool(d.get("is_ooo", False)),
             tier=d.get("tier"),
             phase_jump=bool(d.get("phase_jump", False)),
+            is_legacy=bool(is_legacy),
+            weu_hours=float(d.get("weu_hours") or 0.0),
             metadata=d.get("metadata"),
             created_at=d.get("created_at") or "",
             updated_at=d.get("updated_at") or "",

@@ -176,18 +176,30 @@ def compute_weu(events: list[dict]) -> dict[str, PersonLoad]:
     }
 
     for ev in events:
-        tier = ev.get("tier")
-        if not tier:
-            continue  # skip events with no tier — can't calculate load
-
-        phase = ev.get("phase") or ""
+        phase      = ev.get("phase") or ""
         phase_jump = bool(ev.get("phase_jump", False))
-        qa_buffer = 1.15 if phase_jump else 1.0
-        base_load = tier * PHASE_COEFF.get(phase, 1.0) * qa_buffer
-        shadow_rate = EIT_SHADOW_RATE.get(phase, 0.0)
+        title      = ev.get("title") or (ev.get("project_number", "") + "-" + ev.get("client", ""))
+        event_id   = ev.get("id", "")
 
-        title = ev.get("title") or (ev.get("project_number", "") + "-" + ev.get("client", ""))
-        event_id = ev.get("id", "")
+        # Non-legacy events use weu_hours directly; legacy events use tier × phase_coeff
+        is_legacy = ev.get("is_legacy")
+        if is_legacy is None:
+            is_legacy = True
+
+        tier = ev.get("tier") or 0
+        if not is_legacy:
+            weu_hours = float(ev.get("weu_hours") or 0.0)
+            if weu_hours <= 0:
+                continue
+            # Convert hours → WEU base load (CAPACITY_BASE hours = 1 capacity unit)
+            base_load = weu_hours / CAPACITY_BASE
+        else:
+            if not tier:
+                continue  # legacy event with no tier — can't calculate load
+            qa_buffer = 1.15 if phase_jump else 1.0
+            base_load = tier * PHASE_COEFF.get(phase, 1.0) * qa_buffer
+
+        shadow_rate = EIT_SHADOW_RATE.get(phase, 0.0)
 
         for member in (ev.get("team") or []):
             if member not in people:
