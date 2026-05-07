@@ -88,4 +88,153 @@
 
 <div id="pf-results" class="pf-results-grid"></div>
 
+<!-- Backfill History -->
+<div class="card" style="margin-top:32px">
+  <div style="display:flex; align-items:center; justify-content:space-between; cursor:pointer" onclick="toggleBackfill()">
+    <div style="font-size:15px; font-weight:700">+ Backfill Project History</div>
+    <span id="bf-chevron" style="font-size:18px; color:var(--muted)">&#9660;</span>
+  </div>
+
+  <div id="bf-body" style="display:none; margin-top:18px">
+    <!-- Step 1 -->
+    <div class="field" style="margin-bottom:14px">
+      <label for="bf-desc">Describe the project in plain English</label>
+      <textarea id="bf-desc" rows="6" style="width:100%; box-sizing:border-box; resize:vertical; font-family:inherit; font-size:14px; padding:10px; border:1px solid var(--border); border-radius:6px; background:var(--surface)"
+        placeholder="E.g. 'The Broadway Mixed-Use Conversion, completed in 2019 in Phoenix AZ. 5-story wood-frame over concrete podium, gable roof, lateral system was wood shear walls, AHJ was City of Phoenix Building Services.'"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="analyzeProject()" id="bf-analyze-btn">Analyze with Claude</button>
+    <span id="bf-analyze-status" class="muted small" style="margin-left:10px"></span>
+
+    <!-- Step 2: editable form (hidden until analysis completes) -->
+    <div id="bf-form" style="display:none; margin-top:22px">
+      <div style="font-weight:600; margin-bottom:14px">Verify and edit extracted details</div>
+      <div class="row row-2" style="margin-bottom:12px">
+        <div class="field">
+          <label>Project Name</label>
+          <input id="bf-project-name" type="text" style="width:100%; box-sizing:border-box">
+        </div>
+        <div class="field">
+          <label>Location</label>
+          <input id="bf-location" type="text" style="width:100%; box-sizing:border-box">
+        </div>
+      </div>
+      <div class="row row-2" style="margin-bottom:12px">
+        <div class="field">
+          <label>Year Completed</label>
+          <input id="bf-year" type="text" style="width:100%; box-sizing:border-box">
+        </div>
+        <div class="field">
+          <label>Project Type</label>
+          <input id="bf-project-type" type="text" style="width:100%; box-sizing:border-box">
+        </div>
+      </div>
+      <div class="row row-2" style="margin-bottom:12px">
+        <div class="field">
+          <label>Material</label>
+          <input id="bf-material" type="text" style="width:100%; box-sizing:border-box">
+        </div>
+        <div class="field">
+          <label>Roof System</label>
+          <input id="bf-roof" type="text" style="width:100%; box-sizing:border-box">
+        </div>
+      </div>
+      <div class="row row-2" style="margin-bottom:12px">
+        <div class="field">
+          <label>LFRS</label>
+          <input id="bf-lfrs" type="text" style="width:100%; box-sizing:border-box">
+        </div>
+        <div class="field">
+          <label>AHJ</label>
+          <input id="bf-ahj" type="text" style="width:100%; box-sizing:border-box">
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label>Notes</label>
+        <textarea id="bf-notes" rows="3" style="width:100%; box-sizing:border-box; font-family:inherit; font-size:14px; padding:10px; border:1px solid var(--border); border-radius:6px; background:var(--surface)"></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="saveHistoricalProject()">Save to Official History</button>
+      <span id="bf-save-status" class="muted small" style="margin-left:10px"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleBackfill() {
+  var body = document.getElementById('bf-body');
+  var chevron = document.getElementById('bf-chevron');
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    chevron.innerHTML = '&#9650;';
+  } else {
+    body.style.display = 'none';
+    chevron.innerHTML = '&#9660;';
+  }
+}
+
+function analyzeProject() {
+  var desc = document.getElementById('bf-desc').value.trim();
+  if (!desc) { alert('Please enter a project description first.'); return; }
+  var btn = document.getElementById('bf-analyze-btn');
+  var status = document.getElementById('bf-analyze-status');
+  btn.disabled = true;
+  status.textContent = 'Analyzing…';
+  fetch('/api/analyze-project', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({description: desc}),
+  })
+  .then(function(r) {
+    if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Analysis failed'); });
+    return r.json();
+  })
+  .then(function(data) {
+    document.getElementById('bf-project-name').value = data.project_name || '';
+    document.getElementById('bf-location').value     = data.location || '';
+    document.getElementById('bf-year').value          = data.year_completed || '';
+    document.getElementById('bf-project-type').value = data.project_type || '';
+    document.getElementById('bf-material').value      = data.material || '';
+    document.getElementById('bf-roof').value          = data.roof || '';
+    document.getElementById('bf-lfrs').value          = data.lfrs || '';
+    document.getElementById('bf-ahj').value           = data.ahj || '';
+    document.getElementById('bf-notes').value         = data.notes || '';
+    document.getElementById('bf-form').style.display  = 'block';
+    status.textContent = 'Done.';
+  })
+  .catch(function(e) { status.textContent = e.message; })
+  .finally(function() { btn.disabled = false; });
+}
+
+function saveHistoricalProject() {
+  var status = document.getElementById('bf-save-status');
+  status.textContent = 'Saving…';
+  var payload = {
+    project_name:    document.getElementById('bf-project-name').value.trim(),
+    location:        document.getElementById('bf-location').value.trim(),
+    year_completed:  document.getElementById('bf-year').value.trim(),
+    project_type:    document.getElementById('bf-project-type').value.trim(),
+    material:        document.getElementById('bf-material').value.trim(),
+    roof:            document.getElementById('bf-roof').value.trim(),
+    lfrs:            document.getElementById('bf-lfrs').value.trim(),
+    ahj:             document.getElementById('bf-ahj').value.trim(),
+    notes:           document.getElementById('bf-notes').value.trim(),
+    raw_description: document.getElementById('bf-desc').value.trim(),
+  };
+  fetch('/api/historical-projects', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  })
+  .then(function(r) {
+    if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Save failed'); });
+    return r.json();
+  })
+  .then(function(data) {
+    status.textContent = 'Saved! ID: ' + (data.id || '—');
+    document.getElementById('bf-form').style.display = 'none';
+    document.getElementById('bf-desc').value = '';
+  })
+  .catch(function(e) { status.textContent = e.message; });
+}
+</script>
+
 {% endblock %}

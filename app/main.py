@@ -1498,6 +1498,67 @@ def api_past_projects_refresh() -> dict[str, str]:
     return {"status": "cache cleared"}
 
 
+@app.post("/api/analyze-project")
+async def api_analyze_project(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    description = (body.get("description") or "").strip()
+    if not description:
+        raise HTTPException(status_code=400, detail="description is required.")
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY is not configured.")
+    import anthropic as _anthropic
+    client = _anthropic.Anthropic(api_key=api_key)
+    prompt = (
+        "Extract technical details from the following project description.\n"
+        "Return ONLY a JSON object with these exact keys (use null if unknown):\n"
+        "  project_name, location, year_completed, project_type, material, roof, lfrs, ahj, notes\n\n"
+        f"Description:\n{description}"
+    )
+    msg = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=512,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = msg.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    try:
+        return _json.loads(raw.strip())
+    except _json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail=f"Claude returned non-JSON: {raw}")
+
+
+@app.post("/api/historical-projects")
+async def api_save_historical_project(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    try:
+        year = int(body["year_completed"]) if body.get("year_completed") else None
+    except (ValueError, TypeError):
+        year = None
+    record = {
+        "project_name":    (body.get("project_name") or "").strip() or None,
+        "location":        (body.get("location") or "").strip() or None,
+        "year_completed":  year,
+        "project_type":    (body.get("project_type") or "").strip() or None,
+        "material":        (body.get("material") or "").strip() or None,
+        "roof":            (body.get("roof") or "").strip() or None,
+        "lfrs":            (body.get("lfrs") or "").strip() or None,
+        "ahj":             (body.get("ahj") or "").strip() or None,
+        "notes":           (body.get("notes") or "").strip() or None,
+        "raw_description": (body.get("raw_description") or "").strip() or None,
+    }
+    try:
+        resp = db._client().table("historical_projects").insert(record).execute()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    if resp.data:
+        return resp.data[0]
+    raise HTTPException(status_code=500, detail="Insert returned no data. Run migrate_003_historical_projects.sql first.")
+
+
 @app.get("/api/calendar/ifp-dates")
 def api_calendar_ifp_dates(days: int = 180) -> dict[str, Any]:
     try:
