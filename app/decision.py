@@ -3,8 +3,29 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from .fee_estimator import select_difficulty_tier
+
 
 SEVERITY_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+
+# Titles recognized as authorized decision-makers (case-insensitive substring match)
+# Per CLAUDE.md V4.0: do NOT flag "No Clear Decision-Maker" for these roles.
+AUTHORIZED_DECISION_MAKER_TITLES: frozenset[str] = frozenset({
+    "development manager",
+    "project executive",
+    "vp of construction",
+    "vp construction",
+    "vice president",
+    "principal",
+    "president",
+    "director of construction",
+    "director",
+    "owner",
+    "construction manager",
+})
+
+# States where AVS is licensed — Unlicensed Jurisdiction flag only triggers outside these
+_LICENSED_STATES: frozenset[str] = frozenset({"AZ", "CA"})
 
 _DOC_CLARIFICATION_QUESTIONS: dict[str, str] = {
     "Geotechnical report": (
@@ -313,6 +334,22 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
         if project_type and project_type not in {"new_construction"}:
             needs_clarification_reasons.append("Site access is uncertain for an existing building.")
 
+    # Unlicensed jurisdiction — only trigger if state is known AND not AZ/CA
+    project_state = (answers.get("state") or answers.get("project_state") or "").strip().upper()
+    if project_state and project_state not in _LICENSED_STATES:
+        red_flags.append(
+            RedFlag(
+                key="unlicensed_jurisdiction",
+                title="Project outside licensed jurisdiction",
+                severity="high",
+                category="Compliance",
+                detail=(
+                    f"State '{project_state}' is outside AVS licensed jurisdictions (AZ, CA). "
+                    "A local licensed engineer or joint venture may be required."
+                ),
+            )
+        )
+
     # Docs checks (core)
     def doc_bool(key: str) -> bool:
         return bool(answers.get(key) is True)
@@ -413,8 +450,10 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
         )
 
     decision_maker = answers.get("decision_maker_clarity")
-    # Accept both short form ("unclear", "none") and AI-extracted long form ("unclear_red_flag")
-    if decision_maker in {"unclear", "none", "unclear_red_flag"}:
+    # Bypass flag if contact holds an authorized decision-maker title (Dev Manager, PE, VP, etc.)
+    contact_title = (answers.get("contact_title") or "").strip().lower()
+    _is_authorized_dm = any(t in contact_title for t in AUTHORIZED_DECISION_MAKER_TITLES)
+    if not _is_authorized_dm and decision_maker in {"unclear", "none", "unclear_red_flag"}:
         red_flags.append(
             RedFlag(
                 key="decision_maker_unclear",
@@ -508,18 +547,19 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
     if critical_count > 0:
         recommendation = "LIKELY_DECLINE"
         reason = "Critical red flag(s) present; likely decline unless Mo overrides."
+    elif total_red_flags >= 4:
+        # Hard blocker: 4+ flags → mandatory Mo escalation
+        recommendation = "NEEDS_MO_REVIEW"
+        reason = f"{total_red_flags} red flags present — hard escalation to Mo required."
     elif needs_clarification_reasons:
         recommendation = "CLARIFY_FIRST"
         reason = "Missing critical information: " + "; ".join(needs_clarification_reasons[:3])
     elif total_red_flags == 0:
         recommendation = "PROCEED_TO_PROPOSAL"
         reason = "No red flags detected."
-    elif total_red_flags <= 2:
-        recommendation = "NEEDS_MO_REVIEW"
-        reason = "1–2 red flags detected; Mo should review before proposal."
     else:
         recommendation = "NEEDS_MO_REVIEW"
-        reason = "3+ red flags detected (cumulative risk); Mo review required (likely decline)."
+        reason = f"{total_red_flags} red flag(s) detected; Mo should review before proposal."
 
     fast_track = (
         project_type == "repeating_program"
@@ -539,4 +579,5 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
         "complexity_estimate": complexity_estimate(answers),
         "fee_range_estimate": fee_range_estimate(answers),
         "fast_track": fast_track,
+        "difficulty_tier": select_difficulty_tier(answers),
     }

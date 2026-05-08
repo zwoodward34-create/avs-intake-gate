@@ -49,32 +49,34 @@ def _check_fast_track() -> None:
 
 
 def _check_fee_range() -> None:
+    # 20,000 SF new construction "other": rate 0.75–0.98 $/SF, floor $10k (not applied here)
     result = fee_range_estimate({"project_type": "new_construction", "approx_sf": "20000"})
-    assert result == "$15,000 \u2013 $20,000", f"Expected '$15,000 – $20,000', got {result!r}"
+    assert result == "$15,000 – $19,600", f"Expected '$15,000 – $19,600', got {result!r}"
     assert fee_range_estimate({"project_type": "new_construction", "approx_sf": "0"}) is None
     assert fee_range_estimate({"project_type": "new_construction"}) is None
     assert fee_range_estimate({"project_type": "unknown_type", "approx_sf": "10000"}) is None
+    # 10,000 SF BTS: floor ($7,500) dominates at this project size
     bts = fee_range_estimate({"project_type": "build_to_suit_retrofit", "approx_sf": "10000"})
-    assert bts == "$3,000 \u2013 $6,700", f"Unexpected BTS result: {bts!r}"
+    assert bts == "$7,500 – $7,500", f"Unexpected BTS result: {bts!r}"
+    # 10,000 SF TI: floor ($7,500) matches rate ceiling
     ti = fee_range_estimate({"project_type": "tenant_improvement", "approx_sf": "10000"})
-    assert ti == "$2,500 \u2013 $5,000", f"Unexpected TI result: {ti!r}"
+    assert ti == "$7,500 – $7,500", f"Unexpected TI result: {ti!r}"
 
 
 def _check_complexity() -> None:
-    assert complexity_estimate({"approx_sf": "8000"}) == "low", "8000 SF should be low"
-    assert complexity_estimate({"approx_sf": "18000"}) == "medium", "18000 SF should be medium"
-    assert complexity_estimate({"approx_sf": "30000"}) == "high", "30000 SF should be high"
-    assert complexity_estimate({}) == "unknown", "missing SF should be unknown"
-    assert complexity_estimate({"approx_sf": "0"}) == "unknown", "zero SF should be unknown"
+    # complexity_estimate keys off building_type / scope_risk_type, not square footage
+    assert complexity_estimate({"building_type": "healthcare"}) == "high", "healthcare → high"
+    assert complexity_estimate({"building_type": "data_center"}) == "high", "data_center → high"
+    assert complexity_estimate({"building_type": "mixed_use"}) == "medium", "mixed_use → medium"
+    assert complexity_estimate({}) == "low", "no fields → low (safe default)"
+    assert complexity_estimate({"scope_risk_type": "ti_high_liability"}) == "high", "high-liability TI → high"
+    assert complexity_estimate({"scope_risk_type": "adaptive_reuse"}) == "high", "adaptive reuse → high"
 
 
 def main() -> None:
     _check_fast_track()
     _check_fee_range()
     _check_complexity()
-
-    db_path = ROOT / "data" / "avs_intake.sqlite3"
-    db.init_db(db_path)
 
     answers = {
         "project_type": "new_construction",
@@ -107,27 +109,32 @@ def main() -> None:
 
     decision = compute_decision(answers)
     assert decision["recommendation"] == "PROCEED_TO_PROPOSAL", decision
+    assert "difficulty_tier" in decision, "V4.0: decision must include difficulty_tier"
 
-    intake_id = db.create_intake(
-        db_path,
-        inquiry_date="2026-04-10",
-        project_name="Self-check: clean case",
-        client_name="ACME",
-        architect_name="Known Architect",
-        lead_contact="test@example.com",
-        location_region="AZ",
-        submitted_by="Self-check",
-        status="PROCEED_TO_PROPOSAL",
-        recommendation=decision["recommendation"],
-        recommendation_reason=decision["reason"],
-        red_flags=decision["red_flags"],
-        red_flag_counts=decision["counts"],
-        answers=answers,
-    )
-
-    row = db.get_intake(db_path, intake_id)
-    assert row is not None
-    assert row.project_name.startswith("Self-check")
+    # DB round-trip (requires SUPABASE_URL + SUPABASE_KEY env vars; skipped if not set)
+    import os
+    if os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_KEY"):
+        intake_id = db.create_intake(
+            inquiry_date="2026-04-10",
+            ifp_due_date=None,
+            project_name="Self-check: clean case",
+            client_name="ACME",
+            architect_name="Known Architect",
+            lead_contact="test@example.com",
+            location_region="AZ",
+            submitted_by="Self-check",
+            status="PROCEED_TO_PROPOSAL",
+            recommendation=decision["recommendation"],
+            recommendation_reason=decision["reason"],
+            red_flags=decision["red_flags"],
+            red_flag_counts=decision["counts"],
+            answers=answers,
+        )
+        row = db.get_intake(intake_id)
+        assert row is not None
+        assert row.project_name.startswith("Self-check")
+    else:
+        print("  (DB round-trip skipped — SUPABASE_URL/KEY not set)")
 
     print("OK")
 

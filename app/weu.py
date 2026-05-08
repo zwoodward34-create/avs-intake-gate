@@ -199,6 +199,15 @@ def compute_weu(events: list[dict]) -> dict[str, PersonLoad]:
             qa_buffer = 1.15 if phase_jump else 1.0
             base_load = tier * PHASE_COEFF.get(phase, 1.0) * qa_buffer
 
+        # Workload scarcity: projects > 150k SF require ≥1 hr/1,000 SF minimum load
+        try:
+            sq_ft_ev = int(ev.get("sq_ft") or ev.get("approx_sf") or 0)
+        except (ValueError, TypeError):
+            sq_ft_ev = 0
+        if sq_ft_ev > 150_000:
+            scarcity_min = sq_ft_ev / 1_000.0 / CAPACITY_BASE
+            base_load = max(base_load, scarcity_min)
+
         shadow_rate = EIT_SHADOW_RATE.get(phase, 0.0)
 
         for member in (ev.get("team") or []):
@@ -224,11 +233,12 @@ def compute_weu(events: list[dict]) -> dict[str, PersonLoad]:
                 team=ev.get("team") or [],
             ))
 
-            # EIT → Mentor shadow load
-            if cfg["is_eit"] and cfg.get("mentor") and shadow_rate > 0:
-                mentor = cfg["mentor"]
-                if mentor in people:
-                    people[mentor].shadow_load += base_load * shadow_rate
+            # EIT → Mentor shadow load; Tier 3+ enforces 15% minimum PE oversight
+            if cfg["is_eit"] and cfg.get("mentor"):
+                effective_shadow = max(shadow_rate, 0.15) if tier >= 3 else shadow_rate
+                mentor_id = cfg["mentor"]
+                if mentor_id in people and effective_shadow > 0:
+                    people[mentor_id].shadow_load += base_load * effective_shadow
 
     return people
 

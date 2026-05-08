@@ -74,6 +74,7 @@ async def _parse_intake_form(request: Request) -> dict[str, Any]:
         "architect_status": _as_str(form.get("architect_status")) or "unknown",
         "architect_responsiveness": _as_str(form.get("architect_responsiveness")) or "unknown",
         "decision_maker_clarity": _as_str(form.get("decision_maker_clarity")) or "unclear",
+        "contact_title": _as_str(form.get("contact_title")),
         "city": _as_str(form.get("city")),
         "state": _as_str(form.get("state")),
         "relationship_type": _as_str(form.get("relationship_type")) or "new",
@@ -836,6 +837,20 @@ def generate_proposal_route(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
+    # Healthcare mandatory exclusion (radiation, laser, and medical-gas shielding)
+    if (intake.answers.get("building_type") or "").lower() == "healthcare":
+        text += (
+            "\n\n---\n"
+            "SCOPE EXCLUSIONS (Healthcare Project)\n"
+            "The following items are explicitly excluded from this proposal unless separately scoped "
+            "and authorized in writing:\n"
+            "  • Radiation shielding design (requires licensed medical physicist)\n"
+            "  • Laser shielding / laser suite structural barriers\n"
+            "  • Medical gas piping supports (MEP coordination only; not structural design)\n"
+            "  • Seismic anchorage of medical equipment (unless specifically itemized above)\n"
+            "These exclusions are standard on all AVS healthcare engagements."
+        )
+
     db.save_proposal(intake_id, text)
     return RedirectResponse(url=f"/intakes/{intake_id}#proposal-section", status_code=303)
 
@@ -1079,6 +1094,21 @@ async def api_generate_proposal_json(request: Request, intake_id: int) -> dict:
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+
+    # Healthcare mandatory exclusion (radiation, laser, and medical-gas shielding)
+    if (intake.answers.get("building_type") or "").lower() == "healthcare":
+        text += (
+            "\n\n---\n"
+            "SCOPE EXCLUSIONS (Healthcare Project)\n"
+            "The following items are explicitly excluded from this proposal unless separately scoped "
+            "and authorized in writing:\n"
+            "  • Radiation shielding design (requires licensed medical physicist)\n"
+            "  • Laser shielding / laser suite structural barriers\n"
+            "  • Medical gas piping supports (MEP coordination only; not structural design)\n"
+            "  • Seismic anchorage of medical equipment (unless specifically itemized above)\n"
+            "These exclusions are standard on all AVS healthcare engagements."
+        )
+
     db.save_proposal(intake_id, text)
     return {"proposal_text": text, "intake_id": intake_id}
 
@@ -1964,19 +1994,49 @@ def api_intake_fee_estimate(intake_id: int) -> dict:
         hi = fee_range.get("high") or 0
         if lo and hi:
             midpoint = round((lo + hi) / 2 / 500) * 500
+    # Confidence scoring based on flag count and data completeness
+    flag_count   = decision["counts"]["total"]
+    has_sf       = bool(intake.answers.get("approx_sf"))
+    if flag_count == 0 and has_sf:
+        confidence       = "High"
+        confidence_notes = "No red flags; complete square footage data."
+    elif flag_count <= 2 and has_sf:
+        confidence       = "Medium"
+        confidence_notes = f"{flag_count} flag(s) detected; estimate may shift after Mo review."
+    else:
+        confidence       = "Low"
+        confidence_notes = (
+            f"{flag_count} flag(s)" if flag_count else "Missing square footage"
+        ) + "; manual review recommended before using this estimate."
+
+    calc_log: list[str] = []
+    if est and not est.get("needs_manual_review"):
+        if est.get("base_fee_range"):
+            calc_log.append(f"Base: ${est['base_fee_range']['low']:,.0f}–${est['base_fee_range']['high']:,.0f}")
+        if est.get("effective_multiplier") and est["effective_multiplier"] != 1.0:
+            calc_log.append(f"Effective multiplier: ×{est['effective_multiplier']:.2f} (max of complexity/risk)")
+        if est.get("rush_premium") and est["rush_premium"] != 1.0:
+            calc_log.append(f"Rush premium: ×{est['rush_premium']:.2f} (<6 weeks to permit)")
+        if est.get("floor_applied"):
+            calc_log.append(f"Floor applied: ${est['floor_fee']:,.0f}")
+
     return {
-        "intake_id":        intake_id,
-        "project_name":     intake.project_name,
-        "complexity":       decision["complexity_estimate"],
-        "fee_range":        decision.get("fee_range_estimate"),
-        "cognasync":        est,
+        "intake_id":          intake_id,
+        "project_name":       intake.project_name,
+        "complexity":         decision["complexity_estimate"],
+        "difficulty_tier":    decision.get("difficulty_tier", 2),
+        "confidence":         confidence,
+        "confidence_notes":   confidence_notes,
+        "calculation_log":    calc_log,
+        "fee_range":          decision.get("fee_range_estimate"),
+        "cognasync":          est,
         "suggested_midpoint": midpoint,
-        "client_name":      intake.client_name or "",
-        "location_region":  intake.location_region or "",
-        "project_type":     intake.answers.get("project_type") or "",
-        "building_type":    intake.answers.get("building_type") or "",
-        "approx_sf":        intake.answers.get("approx_sf") or "",
-        "architect_name":   intake.architect_name or "",
+        "client_name":        intake.client_name or "",
+        "location_region":    intake.location_region or "",
+        "project_type":       intake.answers.get("project_type") or "",
+        "building_type":      intake.answers.get("building_type") or "",
+        "approx_sf":          intake.answers.get("approx_sf") or "",
+        "architect_name":     intake.architect_name or "",
     }
 
 

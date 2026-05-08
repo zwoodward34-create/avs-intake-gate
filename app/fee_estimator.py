@@ -65,6 +65,40 @@ def _floor_fee(building_type: str, delivery_bucket: str) -> float:
     return 7_500.0
 
 
+# ── Difficulty tier auto-selection ─────────────────────────────────────────────
+def select_difficulty_tier(answers: dict[str, Any]) -> int:
+    """
+    Map project scope to Difficulty Tier 1–4.
+
+    1 – Basic assessment / small TI (< 5k SF)
+    2 – Standard design (new construction, moderate retrofit)
+    3 – Complex multi-phase (large projects, mixed-use, education)
+    4 – High-liability (healthcare, data center, historic adaptive reuse)
+    """
+    building_type = (answers.get("building_type") or "other").lower()
+    project_type  = (answers.get("project_type")  or "").lower()
+    scope_risk    = (answers.get("scope_risk_type") or "").lower()
+    try:
+        sq_ft = int(str(answers.get("approx_sf") or 0).strip())
+    except (ValueError, TypeError):
+        sq_ft = 0
+
+    if building_type in {"healthcare", "data_center"} or scope_risk == "adaptive_reuse":
+        return 4
+    if sq_ft > 50_000 or building_type in {"mixed_use", "education"}:
+        return 3
+    if project_type == "tenant_improvement" and sq_ft < 5_000:
+        return 1
+    if scope_risk in {"assessment_only", "capacity_check"}:
+        return 1
+    return 2
+
+
+def weu_hours_from_fee(fee: float) -> float:
+    """Derive WEU effort hours from a known fee at the ~$200/hr efficiency ratio."""
+    return round(fee / 200.0, 1)
+
+
 # ── Core estimator ─────────────────────────────────────────────────────────────
 
 class RiskAdjustedFeeEstimator:
@@ -155,19 +189,35 @@ class RiskAdjustedFeeEstimator:
         cx_low  = base_low  * cx_mult
         cx_high = base_high * cx_mult
 
-        # ── 3. Risk multiplier (flag count) ──────────────────────────────────
-        active_flags  = [k for k, v in flags.items() if v]
-        flag_count    = len(active_flags)
-        risk_mult_val = _risk_mult(flag_count)
-        risk_low      = cx_low  * risk_mult_val
-        risk_high     = cx_high * risk_mult_val
+        # ── 3. Effective multiplier: max(complexity, risk) — no stacking ────
+        active_flags   = [k for k, v in flags.items() if v]
+        flag_count     = len(active_flags)
+        risk_mult_val  = _risk_mult(flag_count)
+        effective_mult = max(cx_mult, risk_mult_val)
+        risk_low       = base_low  * effective_mult
+        risk_high      = base_high * effective_mult
+
+        # ── 3a. Rush premium: < 6 weeks to permit → ×1.25 ───────────────────
+        answers_ref = data.get("_answers", {})
+        try:
+            sched_weeks = int(str(answers_ref.get("weeks_to_permit_submission") or 99).strip())
+        except (ValueError, TypeError):
+            sched_weeks = 99
+        rush_premium = 1.25 if sched_weeks < 6 else 1.0
+        risk_low  *= rush_premium
+        risk_high *= rush_premium
+
+        # ── 3b. Small project cap: TI < 5,000 SF → max $15,000 ──────────────
+        _SMALL_TI_CAP = 15_000.0
+        if delivery == "ti" and 0 < sq_ft < 5_000 and building_type not in {"healthcare", "data_center"}:
+            risk_low  = min(risk_low,  _SMALL_TI_CAP)
+            risk_high = min(risk_high, _SMALL_TI_CAP)
 
         # ── 4. Floor fee ──────────────────────────────────────────────────────
         floor = _floor_fee(building_type, delivery)
         floor_applied = risk_low < floor
         if floor_applied:
-            # Scale both ends up proportionally so the range shape is preserved
-            scale    = floor / risk_low if risk_low > 0 else 1.0
+            scale     = floor / risk_low if risk_low > 0 else 1.0
             risk_low  = floor
             risk_high = risk_high * scale
 
@@ -176,28 +226,30 @@ class RiskAdjustedFeeEstimator:
             return round(x / 100) * 100
 
         return {
-            "project_name":             data.get("project_name", "Unknown Project"),
-            "sq_ft":                    sq_ft,
-            "building_type":            building_type,
-            "delivery_bucket":          delivery,
-            "effective_rate_low":       rate_low,
-            "effective_rate_high":      rate_high,
+            "project_name":              data.get("project_name", "Unknown Project"),
+            "sq_ft":                     sq_ft,
+            "building_type":             building_type,
+            "delivery_bucket":           delivery,
+            "effective_rate_low":        rate_low,
+            "effective_rate_high":       rate_high,
             # Step 1
-            "base_fee_range":           {"low": r(base_low),  "high": r(base_high)},
+            "base_fee_range":            {"low": r(base_low),  "high": r(base_high)},
             # Step 2
-            "complexity_multiplier":    cx_mult,
-            "complexity_adjusted_range":{"low": r(cx_low),   "high": r(cx_high)},
-            # Step 3
-            "risk_multiplier":          risk_mult_val,
-            "flag_count":               flag_count,
-            "risk_adjusted_range":      {"low": r(risk_low),  "high": r(risk_high)},
+            "complexity_multiplier":     cx_mult,
+            "complexity_adjusted_range": {"low": r(cx_low),   "high": r(cx_high)},
+            # Step 3 (effective = max of complexity/risk)
+            "risk_multiplier":           risk_mult_val,
+            "effective_multiplier":      effective_mult,
+            "rush_premium":              rush_premium,
+            "flag_count":                flag_count,
+            "risk_adjusted_range":       {"low": r(risk_low),  "high": r(risk_high)},
             # Step 4 (suggested = final after floor)
-            "floor_fee":                floor,
-            "floor_applied":            floor_applied,
-            "suggested_fee_range":      {"low": r(risk_low),  "high": r(risk_high)},
+            "floor_fee":                 floor,
+            "floor_applied":             floor_applied,
+            "suggested_fee_range":       {"low": r(risk_low),  "high": r(risk_high)},
             # Warnings
-            "warnings":                 active_flags,
-            "needs_manual_review":      False,
+            "warnings":                  active_flags,
+            "needs_manual_review":       False,
             # Review flag
             **dict(zip(
                 ("fee_requires_review", "review_reason"),
