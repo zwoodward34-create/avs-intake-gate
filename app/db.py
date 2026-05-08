@@ -668,6 +668,7 @@ def count_ifp_on_date(check_date: str) -> int:
 # ── Constants ────────────────────────────────────────────────────────────────
 
 BILLING_RATE: float = 150.0
+TARGET_EFFICIENCY_RATIO: float = 200.0  # $/hr — CLAUDE.md V4.0 default
 
 DEFAULT_PHASE_SPLITS: dict[str, float] = {
     "SD":  0.05,
@@ -747,9 +748,12 @@ def set_intake_project_number(intake_id: int, project_number: str) -> None:
 
 def generate_phase_budgets(intake_id: int, project_number: str, approved_fee: float) -> None:
     now = _utc_now_iso()
-    rows = []
+    rows: list[dict] = []
+    budget_per_phase: dict[str, float] = {}
     for phase_code, split in DEFAULT_PHASE_SPLITS.items():
         total_hours = round((approved_fee * split) / BILLING_RATE, 2)
+        dollar_budget = round(total_hours * TARGET_EFFICIENCY_RATIO, 2)
+        budget_per_phase[phase_code] = dollar_budget
         rows.append({
             "intake_id":    intake_id,
             "project_number": project_number,
@@ -770,6 +774,17 @@ def generate_phase_budgets(intake_id: int, project_number: str, approved_fee: fl
         .upsert(rows, on_conflict="intake_id,phase_code")
         .execute()
     )
+    # Denormalize budget_per_phase onto the intake row for fast lookup
+    try:
+        (
+            _client()
+            .table("intakes")
+            .update({"budget_per_phase": budget_per_phase, "updated_at": now})
+            .eq("id", intake_id)
+            .execute()
+        )
+    except Exception:
+        pass  # Column requires SQL migration: ALTER TABLE intakes ADD COLUMN budget_per_phase jsonb;
 
 
 def list_phase_budgets(intake_id: int) -> list[dict[str, Any]]:
@@ -841,11 +856,42 @@ def list_phase_budgets(intake_id: int) -> list[dict[str, Any]]:
             "hours_used":       used,
             "remaining":        remaining,
             "pct_used":         pct,
+            "dollar_budget":    round(budgeted * TARGET_EFFICIENCY_RATIO, 2),
+            "dollar_burn":      round(used     * TARGET_EFFICIENCY_RATIO, 2),
+            "dollar_remaining": round((budgeted - used) * TARGET_EFFICIENCY_RATIO, 2),
+            "dollar_pct":       round((used / budgeted * 100) if budgeted > 0 else 0.0, 1),
+            "over_budget":      used > budgeted,
+            "ready_for_invoicing": (used / budgeted >= 1.0) if budgeted > 0 else False,
             "bucket_allocation":    bucket_alloc,
             "bucket_spent":         {k: round(v, 2) for k, v in phase_spent.items()},
             "bucket_remaining":     bucket_remaining,
         })
     return result
+
+
+def _sync_budget_per_phase(intake_id: int) -> None:
+    """Recompute and write budget_per_phase jsonb to intakes after a phase edit."""
+    resp = (
+        _client()
+        .table("phase_budgets")
+        .select("phase_code,budgeted_hours")
+        .eq("intake_id", intake_id)
+        .execute()
+    )
+    bpp = {
+        row["phase_code"]: round(float(row["budgeted_hours"]) * TARGET_EFFICIENCY_RATIO, 2)
+        for row in (resp.data or [])
+    }
+    try:
+        (
+            _client()
+            .table("intakes")
+            .update({"budget_per_phase": bpp, "updated_at": _utc_now_iso()})
+            .eq("id", intake_id)
+            .execute()
+        )
+    except Exception:
+        pass
 
 
 def update_phase_budget(intake_id: int, phase_code: str, budgeted_hours: float) -> None:
@@ -857,6 +903,7 @@ def update_phase_budget(intake_id: int, phase_code: str, budgeted_hours: float) 
         .eq("phase_code", phase_code)
         .execute()
     )
+    _sync_budget_per_phase(intake_id)
 
 
 def update_intake_ifp_date(intake_id: int, ifp_due_date: str) -> None:
@@ -2613,8 +2660,8 @@ def get_burn_health_data(today: date) -> list[dict[str, Any]]:
         current_hours   = hours_by_intake.get(i.id, 0.0)
         remaining_hours = remaining_by_project.get(i.project_number, 0.0)
 
-        current_burn_val   = round(current_hours   * BILLING_RATE, 2)
-        remaining_val      = round(remaining_hours * BILLING_RATE, 2)
+        current_burn_val   = round(current_hours   * TARGET_EFFICIENCY_RATIO, 2)
+        remaining_val      = round(remaining_hours * TARGET_EFFICIENCY_RATIO, 2)
         projected_burn_val = round(current_burn_val + remaining_val, 2)
 
         def _pct(v: float, total: float = approved_fee) -> float:
@@ -2713,7 +2760,7 @@ def count_burn_at_risk(today: date) -> int:
     count = 0
     for i in active:
         fee = approved_fee_by_intake.get(i.id, 0.0)
-        burn = hours_by_intake.get(i.id, 0.0) * BILLING_RATE
+        burn = hours_by_intake.get(i.id, 0.0) * TARGET_EFFICIENCY_RATIO
         if fee > 0 and burn >= fee * 0.70:
             count += 1
     return count
@@ -3676,7 +3723,7 @@ def get_burn_vs_bill() -> list[dict[str, Any]]:
     result = []
     for i in intakes:
         iid = i["id"]
-        burn = round(hours_by.get(iid, 0.0) * BILLING_RATE, 2)
+        burn = round(hours_by.get(iid, 0.0) * TARGET_EFFICIENCY_RATIO, 2)
         billed = round(billed_by.get(iid, 0.0), 2)
         ratio = round(burn / billed, 3) if billed > 0 else None
         result.append({

@@ -742,6 +742,9 @@ function copyProposal() {
       return;
     }
 
+    var RATE = 200; // TARGET_EFFICIENCY_RATIO — mirrors db.py
+    function fmtDollars(v) { return '$' + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits: 0}); }
+
     var html = '<table class="table"><thead><tr>' +
       '<th class="matrix-col-phase">PHASE</th>' +
       '<th class="matrix-col-budget">BUDGET</th>' +
@@ -751,30 +754,49 @@ function copyProposal() {
       '</tr></thead><tbody>';
 
     phases.forEach(function(p) {
-      var logged  = p.hours_used  || 0;
-      var budget  = p.budgeted_hours || 0;
-      var remain  = Math.max(budget - logged, 0);
-      var burnPct = budget > 0 ? Math.min(logged / budget * 100, 100) : 0;
-      var bc      = burnClass(burnPct);
-      var isOpen  = _expanded.has(p.phase_code);
-      var projNum = p.project_number || '';
+      var logged      = p.hours_used      || 0;
+      var budget      = p.budgeted_hours  || 0;
+      var remain      = Math.max(budget - logged, 0);
+      var burnPct     = budget > 0 ? Math.min(logged / budget * 100, 100) : 0;
+      var bc          = burnClass(burnPct);
+      var isOpen      = _expanded.has(p.phase_code);
+      var projNum     = p.project_number || '';
 
-      html += '<tr class="matrix-row' + (isOpen ? ' row-expanded' : '') + '" onclick="matrixToggleRow(\'' + p.phase_code + '\')">' +
+      // Dollar fields — use server-computed values if available, else derive locally
+      var dollarBudget    = p.dollar_budget    != null ? p.dollar_budget    : budget * RATE;
+      var dollarBurn      = p.dollar_burn      != null ? p.dollar_burn      : logged * RATE;
+      var dollarRemaining = p.dollar_remaining != null ? p.dollar_remaining : (budget - logged) * RATE;
+      var overBudget      = p.over_budget      != null ? p.over_budget      : (logged > budget);
+      var readyToInvoice  = p.ready_for_invoicing || (budget > 0 && logged >= budget);
+
+      var rowClass = 'matrix-row' + (isOpen ? ' row-expanded' : '') + (overBudget ? ' hard-stop' : '');
+
+      var invoiceBadge = readyToInvoice
+        ? '<span class="invoice-ready-badge" title="Phase budget reached — ready for Natalie to invoice">✓ Invoice</span>'
+        : '';
+
+      html += '<tr class="' + rowClass + '" id="row-' + p.phase_code + '" onclick="matrixToggleRow(\'' + p.phase_code + '\')">' +
 
         '<td class="matrix-col-phase">' +
           '<span class="matrix-phase-code">' + p.phase_code + '</span>' +
           '<span class="matrix-expand-icon' + (isOpen ? ' open' : '') + '" id="expand-icon-' + p.phase_code + '">›</span>' +
+          invoiceBadge +
         '</td>' +
 
         '<td class="matrix-col-budget budget-edit-cell" data-phase="' + p.phase_code + '" data-value="' + budget + '" onclick="event.stopPropagation();editBudgetCell(this)">' +
           '<span id="budget-val-' + p.phase_code + '">' + budget.toFixed(1) + 'h</span>' +
+          '<span class="matrix-dollar-sub">' + fmtDollars(dollarBudget) + ' budget</span>' +
           '<div class="matrix-burn-track"><div class="matrix-burn-fill ' + bc + '" id="burn-fill-' + p.phase_code + '" style="width:' + burnPct.toFixed(1) + '%"></div></div>' +
         '</td>' +
 
-        '<td class="matrix-col-used" id="logged-cell-' + p.phase_code + '">' + logged.toFixed(1) + 'h</td>' +
+        '<td class="matrix-col-used" id="logged-cell-' + p.phase_code + '">' +
+          logged.toFixed(1) + 'h' +
+          '<span class="matrix-dollar-sub' + (overBudget ? ' over' : '') + '">' + fmtDollars(dollarBurn) + (overBudget ? ' ▲ over' : '') + '</span>' +
+        '</td>' +
 
         '<td class="matrix-col-remaining" id="remaining-cell-' + p.phase_code + '">' +
           '<span' + (remain <= 0 && logged > 0 ? ' class="remaining-over"' : '') + '>' + remain.toFixed(1) + 'h</span>' +
+          '<span class="matrix-dollar-sub">' + fmtDollars(Math.max(dollarRemaining, 0)) + ' left</span>' +
         '</td>' +
 
         '<td class="matrix-col-who" id="who-cell-' + p.phase_code + '" onclick="event.stopPropagation()">' +
@@ -790,15 +812,17 @@ function copyProposal() {
         '</td></tr>';
     });
 
-    var totBudget = totals.budgeted_hours || 0;
-    var totLogged = totals.hours_used || 0;
-    var totRemain = Math.max(totBudget - totLogged, 0);
+    var totBudget       = totals.budgeted_hours || 0;
+    var totLogged       = totals.hours_used     || 0;
+    var totRemain       = Math.max(totBudget - totLogged, 0);
+    var totDollarBudget = totBudget * RATE;
+    var totDollarBurn   = totLogged * RATE;
 
     html += '</tbody><tfoot><tr class="matrix-total-row">' +
       '<td>Total</td>' +
-      '<td class="matrix-col-budget"><span id="total-budget-val">' + totBudget.toFixed(1) + 'h</span></td>' +
-      '<td id="total-logged-val">' + totLogged.toFixed(1) + 'h</td>' +
-      '<td id="total-remaining-val">' + totRemain.toFixed(1) + 'h</td>' +
+      '<td class="matrix-col-budget"><span id="total-budget-val">' + totBudget.toFixed(1) + 'h</span><span class="matrix-dollar-sub">' + fmtDollars(totDollarBudget) + '</span></td>' +
+      '<td id="total-logged-val">' + totLogged.toFixed(1) + 'h<span class="matrix-dollar-sub">' + fmtDollars(totDollarBurn) + '</span></td>' +
+      '<td id="total-remaining-val">' + totRemain.toFixed(1) + 'h<span class="matrix-dollar-sub">' + fmtDollars(Math.max((totBudget - totLogged) * RATE, 0)) + '</span></td>' +
       '<td></td>' +
       '</tr></tfoot></table>';
 

@@ -1042,6 +1042,18 @@ dialog::backdrop { background: oklch(16% 0.02 252 / 50%); }
 
 .remaining-over { color: var(--bad); font-weight: 600; }
 
+/* Hard-stop: phase budget exhausted */
+.matrix-row.hard-stop .matrix-burn-fill { background: var(--bad) !important; }
+.matrix-row.hard-stop .budget-edit-cell span { color: var(--bad); font-weight: 700; }
+.matrix-row.hard-stop .matrix-burn-track { background: rgba(220,38,38,.15); }
+
+/* Ready-for-Invoicing badge (Natalie view) */
+.invoice-ready-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: rgba(16,185,129,.15); border: 1px solid rgba(16,185,129,.4); color: #059669; margin-left: 5px; white-space: nowrap; }
+
+/* Dollar sub-label under hours in budget / logged cells */
+.matrix-dollar-sub { display: block; font-size: 10px; color: var(--muted); font-family: var(--mono); margin-top: 1px; }
+.matrix-dollar-sub.over { color: var(--bad); font-weight: 700; }
+
 .matrix-eng-chip { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.7rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; border: 1px solid; margin-right: 0.25rem; margin-bottom: 0.15rem; font-family: var(--mono); }
 .matrix-eng-hrs  { font-weight: 400; opacity: 0.85; }
 .matrix-eng-more { font-size: 0.68rem; color: var(--muted); }
