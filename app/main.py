@@ -27,6 +27,7 @@ from . import project_search
 from . import proposal_generator
 from .decision import compute_decision, complexity_estimate
 from .fee_estimator import cognasync_estimate_from_answers, check_fee_review_required
+from .weu import ROLE_BUCKETS as _WEU_ROLE_BUCKETS
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -253,7 +254,7 @@ _ROLE_HOME = {
 }
 
 # Pages each role may visit (admin implicit everywhere)
-_EMPLOYEE_PAGES = {"/timesheet", "/calendar", "/time-off", "/past-projects"}
+_EMPLOYEE_PAGES = {"/timesheet", "/calendar", "/time-off", "/past-projects", "/my-launch"}
 _OFFICE_PAGES   = {"/timesheet", "/calendar", "/time-off",
                    "/billing-queue", "/payroll-export", "/burn-health", "/capacity",
                    "/approvals"}
@@ -2460,6 +2461,38 @@ def api_all_submissions() -> dict[str, Any]:
         return {"count": len(rows), "rows": rows, "table_exists": True}
     except Exception as exc:
         return {"count": 0, "rows": [], "table_exists": False, "error": str(exc)}
+
+
+@app.get("/my-launch", response_class=HTMLResponse)
+def engineer_launch_page(
+    request: Request,
+    engineer: Optional[str] = None,
+) -> HTMLResponse:
+    if redir := _check_page_access(request, "/my-launch"): return redir
+    user     = _session_user(request) or {}
+    is_admin = user.get("role") == "admin"
+
+    # Determine which engineer's view to render
+    if engineer and is_admin:
+        target = engineer.upper()
+    else:
+        target = (user.get("initials") or "NK").upper()
+
+    view = db.get_engineer_bucket_view(target)
+
+    # Build a name map for the admin engineer-switcher dropdown
+    team_members = {k: v for k, v in db.TEAM_FULL_NAMES.items() if k in _WEU_ROLE_BUCKETS}
+
+    return templates.TemplateResponse(
+        "engineer_launch.html",
+        {
+            "request":      request,
+            "now_local":    _now_local_iso(),
+            "view":         view,
+            "is_admin":     is_admin,
+            "team_members": team_members,
+        },
+    )
 
 
 @app.get("/approvals", response_class=HTMLResponse)

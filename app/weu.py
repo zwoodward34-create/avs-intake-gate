@@ -47,6 +47,38 @@ EIT_SHADOW_RATE: dict[str, float] = {
     "90%": 0.30,
 }
 
+# ── Role-based bucket configuration ──────────────────────────────────────────
+# Engineering pool → "senior" bucket (40% of phase hours)
+# Drafting pool    → "production" bucket (60% of phase hours)
+ROLE_BUCKETS: dict[str, str] = {
+    "MK": "senior",
+    "NK": "senior",
+    "RO": "senior",
+    "JW": "senior",
+    "JR": "senior",
+    "RK": "senior",
+    "RS": "production",
+    "SW": "production",
+    "JP": "production",
+}
+
+BUCKET_SPLIT: dict[str, float] = {
+    "senior":     0.40,
+    "production": 0.60,
+}
+
+
+def compute_bucket_allocation(total_hours: float) -> dict[str, float]:
+    """
+    Split total phase hours into Senior (40%) and Production (60%) buckets.
+    Mirrors the CLAUDE.md V4.0 drafter ratio: 60% production / 40% design.
+    """
+    return {
+        "senior":     round(total_hours * BUCKET_SPLIT["senior"],     2),
+        "production": round(total_hours * BUCKET_SPLIT["production"], 2),
+    }
+
+
 STATUS_LABELS = {
     "best":          "Best Candidate",
     "approaching":   "Approaching",

@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+.el-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.el-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+.el-role-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 20px;
+  background: var(--card-bg-deeper);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.el-role-badge.senior     { background: rgba(99,102,241,.15); border-color: rgba(99,102,241,.35); color: #818cf8; }
+.el-role-badge.production { background: rgba(20,184,166,.15); border-color: rgba(20,184,166,.35); color: #2dd4bf; }
+
+.el-admin-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.el-admin-bar select {
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card-bg-deeper);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.el-empty {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.el-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.el-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+.el-card-header {
+  margin-bottom: 14px;
+}
+.el-card-pn {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.el-card-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.el-card-client {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.el-current-block {
+  background: var(--card-bg-deeper);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.el-current-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.el-current-phase {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.el-remaining-big {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.el-remaining-big.good     { color: var(--good); }
+.el-remaining-big.warn     { color: var(--warn); }
+.el-remaining-big.critical { color: var(--bad);  }
+.el-remaining-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.el-bar-wrap {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.el-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .3s ease;
+}
+.el-bar-fill.good     { background: var(--good); }
+.el-bar-fill.warn     { background: var(--warn); }
+.el-bar-fill.critical { background: var(--bad);  }
+
+.el-phases-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.el-phase-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+  gap: 8px;
+}
+.el-phase-row:last-child { border-bottom: none; }
+.el-phase-row.current-row {
+  font-weight: 600;
+}
+.el-phase-name { flex: 1; min-width: 0; }
+.el-phase-own  { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.el-phase-rem  { font-weight: 600; white-space: nowrap; min-width: 50px; text-align: right; }
+.el-phase-rem.good     { color: var(--good); }
+.el-phase-rem.warn     { color: var(--warn); }
+.el-phase-rem.critical { color: var(--bad);  }
+
+.el-own-total {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+</style>
+
+<div class="el-header">
+  <div class="el-name">{{ view.name }}</div>
+  <div class="el-role-badge {{ view.role }}">{{ view.role | capitalize }} bucket</div>
+</div>
+
+{% if is_admin %}
+<div class="el-admin-bar">
+  <span style="font-size:12px;color:var(--muted)">Viewing:</span>
+  <select onchange="location.href='/my-launch?engineer='+this.value">
+    {% for initials, name in team_members.items() %}
+    <option value="{{ initials }}" {% if initials == view.engineer %}selected{% endif %}>{{ name }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endif %}
+
+{% if not view.projects %}
+<div class="el-empty">No active projects assigned to {{ view.name }} right now.</div>
+{% else %}
+<div class="el-grid">
+  {% for proj in view.projects %}
+  <div class="el-card">
+    <div class="el-card-header">
+      <div class="el-card-pn">{{ proj.project_number }}</div>
+      <div class="el-card-name">{{ proj.project_name }}</div>
+      <div class="el-card-client">{{ proj.client }}</div>
+    </div>
+
+    {% if proj.current_phase_data %}
+    {% set cp = proj.current_phase_data %}
+    <div class="el-current-block">
+      <div class="el-current-label">Current phase</div>
+      <div class="el-current-phase">{{ cp.phase_label }}</div>
+      <div class="el-remaining-big {{ cp.status }}">{{ cp.bucket_remaining | round(1) }}</div>
+      <div class="el-remaining-label">hrs remaining in {{ view.role }} bucket ({{ cp.bucket_total | round(1) }} budgeted)</div>
+      <div class="el-bar-wrap">
+        <div class="el-bar-fill {{ cp.status }}" style="width:{{ [cp.pct_used, 100] | min }}%"></div>
+      </div>
+    </div>
+    {% else %}
+    <div class="el-current-block" style="color:var(--muted);font-size:13px">
+      No active phase on calendar.
+    </div>
+    {% endif %}
+
+    {% if proj.phases | length > 1 %}
+    <div class="el-phases-label">All phases</div>
+    {% for ph in proj.phases %}
+    <div class="el-phase-row {% if ph.is_current %}current-row{% endif %}">
+      <div class="el-phase-name">
+        {% if ph.is_current %}&rsaquo;&nbsp;{% endif %}{{ ph.phase_label }}
+      </div>
+      <div class="el-phase-own">{{ ph.own_hours | round(1) }}h logged</div>
+      <div class="el-phase-rem {{ ph.status }}">{{ ph.bucket_remaining | round(1) }}h left</div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <div class="el-own-total">Total logged: {{ proj.total_own_hours | round(1) }} hrs</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

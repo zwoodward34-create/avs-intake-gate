@@ -38,6 +38,7 @@
 
         <div class="nav-group">
           <div class="nav-group-label">People</div>
+          <a class="nav-item {% if request.url.path == '/my-launch' %}active{% endif %}" href="/my-launch">My Hours</a>
           <a class="nav-item {% if request.url.path == '/timesheet' %}active{% endif %}" href="/timesheet">
             Timesheet
             {% set _tc = timesheet_period_count() %}

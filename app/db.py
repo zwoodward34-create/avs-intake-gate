@@ -747,19 +747,23 @@ def set_intake_project_number(intake_id: int, project_number: str) -> None:
 
 def generate_phase_budgets(intake_id: int, project_number: str, approved_fee: float) -> None:
     now = _utc_now_iso()
-    rows = [
-        {
-            "intake_id": intake_id,
+    rows = []
+    for phase_code, split in DEFAULT_PHASE_SPLITS.items():
+        total_hours = round((approved_fee * split) / BILLING_RATE, 2)
+        rows.append({
+            "intake_id":    intake_id,
             "project_number": project_number,
-            "phase_code": phase_code,
-            "budgeted_hours": round((approved_fee * split) / BILLING_RATE, 2),
+            "phase_code":   phase_code,
+            "budgeted_hours": total_hours,
             "approved_fee": approved_fee,
             "billing_rate": BILLING_RATE,
-            "created_at": now,
-            "updated_at": now,
-        }
-        for phase_code, split in DEFAULT_PHASE_SPLITS.items()
-    ]
+            "bucket_allocation": {
+                "senior":     round(total_hours * _BUCKET_SPLIT["senior"],     2),
+                "production": round(total_hours * _BUCKET_SPLIT["production"], 2),
+            },
+            "created_at":   now,
+            "updated_at":   now,
+        })
     (
         _client()
         .table("phase_budgets")
@@ -781,14 +785,19 @@ def list_phase_budgets(intake_id: int) -> list[dict[str, Any]]:
     te_resp = (
         _client()
         .table("time_entries")
-        .select("phase_code,hours")
+        .select("phase_code,hours,engineer_initials,role_type")
         .eq("intake_id", intake_id)
         .execute()
     )
     hours_by_phase: dict[str, float] = {}
+    bucket_by_phase: dict[str, dict[str, float]] = {}
     for e in (te_resp.data or []):
-        p = e["phase_code"]
-        hours_by_phase[p] = hours_by_phase.get(p, 0.0) + float(e["hours"])
+        p  = e["phase_code"]
+        h  = float(e["hours"] or 0)
+        rt = e.get("role_type") or _ROLE_BUCKET.get(e.get("engineer_initials", ""), "senior")
+        hours_by_phase[p] = hours_by_phase.get(p, 0.0) + h
+        bucket_by_phase.setdefault(p, {"senior": 0.0, "production": 0.0})
+        bucket_by_phase[p][rt] = bucket_by_phase[p].get(rt, 0.0) + h
 
     phase_order = list(DEFAULT_PHASE_SPLITS.keys())
 
@@ -800,22 +809,41 @@ def list_phase_budgets(intake_id: int) -> list[dict[str, Any]]:
 
     result = []
     for b in sorted(budgets, key=_sort_key):
-        phase = b["phase_code"]
+        phase    = b["phase_code"]
         budgeted = float(b["budgeted_hours"])
-        used = round(hours_by_phase.get(phase, 0.0), 2)
+        used     = round(hours_by_phase.get(phase, 0.0), 2)
         remaining = round(budgeted - used, 2)
-        pct = round((used / budgeted * 100) if budgeted > 0 else 0.0, 1)
+        pct      = round((used / budgeted * 100) if budgeted > 0 else 0.0, 1)
+
+        raw_alloc = b.get("bucket_allocation")
+        if raw_alloc and isinstance(raw_alloc, dict):
+            bucket_alloc = {k: float(v) for k, v in raw_alloc.items()}
+        else:
+            bucket_alloc = {
+                "senior":     round(budgeted * _BUCKET_SPLIT["senior"],     2),
+                "production": round(budgeted * _BUCKET_SPLIT["production"], 2),
+            }
+
+        phase_spent = bucket_by_phase.get(phase, {"senior": 0.0, "production": 0.0})
+        bucket_remaining = {
+            role: round(alloc - phase_spent.get(role, 0.0), 2)
+            for role, alloc in bucket_alloc.items()
+        }
+
         result.append({
-            "id": b["id"],
-            "intake_id": b["intake_id"],
-            "project_number": b["project_number"],
-            "phase_code": phase,
-            "budgeted_hours": budgeted,
-            "approved_fee": float(b["approved_fee"]),
-            "billing_rate": float(b["billing_rate"]),
-            "hours_used": used,
-            "remaining": remaining,
-            "pct_used": pct,
+            "id":               b["id"],
+            "intake_id":        b["intake_id"],
+            "project_number":   b["project_number"],
+            "phase_code":       phase,
+            "budgeted_hours":   budgeted,
+            "approved_fee":     float(b["approved_fee"]),
+            "billing_rate":     float(b["billing_rate"]),
+            "hours_used":       used,
+            "remaining":        remaining,
+            "pct_used":         pct,
+            "bucket_allocation":    bucket_alloc,
+            "bucket_spent":         {k: round(v, 2) for k, v in phase_spent.items()},
+            "bucket_remaining":     bucket_remaining,
         })
     return result
 
@@ -865,6 +893,7 @@ def create_time_entry(
     entry_date: str,
     hours: float,
     notes: Optional[str],
+    role_type: Optional[str] = None,
 ) -> int:
     now = _utc_now_iso()
     resp = (
@@ -878,6 +907,7 @@ def create_time_entry(
             "entry_date":        entry_date,
             "hours":             hours,
             "notes":             notes,
+            "role_type":         role_type or _ROLE_BUCKET.get(engineer_initials, "senior"),
             "created_at":        now,
             "updated_at":        now,
         })
@@ -2028,6 +2058,13 @@ _TEAM_MULTIPLIER: dict[str, float] = {
 ENGINEERING_POOL = ["MK", "NK", "RO", "JW", "JR", "RK"]
 DRAFTING_POOL    = ["RS", "SW", "JP"]
 
+# Role bucket — mirrors weu.ROLE_BUCKETS; defined here to avoid circular import
+_ROLE_BUCKET: dict[str, str] = {
+    **{eng: "senior"     for eng in ENGINEERING_POOL},
+    **{eng: "production" for eng in DRAFTING_POOL},
+}
+_BUCKET_SPLIT: dict[str, float] = {"senior": 0.40, "production": 0.60}
+
 
 def count_working_days(start: date, end: date) -> int:
     total = 0
@@ -2682,6 +2719,155 @@ def count_burn_at_risk(today: date) -> int:
     return count
 
 
+# ── Engineer Bucket View (Launch Page) ───────────────────────────────────────
+
+def get_engineer_bucket_view(engineer: str) -> dict[str, Any]:
+    """
+    Batch-fetch the data needed for the Engineer Launch Page.
+    Returns, per active project, each phase's bucket allocation and
+    how much has been spent by role, so the engineer can see exactly
+    how many hours remain in their Senior or Production bucket.
+
+    Makes 4 Supabase calls regardless of project count.
+    """
+    role = _ROLE_BUCKET.get(engineer, "senior")
+    projects = list_active_projects(engineer)
+    if not projects:
+        return {
+            "engineer": engineer,
+            "name":     TEAM_FULL_NAMES.get(engineer, engineer),
+            "role":     role,
+            "projects": [],
+        }
+
+    intake_ids   = [p["intake_id"]      for p in projects if p.get("intake_id")]
+    project_nums = [p["project_number"] for p in projects if p.get("project_number")]
+
+    # Batch 1: phase budgets (with bucket_allocation)
+    pb_resp = (
+        _client()
+        .table("phase_budgets")
+        .select("*")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    budgets_by_intake: dict[int, list[dict]] = {}
+    for pb in (pb_resp.data or []):
+        iid = int(pb["intake_id"])
+        budgets_by_intake.setdefault(iid, [])
+        budgets_by_intake[iid].append(pb)
+
+    # Batch 2: all time entries for these projects
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("intake_id,phase_code,hours,engineer_initials,role_type")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    # (intake_id, phase_code, role_type) → total hours
+    bucket_spent_map: dict[tuple[int, str, str], float] = {}
+    # (intake_id, phase_code) → hours logged by THIS engineer
+    own_spent_map: dict[tuple[int, str], float] = {}
+    for e in (te_resp.data or []):
+        iid   = int(e["intake_id"])
+        phase = e.get("phase_code", "")
+        h     = float(e.get("hours") or 0)
+        rt    = e.get("role_type") or _ROLE_BUCKET.get(e.get("engineer_initials", ""), "senior")
+        key   = (iid, phase, rt)
+        bucket_spent_map[key] = bucket_spent_map.get(key, 0.0) + h
+        if e.get("engineer_initials") == engineer:
+            ok = (iid, phase)
+            own_spent_map[ok] = own_spent_map.get(ok, 0.0) + h
+
+    # Batch 3: current/upcoming calendar events to determine active phase
+    today_iso = date.today().isoformat() + "T00:00:00Z"
+    ce_resp = (
+        _client()
+        .table("calendar_events")
+        .select("project_number,phase,start_date,end_date")
+        .in_("project_number", project_nums)
+        .gte("end_date", today_iso)
+        .neq("is_ooo", True)
+        .order("start_date", desc=False)
+        .execute()
+    )
+    current_phase_by_pn: dict[str, str] = {}
+    for ev in (ce_resp.data or []):
+        pn = ev.get("project_number", "")
+        if pn and pn not in current_phase_by_pn:
+            current_phase_by_pn[pn] = ev.get("phase", "")
+
+    # Build per-project result
+    result_projects: list[dict] = []
+    for proj in projects:
+        iid = proj.get("intake_id")
+        if not iid:
+            continue
+        pn            = proj.get("project_number", "")
+        current_phase = current_phase_by_pn.get(pn, "")
+        budgets       = budgets_by_intake.get(iid, [])
+
+        def _sort_phase(b: dict) -> int:
+            try:
+                return PHASE_ORDER.index(b["phase_code"])
+            except ValueError:
+                return 99
+
+        phases: list[dict] = []
+        for pb in sorted(budgets, key=_sort_phase):
+            phase        = pb["phase_code"]
+            total_budget = float(pb.get("budgeted_hours") or 0)
+
+            raw_alloc = pb.get("bucket_allocation")
+            if raw_alloc and isinstance(raw_alloc, dict):
+                bucket_alloc = {k: float(v) for k, v in raw_alloc.items()}
+            else:
+                bucket_alloc = {
+                    "senior":     round(total_budget * _BUCKET_SPLIT["senior"],     2),
+                    "production": round(total_budget * _BUCKET_SPLIT["production"], 2),
+                }
+
+            my_budget    = bucket_alloc.get(role, 0.0)
+            my_spent     = bucket_spent_map.get((iid, phase, role), 0.0)
+            my_remaining = round(my_budget - my_spent, 2)
+            own_h        = own_spent_map.get((iid, phase), 0.0)
+            pct_used     = round((my_spent / my_budget * 100) if my_budget > 0 else 0.0, 1)
+            status       = "good" if pct_used < 75 else "warn" if pct_used < 90 else "critical"
+
+            phases.append({
+                "phase_code":       phase,
+                "phase_label":      PHASE_LABELS.get(phase, phase),
+                "is_current":       phase == current_phase,
+                "bucket_total":     round(my_budget, 2),
+                "bucket_spent":     round(my_spent,  2),
+                "bucket_remaining": my_remaining,
+                "pct_used":         pct_used,
+                "status":           status,
+                "own_hours":        round(own_h, 2),
+            })
+
+        total_own = sum(own_spent_map.get((iid, pb["phase_code"]), 0.0) for pb in budgets)
+        current_phase_data = next((p for p in phases if p["is_current"]), None)
+
+        result_projects.append({
+            **proj,
+            "current_phase":       current_phase,
+            "current_phase_label": PHASE_LABELS.get(current_phase, current_phase or "—"),
+            "current_phase_data":  current_phase_data,
+            "role":                role,
+            "phases":              phases,
+            "total_own_hours":     round(total_own, 2),
+        })
+
+    return {
+        "engineer": engineer,
+        "name":     TEAM_FULL_NAMES.get(engineer, engineer),
+        "role":     role,
+        "projects": result_projects,
+    }
+
+
 # ── Potential Burn helpers ────────────────────────────────────────────────────
 
 def _get_submitted_periods() -> list[tuple[str, str, str]]:
@@ -2706,24 +2892,40 @@ def _entry_in_submitted_period(entry_date: str, engineer: str, periods: list[tup
     return False
 
 
-def get_potential_hours_for_intake(intake_id: int) -> dict[str, float]:
+def get_potential_hours_for_intake(intake_id: int) -> dict[str, Any]:
     """
-    Returns potential burn hours for a single project.
+    Returns potential burn hours for a single project, including per-bucket breakdown.
     potential = hours from SUBMITTED or APPROVED periods (visible to burn tracking).
     total     = all logged hours regardless of submission state.
+    bucket_potential = potential hours split by senior / production role.
     """
     entries = list_time_entries_for_intake(intake_id)
     if not entries:
-        return {"potential": 0.0, "total": 0.0, "draft": 0.0}
+        return {
+            "potential": 0.0, "total": 0.0, "draft": 0.0,
+            "bucket_potential": {"senior": 0.0, "production": 0.0},
+            "bucket_total":     {"senior": 0.0, "production": 0.0},
+        }
     submitted_periods = _get_submitted_periods()
     potential = 0.0
-    total = 0.0
+    total     = 0.0
+    bucket_potential: dict[str, float] = {"senior": 0.0, "production": 0.0}
+    bucket_total:     dict[str, float] = {"senior": 0.0, "production": 0.0}
     for e in entries:
-        h = float(e.get("hours") or 0)
+        h  = float(e.get("hours") or 0)
+        rt = e.get("role_type") or _ROLE_BUCKET.get(e.get("engineer_initials", ""), "senior")
         total += h
+        bucket_total[rt] = bucket_total.get(rt, 0.0) + h
         if _entry_in_submitted_period(e.get("entry_date", ""), e.get("engineer_initials", ""), submitted_periods):
             potential += h
-    return {"potential": round(potential, 2), "total": round(total, 2), "draft": round(total - potential, 2)}
+            bucket_potential[rt] = bucket_potential.get(rt, 0.0) + h
+    return {
+        "potential":         round(potential, 2),
+        "total":             round(total, 2),
+        "draft":             round(total - potential, 2),
+        "bucket_potential":  {k: round(v, 2) for k, v in bucket_potential.items()},
+        "bucket_total":      {k: round(v, 2) for k, v in bucket_total.items()},
+    }
 
 
 def get_enriched_review_queue() -> list[dict[str, Any]]:
