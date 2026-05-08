@@ -36,7 +36,7 @@
     </div>
     {% endif %}
     <a class="btn" href="/intakes/{{ intake.id }}/edit" style="font-size:12px;padding:5px 12px">Edit</a>
-    <a class="btn btn-primary" href="/intakes/{{ intake.id }}/mo-review" style="font-size:12px;padding:5px 12px">Mo Review</a>
+    <a class="btn btn-primary" href="/mo-queue" style="font-size:12px;padding:5px 12px">Mo Review</a>
   </div>
 </div>
 
@@ -215,7 +215,7 @@
           <div class="hr"></div>
           <div class="actions">
             <a class="btn" href="/intakes/{{ intake.id }}/edit">Edit</a>
-            <a class="btn btn-primary" href="/intakes/{{ intake.id }}/mo-review">Mo review</a>
+            <a class="btn btn-primary" href="/mo-queue">Mo review</a>
             {% if not intake.mo_decision %}
               {% if intake.status == 'PENDING_MO_REVIEW' %}
                 <span class="badge" style="align-self:center">In Mo's Queue</span>
@@ -453,7 +453,7 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
               <div style="font-size:16px;font-weight:700;margin-bottom:4px">Mo Decision</div>
               <div class="subtle">No decision recorded yet.</div>
             </div>
-            <a class="btn btn-primary btn-mo-decide" href="/intakes/{{ intake.id }}/mo-review">Record Mo Decision</a>
+            <a class="btn btn-primary btn-mo-decide" href="/mo-queue">Record Mo Decision</a>
           </div>
         </div>
       {% endif %}

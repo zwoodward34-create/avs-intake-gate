@@ -727,7 +727,7 @@ def push_to_mo_queue(intake_id: int) -> RedirectResponse:
         raise HTTPException(status_code=404, detail="Not found.")
     if not intake.mo_decision:
         db.set_status(intake_id, "PENDING_MO_REVIEW")
-    return RedirectResponse(url=f"/intakes/{intake_id}", status_code=303)
+    return RedirectResponse(url="/mo-queue", status_code=303)
 
 
 # ── Document upload + AI extraction ──────────────────────────────────────────
@@ -1085,25 +1085,7 @@ async def api_generate_proposal_json(request: Request, intake_id: int) -> dict:
 
 @app.get("/intakes/{intake_id}/mo-review", response_class=HTMLResponse)
 def mo_review_get(request: Request, intake_id: int) -> HTMLResponse:
-    if redir := _check_page_access(request, "/intakes/{intake_id}/mo-review"): return redir
-    intake = db.get_intake(intake_id)
-    if not intake:
-        raise HTTPException(status_code=404, detail="Not found.")
-
-    _mo_decision = compute_decision(intake.answers)
-    _mo_answers  = {**intake.answers, "_complexity": _mo_decision["complexity_estimate"]}
-    fee_estimate = cognasync_estimate_from_answers(intake.project_name, _mo_answers)
-    return templates.TemplateResponse(
-        "mo_review.html",
-        {
-            "request": request,
-            "intake": intake,
-            "answers": intake.answers,
-            "fee_estimate": fee_estimate,
-            "now_local": _now_local_iso(),
-            "mo_passcode_enabled": bool(os.environ.get("AVS_MO_PASSCODE")),
-        },
-    )
+    return RedirectResponse(url="/mo-queue", status_code=303)
 
 
 @app.post("/intakes/{intake_id}/mo-review")
@@ -1148,8 +1130,7 @@ def mo_review_post(
         status=status,
     )
 
-    destination = redirect_after if redirect_after else f"/intakes/{intake_id}"
-    return RedirectResponse(url=destination, status_code=303)
+    return RedirectResponse(url="/mo-queue", status_code=303)
 
 
 CHECKLIST_KEYS = db.CHECKLIST_KEYS
