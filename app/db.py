@@ -54,6 +54,9 @@ class IntakeRow:
     proposed_end_date: Optional[str] = None
     assigned_engineers: Optional[str] = None  # JSON array string e.g. '["JW","MK"]'
     mo_decision_notes: Optional[str] = None
+    proposal_sent_date: Optional[str] = None
+    follow_up_count: int = 0
+    win_probability: int = 50
 
     @property
     def red_flags(self) -> list[dict[str, Any]]:
@@ -106,6 +109,9 @@ class IntakeRow:
             proposed_end_date=d.get("proposed_end_date"),
             assigned_engineers=d.get("assigned_engineers"),
             mo_decision_notes=d.get("mo_decision_notes"),
+            proposal_sent_date=d.get("proposal_sent_date"),
+            follow_up_count=int(d.get("follow_up_count") or 0),
+            win_probability=int(d.get("win_probability") or 50),
         )
 
 
@@ -351,6 +357,106 @@ def set_status(intake_id: int, status: str) -> None:
         .eq("id", intake_id)
         .execute()
     )
+
+
+def _business_days_since(dt_str: str) -> int:
+    """Return the number of Mon–Fri business days between dt_str (UTC ISO) and today."""
+    try:
+        sent = datetime.fromisoformat(dt_str.replace("Z", "+00:00")).date()
+    except Exception:
+        return 0
+    today = date.today()
+    if today <= sent:
+        return 0
+    count = 0
+    cur = sent + timedelta(days=1)
+    while cur <= today:
+        if cur.weekday() < 5:
+            count += 1
+        cur += timedelta(days=1)
+    return count
+
+
+def mark_proposal_sent(intake_id: int) -> None:
+    now = _utc_now_iso()
+    (
+        _client()
+        .table("intakes")
+        .update({"status": "PROPOSAL_OUT", "proposal_sent_date": now, "updated_at": now})
+        .eq("id", intake_id)
+        .execute()
+    )
+
+
+def mark_project_won(intake_id: int, win_probability: int = 100) -> None:
+    now = _utc_now_iso()
+    (
+        _client()
+        .table("intakes")
+        .update({"status": "PROCEED_TO_PROPOSAL", "win_probability": win_probability, "updated_at": now})
+        .eq("id", intake_id)
+        .execute()
+    )
+
+
+def increment_follow_up(intake_id: int) -> int:
+    """Bump follow_up_count by 1 and return the new count."""
+    intake = get_intake(intake_id)
+    new_count = (intake.follow_up_count if intake else 0) + 1
+    now = _utc_now_iso()
+    (
+        _client()
+        .table("intakes")
+        .update({"follow_up_count": new_count, "updated_at": now})
+        .eq("id", intake_id)
+        .execute()
+    )
+    return new_count
+
+
+def get_active_bids() -> list[dict[str, Any]]:
+    """Return all PROPOSAL_OUT intakes with staleness metadata.
+    Returns [] if migration 007 (proposal_sent_date column) hasn't run yet."""
+    try:
+        resp = (
+            _client()
+            .table("intakes")
+            .select(
+                "id,project_name,client_name,location_region,lead_contact,"
+                "proposal_sent_date,follow_up_count,win_probability,answers_json"
+            )
+            .eq("status", "PROPOSAL_OUT")
+            .order("proposal_sent_date", desc=False)
+            .execute()
+        )
+    except Exception:
+        return []
+    rows = resp.data or []
+    result = []
+    for r in rows:
+        bdays = _business_days_since(r.get("proposal_sent_date") or "")
+        stale = bdays > 5
+        warn  = 3 <= bdays <= 5
+        try:
+            answers = json.loads(r.get("answers_json") or "{}")
+        except Exception:
+            answers = {}
+        result.append({
+            "intake_id":         r["id"],
+            "project_name":      r.get("project_name") or "",
+            "client_name":       r.get("client_name") or "",
+            "location":          r.get("location_region") or "",
+            "lead_contact":      r.get("lead_contact") or "",
+            "proposal_sent_date": r.get("proposal_sent_date") or "",
+            "business_days_out": bdays,
+            "is_stale":          stale,
+            "is_warn":           warn,
+            "follow_up_count":   int(r.get("follow_up_count") or 0),
+            "win_probability":   int(r.get("win_probability") or 50),
+            "approx_sf":         answers.get("approx_sf") or "",
+            "project_type":      answers.get("project_type") or "",
+        })
+    return result
 
 
 def set_mo_review(

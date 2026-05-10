@@ -92,8 +92,44 @@
     font-size:10px; font-weight:700; padding:2px 8px; border-radius:4px;
     text-transform:uppercase; letter-spacing:.4px;
   }
-  .badge-co  { background:var(--warn-surface);  border:1px solid oklch(56% 0.14 68 / 35%);  color:var(--warn) }
-  .badge-inv { background:var(--accent-surface); border:1px solid oklch(40% 0.19 252 / 30%); color:var(--accent) }
+  .badge-co    { background:var(--warn-surface);  border:1px solid oklch(56% 0.14 68 / 35%);  color:var(--warn) }
+  .badge-inv   { background:var(--accent-surface); border:1px solid oklch(40% 0.19 252 / 30%); color:var(--accent) }
+  .badge-stale { background:oklch(28% 0.12 22 / 60%); border:1px solid oklch(50% 0.18 22 / 40%); color:var(--bad) }
+  .badge-warn  { background:oklch(28% 0.10 68 / 60%); border:1px solid oklch(56% 0.14 68 / 40%); color:var(--warn) }
+  .badge-out   { background:var(--accent-surface); border:1px solid oklch(40% 0.19 252 / 30%); color:var(--accent) }
+
+  /* ── Active Bids section ── */
+  .bids-section { margin-bottom:28px }
+  .bids-header  { display:flex; align-items:center; gap:10px; margin-bottom:14px }
+  .bids-title   { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--text) }
+  .bids-count   { font-size:11px; color:var(--muted) }
+  .bids-grid    { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px }
+  .bid-card {
+    background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius-sm);
+    padding:14px; cursor:pointer; transition:border-color .15s;
+  }
+  .bid-card:hover { border-color:var(--border-hover) }
+  .bid-card.bid-stale { border-left:3px solid var(--bad) }
+  .bid-card.bid-warn  { border-left:3px solid var(--warn) }
+  .bid-card.bid-ok    { border-left:3px solid var(--good) }
+  .bid-name    { font-size:13px; font-weight:700; line-height:1.3; margin-bottom:3px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical }
+  .bid-client  { font-size:11px; color:var(--muted); margin-bottom:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .bid-meta    { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px; margin-bottom:10px; font-size:11px; color:var(--muted) }
+  .bid-actions { display:flex; gap:6px; flex-wrap:wrap }
+  .btn-bid-followup {
+    font-size:11px; font-weight:700; padding:4px 10px;
+    background:oklch(28% 0.10 68 / 40%); border:1px solid oklch(56% 0.14 68 / 40%);
+    color:var(--warn); border-radius:var(--radius-sm); cursor:pointer;
+    font-family:var(--font); transition:background .15s;
+  }
+  .btn-bid-followup:hover { background:oklch(33% 0.10 68 / 50%) }
+  .btn-bid-won {
+    font-size:11px; font-weight:700; padding:4px 10px;
+    background:oklch(22% 0.09 145 / 40%); border:1px solid oklch(46% 0.14 145 / 40%);
+    color:var(--good); border-radius:var(--radius-sm); cursor:pointer;
+    font-family:var(--font); transition:background .15s;
+  }
+  .btn-bid-won:hover { background:oklch(28% 0.09 145 / 50%) }
 
   /* ── Advance panel ── */
   .pl-advance-panel {
@@ -156,6 +192,67 @@
   <div class="pl-kpi kpi-green">
     <div class="pl-kpi-num" id="stat-pipeline">${{ "{:,.0f}".format(pipeline.stats.total_pipeline) }}</div>
     <div class="pl-kpi-label">Total Approved Pipeline</div>
+  </div>
+  {% set stale_count = active_bids | selectattr('is_stale') | list | length %}
+  <div class="pl-kpi {% if stale_count > 0 %}kpi-amber{% else %}kpi-blue{% endif %}" style="cursor:pointer" onclick="document.getElementById('active-bids-section').scrollIntoView({behavior:'smooth'})">
+    <div class="pl-kpi-num" id="stat-bids">{{ active_bids | length }}</div>
+    <div class="pl-kpi-label">Active Bids{% if stale_count > 0 %} · {{ stale_count }} Stale{% endif %}</div>
+  </div>
+</div>
+
+<!-- ── Active Bids Section ── -->
+{% if active_bids %}
+<div class="bids-section" id="active-bids-section">
+  <div class="bids-header">
+    <span class="bids-title">Active Bids</span>
+    <span class="bids-count">{{ active_bids | length }} proposal{{ 's' if active_bids | length != 1 else '' }} out</span>
+  </div>
+  <div class="bids-grid" id="bids-grid">
+    {% for b in active_bids %}
+    {% set card_class = 'bid-stale' if b.is_stale else ('bid-warn' if b.is_warn else 'bid-ok') %}
+    <div class="bid-card {{ card_class }}" onclick="window.location.href='/intakes/{{ b.intake_id }}'">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:6px">
+        <div class="bid-name">{{ b.project_name }}</div>
+        {% if b.is_stale %}
+        <span class="pl-badge badge-stale" style="white-space:nowrap;flex-shrink:0">● Stale</span>
+        {% elif b.is_warn %}
+        <span class="pl-badge badge-warn" style="white-space:nowrap;flex-shrink:0">● Pending</span>
+        {% else %}
+        <span class="pl-badge badge-out" style="white-space:nowrap;flex-shrink:0">✓ Out</span>
+        {% endif %}
+      </div>
+      <div class="bid-client">{{ b.client_name or '—' }}{% if b.location %} · {{ b.location }}{% endif %}</div>
+      <div class="bid-meta">
+        <span>{{ b.business_days_out }} biz day{{ 's' if b.business_days_out != 1 else '' }} out</span>
+        {% if b.follow_up_count > 0 %}<span>{{ b.follow_up_count }} follow-up{{ 's' if b.follow_up_count != 1 else '' }}</span>{% endif %}
+        {% if b.win_probability %}<span>{{ b.win_probability }}% win</span>{% endif %}
+      </div>
+      <div class="bid-actions" onclick="event.stopPropagation()">
+        {% if b.is_stale or b.is_warn %}
+        <button class="btn-bid-followup" onclick="openFollowUpModal({{ b.intake_id }}, '{{ b.project_name | replace("'", "\\'") }}')">
+          ↻ Draft Follow-Up
+        </button>
+        {% endif %}
+        <button class="btn-bid-won" onclick="markBidWon({{ b.intake_id }})">🏆 Won</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Follow-Up Modal ── -->
+<div id="followup-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9000;backdrop-filter:blur(2px)" onclick="closeFollowUpModal()"></div>
+<div id="followup-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9001;width:min(580px,94vw);background:var(--card-bg);border:1px solid var(--border);border-radius:14px;padding:26px 28px;box-shadow:0 8px 40px rgba(0,0,0,.18)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <div style="font-size:1.1rem;font-weight:800;color:var(--text)" id="followup-title">Draft Follow-Up</div>
+    <button onclick="closeFollowUpModal()" style="background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:3px 8px;border-radius:6px">×</button>
+  </div>
+  <div id="followup-status" style="font-size:13px;color:var(--muted);margin-bottom:12px">Generating with Claude…</div>
+  <textarea id="followup-text" rows="8" style="width:100%;box-sizing:border-box;background:var(--card-bg-deeper);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:12px;font-size:13px;font-family:var(--font);resize:vertical;display:none"></textarea>
+  <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end" id="followup-actions" style="display:none">
+    <button onclick="copyFollowUp()" class="btn">Copy Email</button>
+    <button onclick="closeFollowUpModal()" class="btn">Close</button>
   </div>
 </div>
 
@@ -361,5 +458,61 @@
 
   renderBoard(PIPELINE_DATA);
 })();
+
+// ── Active Bids: Follow-Up Modal ─────────────────────────────────────────────
+let _followupIntakeId = null;
+
+function openFollowUpModal(intakeId, projectName) {
+  _followupIntakeId = intakeId;
+  document.getElementById('followup-title').textContent  = 'Draft Follow-Up — ' + projectName.substring(0, 40);
+  document.getElementById('followup-status').textContent = 'Generating with Claude…';
+  document.getElementById('followup-status').style.display = 'block';
+  document.getElementById('followup-text').style.display   = 'none';
+  document.getElementById('followup-actions').style.display = 'none';
+  document.getElementById('followup-backdrop').style.display = 'block';
+  document.getElementById('followup-modal').style.display    = 'block';
+
+  fetch('/api/intakes/' + intakeId + '/draft-follow-up', {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById('followup-status').style.display = 'none';
+      const ta = document.getElementById('followup-text');
+      ta.value = d.email_text || '';
+      ta.style.display = 'block';
+      document.getElementById('followup-actions').style.display = 'flex';
+    })
+    .catch(e => {
+      document.getElementById('followup-status').textContent = 'Error: ' + e.message;
+    });
+}
+
+function closeFollowUpModal() {
+  document.getElementById('followup-backdrop').style.display = 'none';
+  document.getElementById('followup-modal').style.display    = 'none';
+  _followupIntakeId = null;
+}
+
+function copyFollowUp() {
+  const ta = document.getElementById('followup-text');
+  navigator.clipboard.writeText(ta.value).then(() => {
+    const btn = document.querySelector('#followup-actions .btn');
+    if (btn) { const orig = btn.textContent; btn.textContent = '✓ Copied!'; setTimeout(() => btn.textContent = orig, 1800); }
+  });
+}
+
+async function markBidWon(intakeId) {
+  if (!confirm('Mark this bid as Won?')) return;
+  try {
+    const r = await fetch('/api/intakes/' + intakeId + '/mark-won', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({win_probability: 100}),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Failed');
+    window.location.reload();
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
 </script>
 {% endblock %}

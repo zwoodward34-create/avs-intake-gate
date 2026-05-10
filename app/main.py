@@ -1182,6 +1182,90 @@ async def proposal_checklist_update(request: Request, intake_id: int) -> Redirec
     return RedirectResponse(url=f"/intakes/{intake_id}#proposal-prep", status_code=303)
 
 
+@app.post("/api/intakes/{intake_id}/mark-proposal-sent")
+async def api_mark_proposal_sent(request: Request, intake_id: int) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    db.mark_proposal_sent(intake_id)
+    return {"ok": True, "status": "PROPOSAL_OUT", "intake_id": intake_id}
+
+
+@app.post("/api/intakes/{intake_id}/mark-won")
+async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    body = await request.json()
+    win_prob = int(body.get("win_probability") or 100)
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    db.mark_project_won(intake_id, win_probability=win_prob)
+    return {"ok": True, "status": "PROCEED_TO_PROPOSAL", "intake_id": intake_id}
+
+
+@app.get("/api/active-bids")
+async def api_active_bids(request: Request) -> list[dict[str, Any]]:
+    if not _session_user(request):
+        raise HTTPException(status_code=401)
+    try:
+        return db.get_active_bids()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/intakes/{intake_id}/draft-follow-up")
+async def api_draft_follow_up(request: Request, intake_id: int) -> dict[str, Any]:
+    if not _session_user(request):
+        raise HTTPException(status_code=401)
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured.")
+
+    import anthropic as _anthropic
+    answers = intake.answers
+    project_type = answers.get("project_type") or "project"
+    sf = answers.get("approx_sf") or ""
+    sf_note = f", approximately {sf} SF" if sf else ""
+    location = intake.location_region or ""
+
+    prompt = (
+        f"Write a short, professional follow-up email from A.V. Schwan & Associates (AVS) "
+        f"to a client who has not responded to a structural engineering proposal.\n\n"
+        f"Project: {intake.project_name or 'the project'}\n"
+        f"Client: {intake.client_name or 'the client'}\n"
+        f"Location: {location}\n"
+        f"Scope: {project_type}{sf_note}\n"
+        f"Contact: {intake.lead_contact or 'the project team'}\n\n"
+        f"The email should:\n"
+        f"- Be 3–4 sentences, warm but professional\n"
+        f"- Reference the project name and our proposal\n"
+        f"- Ask if they have questions or need any revisions\n"
+        f"- Close with an offer to schedule a quick call\n"
+        f"- Use plain text only (no markdown)\n"
+        f"- Sign off as 'The AVS Team'\n\n"
+        f"Output only the email body — no subject line, no extra commentary."
+    )
+
+    _ac = _anthropic.Anthropic(api_key=api_key)
+    msg = _ac.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=400,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    email_text = msg.content[0].text.strip()
+    new_count = db.increment_follow_up(intake_id)
+    return {"email_text": email_text, "follow_up_count": new_count}
+
+
 @app.get("/reports", response_class=HTMLResponse)
 def reports(request: Request) -> HTMLResponse:
     if redir := _check_page_access(request, "/reports"): return redir
@@ -2729,12 +2813,18 @@ def api_payroll_export_csv(start: Optional[str] = None, end: Optional[str] = Non
 def pipeline_page(request: Request) -> HTMLResponse:
     if redir := _check_page_access(request, "/pipeline"): return redir
     data = db.get_pipeline_data()
+    try:
+        active_bids = db.get_active_bids()
+    except Exception:
+        active_bids = []
     return templates.TemplateResponse(
         "pipeline.html",
         {
             "request":         request,
             "now_local":       _now_local_iso(),
             "pipeline":        data,
+            "active_bids":     active_bids,
+            "active_bids_json": _json.dumps(active_bids),
             "team_colors_json": _json.dumps(db.TEAM_COLORS),
             "phase_colors_json": _json.dumps(db.PHASE_COLORS),
             "prod_phase_order": _json.dumps(db.PRODUCTION_PHASE_ORDER),
