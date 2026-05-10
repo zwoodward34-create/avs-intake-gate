@@ -155,7 +155,9 @@ def get_intake(intake_id: int) -> Optional[IntakeRow]:
         .maybe_single()
         .execute()
     )
-    return IntakeRow.from_dict(resp.data) if resp.data else None
+    if resp is None or not resp.data:
+        return None
+    return IntakeRow.from_dict(resp.data)
 
 
 def create_intake(
@@ -393,7 +395,7 @@ def mark_project_won(intake_id: int, win_probability: int = 100) -> None:
     (
         _client()
         .table("intakes")
-        .update({"status": "PROCEED_TO_PROPOSAL", "win_probability": win_probability, "updated_at": now})
+        .update({"status": "ACTIVE_PROJECT", "win_probability": win_probability, "updated_at": now})
         .eq("id", intake_id)
         .execute()
     )

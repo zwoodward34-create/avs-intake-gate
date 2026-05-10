@@ -505,8 +505,9 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
               <div class="subtle small">Sent {{ intake.proposal_sent_date[:10] }} · {{ intake.follow_up_count }} follow-up{{ 's' if intake.follow_up_count != 1 else '' }} sent</div>
               {% endif %}
             </div>
-            <button class="btn btn-primary" onclick="markProjectWon({{ intake.id }})">🏆 Mark as Won</button>
+            <button class="btn btn-primary" onclick="markProjectWon({{ intake.id }})">🏆 Mark as Won — Commit Resources</button>
           </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:8px">Assigns project number · writes WEU calendar · activates pipeline tracking</div>
         </div>
         {% endif %}
         <div style="background:rgba(255,255,255,0.08);border-radius:6px;height:6px;margin-bottom:14px;overflow:hidden">
@@ -1140,7 +1141,7 @@ async function markProposalSent(intakeId) {
 }
 
 async function markProjectWon(intakeId) {
-  if (!confirm('Mark this project as Won? This will move it back to active proposal status.')) return;
+  if (!confirm('Mark as Won?\n\nThis will:\n• Assign the next project number\n• Commit WEU loads to engineer calendars\n• Activate pipeline tracking\n\nThis action cannot be undone automatically.')) return;
   try {
     const r = await fetch('/api/intakes/' + intakeId + '/mark-won', {
       method: 'POST',

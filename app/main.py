@@ -1019,52 +1019,9 @@ async def api_mo_review_json(request: Request, intake_id: int) -> dict:
         mo_decision_notes=_as_str(str(body.get("mo_decision_notes") or "")),
     )
 
-    project_number: Optional[str] = intake.project_number
-    if mo_decision == "PROCEED" and not project_number:
-        project_number = db.assign_next_project_number()
-        db.set_intake_project_number(intake_id, project_number)
-        # Auto-generate phase budgets from approved fee
-        approved_fee: Optional[float] = None
-        if mo_fee_decision == "OVERRIDE" and fee_override:
-            try:
-                approved_fee = float(fee_override)
-            except (ValueError, TypeError):
-                pass
-        if approved_fee and approved_fee > 0:
-            try:
-                db.generate_phase_budgets(intake_id, project_number, approved_fee)
-            except Exception:
-                pass  # non-fatal: budgets can be generated later
-            try:
-                db.create_billing_phases_for_project(intake_id, approved_fee)
-            except Exception:
-                pass  # non-fatal: billing phases can be created later
-
-    # Generate phase calendar events whenever PROCEED is decided and dates are available
-    if mo_decision == "PROCEED":
-        _start = body.get("proposed_start_date") or (intake.proposed_start_date if intake else None)
-        _ifp   = body.get("proposed_end_date")   or (intake.ifp_due_date         if intake else None)
-        _team  = body.get("assigned_engineers") or []
-        if _start and _ifp and project_number:
-            # Infer tier from the freshly-updated intake so the WEU heatmap
-            # reflects complexity from the moment Mo approves.
-            _fresh_intake = db.get_intake(intake_id)
-            _tier = db.infer_tier_from_intake(_fresh_intake) if _fresh_intake else 3
-            try:
-                db.generate_phase_calendar_events(
-                    intake_id=intake_id,
-                    project_number=project_number,
-                    start_date=_start,
-                    ifp_date=_ifp,
-                    team=_team,
-                    weu_hours=40.0,
-                    replace_existing=True,
-                    tier=_tier,
-                )
-            except Exception:
-                pass  # non-fatal: can be regenerated manually
-
-    return {"success": True, "status": status, "intake_id": intake_id, "project_number": project_number}
+    # Resource commitment (project number, budgets, calendar) is deferred until
+    # "Mark as Won" — no allocations are written here.
+    return {"success": True, "status": status, "intake_id": intake_id, "project_number": intake.project_number}
 
 
 @app.post("/api/intakes/{intake_id}/generate-proposal")
@@ -1204,8 +1161,60 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
+
+    # ── Commitment Lock: this is the single point where resources are allocated ──
+    # 1. Assign project number (if not already set — handles legacy projects)
+    project_number = intake.project_number
+    if not project_number:
+        project_number = db.assign_next_project_number()
+        db.set_intake_project_number(intake_id, project_number)
+
+    # 2. Commit phase budgets and billing phases (also sets pipeline_active=1)
+    approved_fee: Optional[float] = None
+    if intake.mo_fee_override:
+        try:
+            approved_fee = float(intake.mo_fee_override)
+        except (ValueError, TypeError):
+            pass
+    if approved_fee and approved_fee > 0:
+        try:
+            db.generate_phase_budgets(intake_id, project_number, approved_fee)
+        except Exception:
+            pass
+        try:
+            db.create_billing_phases_for_project(intake_id, approved_fee)
+        except Exception:
+            pass
+
+    # 3. Write calendar events (WEU load committed to engineers)
+    _start = intake.proposed_start_date
+    _ifp   = intake.ifp_due_date
+    _team  = _json.loads(intake.assigned_engineers or "[]")
+    if _start and _ifp:
+        _fresh = db.get_intake(intake_id)
+        _tier  = db.infer_tier_from_intake(_fresh) if _fresh else 3
+        try:
+            db.generate_phase_calendar_events(
+                intake_id=intake_id,
+                project_number=project_number,
+                start_date=_start,
+                ifp_date=_ifp,
+                team=_team,
+                weu_hours=40.0,
+                replace_existing=True,
+                tier=_tier,
+            )
+        except Exception:
+            pass
+
+    # 4. Mark as ACTIVE_PROJECT and record win probability
     db.mark_project_won(intake_id, win_probability=win_prob)
-    return {"ok": True, "status": "PROCEED_TO_PROPOSAL", "intake_id": intake_id}
+    return {
+        "ok": True,
+        "status": "ACTIVE_PROJECT",
+        "intake_id": intake_id,
+        "project_number": project_number,
+    }
 
 
 @app.get("/api/active-bids")

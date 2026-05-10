@@ -202,10 +202,18 @@
         </div>
       </div>
 
-      {# Capacity / Engineer Assignment #}
+      {# Capacity / Engineer Assignment — PREVIEW ONLY, no allocations written until "Mark as Won" #}
       <div class="mo-capacity-section" id="capacity-section-{{ intake.id }}">
-        <div class="mo-section-label" id="capacity-label-{{ intake.id }}">
-          ASSIGN ENGINEERS — PROJECTED CAPACITY
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div class="mo-section-label" id="capacity-label-{{ intake.id }}" style="margin-bottom:0">
+            ASSIGN ENGINEERS — PROJECTED CAPACITY
+          </div>
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:2px 8px;border-radius:4px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);color:#f59e0b">
+            Preview Only
+          </span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">
+          Engineer selections are saved for reference. WEU loads are <strong>not committed</strong> to the calendar until the project is marked as Won.
         </div>
         <div class="mo-capacity-bars" id="capacity-bars-{{ intake.id }}">
           <div class="mo-capacity-loading">Loading capacity…</div>
@@ -213,9 +221,12 @@
         <div class="mo-conflict-warnings" id="conflict-warnings-{{ intake.id }}" style="display:none;"></div>
       </div>
 
-      {# Calendar Event Creation — shown after capacity loads #}
-      <div id="mo-cal-section-{{ intake.id }}" style="display:none;margin-top:16px;padding:14px 16px;background:var(--card-bg-deeper);border:1px solid var(--border);border-radius:8px">
-        <div class="mo-section-label" style="margin-bottom:12px">CREATE CALENDAR EVENT</div>
+      {# Calendar Note — optional, not tied to commitment #}
+      <div id="mo-cal-section-{{ intake.id }}" style="display:none;margin-top:16px;padding:14px 16px;background:var(--card-bg-deeper);border:1px solid var(--border);border-radius:8px;opacity:.85">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <div class="mo-section-label" style="margin-bottom:0">CALENDAR NOTE</div>
+          <span style="font-size:10px;color:var(--muted);font-style:italic">Optional — for planning reference only</span>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
           <div class="field" style="margin:0">
             <label style="font-size:11px">Project #</label>

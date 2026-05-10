@@ -501,7 +501,7 @@ function copyFollowUp() {
 }
 
 async function markBidWon(intakeId) {
-  if (!confirm('Mark this bid as Won?')) return;
+  if (!confirm('Mark as Won?\n\nThis will assign a project number, commit WEU loads to engineer calendars, and activate pipeline tracking.')) return;
   try {
     const r = await fetch('/api/intakes/' + intakeId + '/mark-won', {
       method:'POST', headers:{'Content-Type':'application/json'},
