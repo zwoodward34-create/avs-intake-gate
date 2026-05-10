@@ -800,7 +800,7 @@ def list_phase_budgets(intake_id: int) -> list[dict[str, Any]]:
     te_resp = (
         _client()
         .table("time_entries")
-        .select("phase_code,hours,engineer_initials,role_type")
+        .select("phase_code,hours,engineer_initials")
         .eq("intake_id", intake_id)
         .execute()
     )
@@ -954,7 +954,6 @@ def create_time_entry(
             "entry_date":        entry_date,
             "hours":             hours,
             "notes":             notes,
-            "role_type":         role_type or _ROLE_BUCKET.get(engineer_initials, "senior"),
             "created_at":        now,
             "updated_at":        now,
         })
@@ -2808,7 +2807,7 @@ def get_engineer_bucket_view(engineer: str) -> dict[str, Any]:
     te_resp = (
         _client()
         .table("time_entries")
-        .select("intake_id,phase_code,hours,engineer_initials,role_type")
+        .select("intake_id,phase_code,hours,engineer_initials")
         .in_("intake_id", intake_ids)
         .execute()
     )
