@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
