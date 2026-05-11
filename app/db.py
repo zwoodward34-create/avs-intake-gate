@@ -2106,7 +2106,7 @@ def get_pipeline_data() -> dict[str, Any]:
     )
     pending_invoices = sum(
         1 for col in columns.values()
-        for p in col["projects"] if p["invoice_status"] == "complete_pending_approval"
+        for p in col["projects"] if p.get("invoice_status") == "complete_pending_approval"
     )
 
     return {
