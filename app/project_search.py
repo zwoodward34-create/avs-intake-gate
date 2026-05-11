@@ -394,6 +394,51 @@ def _get_dv_company_options(buf: bytes, sheet_name: str, company_header: str, he
             pass
 
 
+# ── Supabase historical_projects merge ───────────────────────────────────────
+
+# Maps col_map keys → historical_projects column names
+_SB_FIELD_MAP = {
+    "name":       "project_name",
+    "id":         "project_number",
+    "type":       "project_type",
+    "wallSystem": "material",
+    "roof":       "roof",
+    "slab":       "slab",
+    "foundation": "foundation",
+    "company":    "client",
+}
+
+
+def _fetch_supabase_historical() -> list[dict]:
+    """Fetch all rows from historical_projects that were written by the mark-won flow."""
+    try:
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
+        if not supabase_url or not supabase_key:
+            return []
+        from supabase import create_client
+        client = create_client(supabase_url, supabase_key)
+        resp = client.table("historical_projects").select(
+            "project_name,project_number,project_type,material,roof,slab,foundation,client"
+        ).execute()
+        return resp.data or []
+    except Exception:
+        return []
+
+
+def _supabase_records_to_rows(records: list[dict], col_map: dict) -> list[dict]:
+    """Convert Supabase historical_projects rows into the Excel row format used by search."""
+    result = []
+    for r in records:
+        row: dict[str, str] = {}
+        for col_key, sb_field in _SB_FIELD_MAP.items():
+            header = col_map.get(col_key)
+            if header:
+                row[header] = str(r.get(sb_field) or "").strip()
+        result.append(row)
+    return result
+
+
 # ── In-memory cache (5-minute TTL) ───────────────────────────────────────────
 
 _cache: dict[str, Any] = {"data": None, "ts": 0.0}
@@ -414,6 +459,11 @@ def get_projects() -> dict:
     parsed = parse_excel_bytes(buf)
     col_map = detect_columns(parsed["headers"])
     rows = _fix_misalignment(parsed["rows"], col_map, parsed["type_options"])
+
+    # Merge in projects won through the intake pipeline
+    supabase_rows = _supabase_records_to_rows(_fetch_supabase_historical(), col_map)
+    if supabase_rows:
+        rows = rows + supabase_rows
 
     company_key = col_map.get("company")
     company_options: list[str] = []

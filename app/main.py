@@ -1230,15 +1230,17 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
         except Exception:
             pass
         hist_record = {
-            "project_name":   intake.project_name or "",
-            "project_number": project_number or "",
-            "location":       intake.location_region or "",
-            "year_completed": _dt.datetime.utcnow().year,
-            "project_type":   answers.get("project_type") or getattr(intake, "project_type", None) or "",
-            "client":         intake.client_name or "",
+            "project_name":    intake.project_name or "",
+            "project_number":  project_number or "",
+            "location":        intake.location_region or "",
+            "year_completed":  _dt.datetime.utcnow().year,
+            "project_type":    answers.get("project_type") or getattr(intake, "project_type", None) or "",
+            "material":        answers.get("primary_structural_material") or "",
+            "client":          intake.client_name or "",
             "raw_description": answers.get("scope_description") or intake.project_name or "",
         }
         db._client().table("historical_projects").insert(hist_record).execute()
+        project_search.invalidate_cache()
     except Exception:
         pass
 
