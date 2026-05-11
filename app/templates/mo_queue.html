@@ -236,9 +236,10 @@
               onclick="moCopyProposal({{ intake.id }})">
         📋 Copy to Clipboard
       </button>
-      <button class="btn mo-cancel-btn"
-              onclick="moDismissCard({{ intake.id }})">
-        Dismiss ✓
+      <button class="btn btn-primary" id="push-pipeline-btn-{{ intake.id }}"
+              onclick="moPushToPipeline({{ intake.id }})"
+              style="background:var(--good);border-color:var(--good)">
+        → Push to Pipeline
       </button>
     </div>
   </div>
@@ -375,7 +376,29 @@
     });
   };
 
-  // ─── Dismiss card (after proposal copied) ────────────────────────────────────
+  // ─── Push to Pipeline (mark proposal sent → PROPOSAL_OUT) ───────────────────
+  window.moPushToPipeline = async function (intakeId) {
+    const btn = document.getElementById('push-pipeline-btn-' + intakeId);
+    if (btn) { btn.disabled = true; btn.textContent = 'Pushing…'; }
+    try {
+      const resp = await fetch('/api/intakes/' + intakeId + '/mark-proposal-sent', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+      });
+      if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.detail || 'Failed'); }
+      const c = document.getElementById('mo-card-' + intakeId);
+      if (c) {
+        c.style.transition = 'opacity 0.35s ease';
+        c.style.opacity = '0';
+        setTimeout(() => { c.remove(); _decrementBadge(); _checkEmpty(); }, 380);
+      }
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.textContent = '→ Push to Pipeline'; }
+      alert('Error: ' + e.message);
+    }
+  };
+
+  // ─── Dismiss card ─────────────────────────────────────────────────────────────
   window.moDismissCard = function (intakeId) {
     const c = document.getElementById('mo-card-' + intakeId);
     if (c) {
