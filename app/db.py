@@ -328,6 +328,7 @@ def create_template(*, name: str, description: str, answers: dict[str, Any]) -> 
 
 
 def delete_intake(intake_id: int) -> None:
+    _client().table("calendar_events").delete().eq("intake_id", intake_id).execute()
     _client().table("intakes").delete().eq("id", intake_id).execute()
 
 
