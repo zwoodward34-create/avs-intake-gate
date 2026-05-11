@@ -18,13 +18,21 @@
   .kpi-green { border-left:3px solid var(--good) }      .kpi-green .pl-kpi-num { color:var(--good) }
 
   /* ── Board ── */
-  .pl-board { display:flex; gap:14px; padding-bottom:16px; align-items:flex-start; }
+  .pl-board { display:flex; flex-direction:column; gap:16px; padding-bottom:16px; }
 
   /* ── Column ── */
   .pl-col {
-    flex:1 1 0; min-width:0;
+    width:100%; box-sizing:border-box;
     background:var(--card-bg-deeper); border:1px solid var(--border); border-radius:var(--radius);
-    padding:14px 12px; display:flex; flex-direction:column; gap:10px; min-height:200px;
+    padding:14px 16px;
+  }
+
+  /* ── Cards grid inside each column ── */
+  .pl-col-cards {
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));
+    gap:10px;
+    margin-top:10px;
   }
   .pl-col-header { padding:0 2px 10px; border-bottom:1px solid var(--border); margin-bottom:2px; }
   .pl-col-label {
@@ -38,11 +46,11 @@
   .pl-col-count { font-size:11px; color:var(--muted) }
 
   /* ── Project card ── */
-  .pl-card-wrap { min-width:0; width:100% }
+  .pl-card-wrap { width:100% }
   .pl-card {
     background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius-sm);
     padding:14px; cursor:pointer; transition:border-color .15s ease;
-    min-width:0; width:100%; box-sizing:border-box; overflow:hidden;
+    width:100%; box-sizing:border-box;
   }
   .pl-card:hover { border-color:var(--border-hover) }
   .pl-card.co-pending      { border-left:3px solid var(--warn) !important }
@@ -106,7 +114,7 @@
   /* ── Proposal card (Proposal Submitted column) ── */
   .pl-prop-card {
     background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius-sm);
-    padding:14px; min-width:0; width:100%; box-sizing:border-box; overflow:hidden;
+    padding:14px; width:100%; box-sizing:border-box;
   }
   .pl-prop-card.prop-stale { border-left:3px solid var(--bad) }
   .pl-prop-card.prop-warn  { border-left:3px solid var(--warn) }
@@ -311,11 +319,11 @@
       <div class="pl-col-label">{{ col.label }}</div>
       <div class="pl-col-count" id="col-count-{{ col_key }}">{{ col.projects | length }} {{ 'proposal' if col_key == 'proposals' else 'project' }}{{ 's' if col.projects | length != 1 else '' }}</div>
     </div>
-    <div id="col-cards-{{ col_key }}">
+    <div id="col-cards-{{ col_key }}" class="pl-col-cards">
       {% if not col.projects %}
-        <div class="pl-empty" id="col-empty-{{ col_key }}">{{ 'No proposals out' if col_key == 'proposals' else 'No projects' }}</div>
+        <div class="pl-empty" id="col-empty-{{ col_key }}" style="grid-column:1/-1">{{ 'No proposals out' if col_key == 'proposals' else 'No projects' }}</div>
       {% else %}
-        <div class="pl-empty" id="col-empty-{{ col_key }}" style="display:none">{{ 'No proposals out' if col_key == 'proposals' else 'No projects' }}</div>
+        <div class="pl-empty" id="col-empty-{{ col_key }}" style="display:none;grid-column:1/-1">{{ 'No proposals out' if col_key == 'proposals' else 'No projects' }}</div>
       {% endif %}
     </div>
   </div>
