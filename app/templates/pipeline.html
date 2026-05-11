@@ -38,9 +38,11 @@
   .pl-col-count { font-size:11px; color:var(--muted) }
 
   /* ── Project card ── */
+  .pl-card-wrap { min-width:0; width:100% }
   .pl-card {
     background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius-sm);
     padding:14px; cursor:pointer; transition:border-color .15s ease;
+    min-width:0; width:100%; box-sizing:border-box; overflow:hidden;
   }
   .pl-card:hover { border-color:var(--border-hover) }
   .pl-card.co-pending      { border-left:3px solid var(--warn) !important }
@@ -74,7 +76,7 @@
   .pl-fee strong { color:var(--text); font-family:var(--mono) }
 
   /* ── Card footer ── */
-  .pl-card-footer { display:flex; align-items:center; justify-content:space-between; gap:8px }
+  .pl-card-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; min-width:0; }
   .pl-team   { display:flex; gap:4px }
   .pl-avatar { width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:8px; font-weight:800; color:#fff; flex-shrink:0 }
 
@@ -104,7 +106,7 @@
   /* ── Proposal card (Proposal Submitted column) ── */
   .pl-prop-card {
     background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius-sm);
-    padding:14px;
+    padding:14px; min-width:0; width:100%; box-sizing:border-box; overflow:hidden;
   }
   .pl-prop-card.prop-stale { border-left:3px solid var(--bad) }
   .pl-prop-card.prop-warn  { border-left:3px solid var(--warn) }
