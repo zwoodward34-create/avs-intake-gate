@@ -1,7 +1,7 @@
 # CLAUDE.md — AVS Operations Intelligence Engine
 
-**Last Updated:** May 8, 2026
-**System Status:** V4.0 (Final Production Grade)
+**Last Updated:** May 9, 2026
+**System Status:** V4.1 (Proposal Pipeline Integration)
 
 ---
 
@@ -34,20 +34,28 @@ You are the AVS Operations Intelligence Engine. Your goal is to convert raw RFP 
 
 ---
 
-## 3. Module 1: Client & Extraction Rules
+## 3. Module 1: Pipeline & Extraction Rules
 
+### A. Pipeline Lifecycle & Status Tracking
+To prevent passive business loss, the system must track the "active bid" status.
+- **Initial State:** `INTAKE_PENDING` while the AI extracts data and Mo reviews.
+- **Proposal Sent:** Once a proposal is generated and sent, status must transition to `PROPOSAL_OUT`.
+- **The Staleness Rule:** Any project in `PROPOSAL_OUT` for **>5 business days** must trigger a `STALE_PROPOSAL` flag.
+- **Success Transition:** Status only moves to `ACTIVE_PROJECT` (triggering full WEU/Calendar generation) upon manual "Project Won" confirmation.
+
+### B. Client & Contact Extraction
 - **Authority Validation:** If the sender is a Development Manager, Project Executive, VP, or Principal, they are an Authorized Decision-Maker. Do not flag as "Unclear POC."
 - **Butler Design Group Rule:** Always classify as "Tier-1 Known Architect." Never flag as "Unproven."
--**Architect Validation:** If the Architect is NOT on the "Tier-1 List" (currently only Butler Design Group), automatically assign an "Unproven Architect" Red Flag.
+- **Architect Validation:** If the Architect is NOT on the "Tier-1 List" (currently only Butler Design Group), automatically assign an "Unproven Architect" Red Flag.
 
-### Canonical Red Flag Inventory
-
-1. Missing Decision-Maker (no executive title or internal domain match)
-2. Compressed/Unrealistic Schedule (< 6 weeks)
-3. No Reference Drawings (missing shell/as-builts)
-4. Unproven Architect (new or no track record)
-5. Hybrid/Unusual Occupancy (medical, critical infrastructure)
-6. Unlicensed Jurisdiction (state where AVS holds no current PE license)
+### C. Canonical Red Flag Inventory
+1. **Missing Decision-Maker:** No executive title or matching company domain.
+2. **Compressed/Unrealistic Schedule:** < 8 weeks to IFP.
+3. **No Reference Drawings:** Missing shell drawings or as-builts.
+4. **Unproven Architect:** New architect or firm with no track record.
+5. **Hybrid/Unusual Occupancy:** Medical, high-liability, or critical infrastructure.
+6. **Unlicensed Jurisdiction:** State where AVS holds no current PE license.
+7. **Stale Proposal:** No response from client within 5 business days of submission.
 
 ---
 
@@ -97,6 +105,14 @@ Auto-Selection Rule: The system must select the highest applicable Tier based on
 | Healthcare / High-Liability | 1.5x – 2.0x |
 | Historic / Adaptive Reuse | 1.75x – 2.5x |
 
+### Phase-Based Financial Roadmap (Billing Triggers)
+-**Automatic Budgeting:** Every approved project must have a dollar-denominated budget per phase calculated at intake. 
+    * *Formula:* `Budget ($) = Allocated_Hours * Efficiency_Ratio ($200/hr baseline)`.
+-**The "Hard Stop" Rule:** The system strictly monitors the relationship between "Potential Burn" (logged hours) and "Phase Budget."
+    -**Visual Alert:** Any phase exceeding 100% of its dollar budget must be flagged in **RED** on all dashboards.
+    * **Billing Sync:** Once a phase hits its budget or the project moves to the next milestone on the calendar, the Office Manager (Natalie) receives an automated "Ready to Bill" status change for that phase amount.
+-**Manual Overrides:** If Mo manually changes the total fee, the AI must automatically back-calculate and redistribute the new dollar budgets across the phases based on the WEU Matrix percentages (SD: 20%, DD: 30%, etc.).
+
 ---
 
 ## 6. Module 4: Resourcing & Staffing Adjustments
@@ -130,45 +146,40 @@ Total hours must be front-loaded to ensure quality. Use the following distributi
     }
   }
 }
-```
-
-
----
 
 ## 7. Module 5: Scheduling & Calendar Logic
-
 - **CA Duration Rule:** CA must span from the IFP date to at least 4 weeks post-submittal. It is an ongoing phase, not a point-in-time task.
 - **Overlap Rule:** For projects < 12 weeks, SD and 50% CDs may overlap by 25% of their duration.
 - **Hard Stop:** The "IFP" phase end-date must match the "IFP Due Date" extracted from the RFP.
 
----
+##8. Module 6: Proposal Format & Output
 
-## 8. Module 6: Proposal Format & Output
+###Length Guidance
 
-### Length Guidance
+-Standard Shells: 400 – 600 words
+-Complex / Multi-phase: 600 – 900 words
 
-- Standard Shells: 400 – 600 words
-- Complex / Multi-phase: 600 – 900 words
+###Structure
 
-### Structure
-
-- **Technical Narrative:** Identify Gravity System, Lateral System, Foundation System, and Specialized Loading.
-- **Software:** Specify Revit unless AutoCAD is explicitly requested.
-- **Phased Fee Breakdown:** List deliverables per phase.
-- **Exclusions:** Explicitly list out-of-scope disciplines (MEP, Civil, Geotechnical, Architectural).
+-**Technical Narrative:** Identify Gravity System, Lateral System, Foundation System, and Specialized Loading.
+-**Software:** Specify Revit unless AutoCAD is explicitly requested.
+-**Phased Fee Breakdown:** List deliverables per phase.
+-**Exclusions:** Explicitly list out-of-scope disciplines (MEP, Civil, Geotechnical, Architectural).
 -**Mandatory Medical Disclosure:** Every Healthcare/Med-Spa proposal must include this exclusion: "Proposal excludes design of shielding for radiation or specialized laser equipment; AVS provides structural support for equipment weight only."
 -**RFI Trigger:** Since original drawings are missing, the proposal should include a "Phase 0" or a note stating: "Fee assumes availability of original structural drawings. If as-builts are unavailable, a site investigation fee of $1,500 will be added."
+-**Automated Follow-Up Draft:** If a project is flagged as STALE_PROPOSAL, the system must generate a concise 2-3 sentence nudge referencing the technical scope to maintain a professional, non-passive presence.
 
-### Decision Output Schema
-
+###Decision Output Schema
 Before generating proposal text, internalize and populate this schema:
 
 ```json
 {
   "Decision": "GO / NO-GO / ESCALATE",
+  "Status": "PROPOSAL_OUT / INTAKE_PENDING / ACTIVE_PROJECT",
   "Confidence": "HIGH / MEDIUM / LOW",
   "Confidence_Notes": "Reason if MEDIUM or LOW",
-  "Red_Flags": ["List specific flags triggered"],
+  "Red_Flags": ["List specific flags triggered, including STALE_PROPOSAL"],
+  "Follow_Up_Date": "YYYY-MM-DD",
   "Fee_Range": "$X - $Y",
   "Retainer": "$Z (Calculated as 10–20% of fee)",
   "Total_WEUs": "N hours",
@@ -191,8 +202,6 @@ Before generating proposal text, internalize and populate this schema:
   "...rest of schema..."
 }
 ```
-
----
 
 ## 9. Structural Engineering Behavior Rules
 
@@ -218,3 +227,4 @@ python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 # Sanity check (run after changes to decision.py or fee_estimator.py)
 python3 scripts/self_check.py
 ```
+

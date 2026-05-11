@@ -425,7 +425,8 @@ def get_active_bids() -> list[dict[str, Any]]:
             .table("intakes")
             .select(
                 "id,project_name,client_name,location_region,lead_contact,"
-                "proposal_sent_date,follow_up_count,win_probability,answers_json"
+                "proposal_sent_date,follow_up_count,win_probability,answers_json,"
+                "mo_fee_override,ifp_due_date"
             )
             .eq("status", "PROPOSAL_OUT")
             .order("proposal_sent_date", desc=False)
@@ -443,6 +444,10 @@ def get_active_bids() -> list[dict[str, Any]]:
             answers = json.loads(r.get("answers_json") or "{}")
         except Exception:
             answers = {}
+        try:
+            approved_fee = float(r.get("mo_fee_override") or 0)
+        except (ValueError, TypeError):
+            approved_fee = 0.0
         result.append({
             "intake_id":         r["id"],
             "project_name":      r.get("project_name") or "",
@@ -455,6 +460,8 @@ def get_active_bids() -> list[dict[str, Any]]:
             "is_warn":           warn,
             "follow_up_count":   int(r.get("follow_up_count") or 0),
             "win_probability":   int(r.get("win_probability") or 50),
+            "approved_fee":      approved_fee,
+            "ifp_due_date":      r.get("ifp_due_date") or "",
             "approx_sf":         answers.get("approx_sf") or "",
             "project_type":      answers.get("project_type") or "",
         })
@@ -1960,7 +1967,7 @@ def advance_production_phase(
 # ── Pipeline Board Data ───────────────────────────────────────────────────────
 
 def get_pipeline_data() -> dict[str, Any]:
-    """Returns all pipeline_active projects grouped by current_billing_phase."""
+    """Returns all pipeline_active projects grouped by current_billing_phase, plus PROPOSAL_OUT bids."""
     intakes_resp = (
         _client()
         .table("intakes")
@@ -1974,76 +1981,88 @@ def get_pipeline_data() -> dict[str, Any]:
         .execute()
     )
     intakes = intakes_resp.data or []
-    if not intakes:
+
+    # Fetch active bids (PROPOSAL_OUT) separately for the proposals column
+    active_bids = get_active_bids()
+
+    if not intakes and not active_bids:
         return _empty_pipeline()
 
     intake_ids = [i["id"] for i in intakes]
-
-    # billing phases
-    pbp_resp = (
-        _client()
-        .table("project_billing_phases")
-        .select("intake_id,billing_phase_code,fee_amount,fee_pct,status,change_order_pending,invoice_fee_override")
-        .in_("intake_id", intake_ids)
-        .execute()
-    )
     pbp_by_intake: dict[int, list[dict]] = {}
-    for row in (pbp_resp.data or []):
-        pbp_by_intake.setdefault(int(row["intake_id"]), []).append(row)
+    budget_by_intake: dict[int, float]   = {}
+    actual_by_intake: dict[int, float]   = {}
+    team_by_pn: dict[str, list[str]]     = {}
 
-    # phase budgets — total budgeted hours per project
-    pb_resp = (
-        _client()
-        .table("phase_budgets")
-        .select("intake_id,budgeted_hours")
-        .in_("intake_id", intake_ids)
-        .execute()
-    )
-    budget_by_intake: dict[int, float] = {}
-    for row in (pb_resp.data or []):
-        iid = int(row["intake_id"])
-        budget_by_intake[iid] = budget_by_intake.get(iid, 0.0) + float(row["budgeted_hours"])
+    if intake_ids:
+        # billing phases
+        pbp_resp = (
+            _client()
+            .table("project_billing_phases")
+            .select("intake_id,billing_phase_code,fee_amount,fee_pct,status,change_order_pending,invoice_fee_override")
+            .in_("intake_id", intake_ids)
+            .execute()
+        )
+        for row in (pbp_resp.data or []):
+            pbp_by_intake.setdefault(int(row["intake_id"]), []).append(row)
 
-    # actual hours per project
-    te_resp = (
-        _client()
-        .table("time_entries")
-        .select("intake_id,hours")
-        .in_("intake_id", intake_ids)
-        .execute()
-    )
-    actual_by_intake: dict[int, float] = {}
-    for row in (te_resp.data or []):
-        iid = int(row["intake_id"])
-        actual_by_intake[iid] = actual_by_intake.get(iid, 0.0) + float(row["hours"])
+        # phase budgets — total budgeted hours per project
+        pb_resp = (
+            _client()
+            .table("phase_budgets")
+            .select("intake_id,budgeted_hours")
+            .in_("intake_id", intake_ids)
+            .execute()
+        )
+        for row in (pb_resp.data or []):
+            iid = int(row["intake_id"])
+            budget_by_intake[iid] = budget_by_intake.get(iid, 0.0) + float(row["budgeted_hours"])
 
-    # calendar team members per project
-    cal_resp = (
-        _client()
-        .table("calendar_events")
-        .select("project_number,team")
-        .in_("project_number", [i["project_number"] for i in intakes if i.get("project_number")])
-        .execute()
-    )
-    team_by_pn: dict[str, list[str]] = {}
-    for ev in (cal_resp.data or []):
-        pn = ev.get("project_number") or ""
-        team = ev.get("team") or []
-        if isinstance(team, list):
-            existing = team_by_pn.get(pn, [])
-            for m in team:
-                if m not in existing:
-                    existing.append(m)
-            team_by_pn[pn] = existing
+        # actual hours per project
+        te_resp = (
+            _client()
+            .table("time_entries")
+            .select("intake_id,hours")
+            .in_("intake_id", intake_ids)
+            .execute()
+        )
+        for row in (te_resp.data or []):
+            iid = int(row["intake_id"])
+            actual_by_intake[iid] = actual_by_intake.get(iid, 0.0) + float(row["hours"])
+
+        # calendar team members per project
+        project_numbers = [i["project_number"] for i in intakes if i.get("project_number")]
+        if project_numbers:
+            cal_resp = (
+                _client()
+                .table("calendar_events")
+                .select("project_number,team")
+                .in_("project_number", project_numbers)
+                .execute()
+            )
+            for ev in (cal_resp.data or []):
+                pn = ev.get("project_number") or ""
+                team = ev.get("team") or []
+                if isinstance(team, list):
+                    existing = team_by_pn.get(pn, [])
+                    for m in team:
+                        if m not in existing:
+                            existing.append(m)
+                    team_by_pn[pn] = existing
 
     columns: dict[str, dict] = {
-        "retainer": {"label": "Retainer",              "projects": []},
-        "SD":       {"label": "Schematic Design",      "projects": []},
-        "DD":       {"label": "Design Development",    "projects": []},
-        "CD":       {"label": "Construction Documents","projects": []},
-        "CA":       {"label": "Construction Admin",    "projects": []},
-        "complete": {"label": "Complete",              "projects": []},
+        "proposals": {"label": "Proposal Submitted", "projects": [], "is_proposals": True},
+        "retainer":  {"label": "Retainer",              "projects": []},
+        "SD":        {"label": "Schematic Design",      "projects": []},
+        "DD":        {"label": "Design Development",    "projects": []},
+        "CD":        {"label": "Construction Documents","projects": []},
+        "CA":        {"label": "Construction Admin",    "projects": []},
+        "complete":  {"label": "Complete",              "projects": []},
     }
+
+    # Populate proposal cards
+    for bid in active_bids:
+        columns["proposals"]["projects"].append(bid)
 
     for intake in intakes:
         iid = intake["id"]
@@ -2096,6 +2115,8 @@ def get_pipeline_data() -> dict[str, Any]:
             "active_projects":   len(intakes),
             "pending_invoices":  pending_invoices,
             "total_pipeline":    round(total_fee, 2),
+            "active_bids":       len(active_bids),
+            "stale_bids":        sum(1 for b in active_bids if b.get("is_stale")),
         },
     }
 
@@ -2103,14 +2124,15 @@ def get_pipeline_data() -> dict[str, Any]:
 def _empty_pipeline() -> dict[str, Any]:
     return {
         "columns": {
-            "retainer": {"label": "Retainer",              "projects": []},
-            "SD":       {"label": "Schematic Design",      "projects": []},
-            "DD":       {"label": "Design Development",    "projects": []},
-            "CD":       {"label": "Construction Documents","projects": []},
-            "CA":       {"label": "Construction Admin",    "projects": []},
-            "complete": {"label": "Complete",              "projects": []},
+            "proposals": {"label": "Proposal Submitted", "projects": [], "is_proposals": True},
+            "retainer":  {"label": "Retainer",              "projects": []},
+            "SD":        {"label": "Schematic Design",      "projects": []},
+            "DD":        {"label": "Design Development",    "projects": []},
+            "CD":        {"label": "Construction Documents","projects": []},
+            "CA":        {"label": "Construction Admin",    "projects": []},
+            "complete":  {"label": "Complete",              "projects": []},
         },
-        "stats": {"active_projects": 0, "pending_invoices": 0, "total_pipeline": 0},
+        "stats": {"active_projects": 0, "pending_invoices": 0, "total_pipeline": 0, "active_bids": 0, "stale_bids": 0},
     }
 
 

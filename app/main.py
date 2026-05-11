@@ -1001,8 +1001,6 @@ async def api_mo_review_json(request: Request, intake_id: int) -> dict:
         raise HTTPException(status_code=400, detail="Invalid decision.")
     mo_fee_decision = (body.get("mo_fee_decision") or "").strip().upper() or None
     fee_override = _as_str(str(body.get("mo_fee_override") or "")) if mo_fee_decision == "OVERRIDE" else None
-
-    assigned_engs = body.get("assigned_engineers") or []
     mo_notes_val = _as_str(str(body.get("mo_notes") or body.get("mo_decision_notes") or ""))
 
     db.set_mo_review(
@@ -1013,14 +1011,10 @@ async def api_mo_review_json(request: Request, intake_id: int) -> dict:
         mo_fee_decision=mo_fee_decision,
         mo_fee_override=fee_override,
         status=status,
-        proposed_start_date=body.get("proposed_start_date") or None,
-        proposed_end_date=body.get("proposed_end_date") or None,
-        assigned_engineers=_json.dumps(assigned_engs) if assigned_engs else None,
         mo_decision_notes=_as_str(str(body.get("mo_decision_notes") or "")),
     )
 
-    # Resource commitment (project number, budgets, calendar) is deferred until
-    # "Mark as Won" — no allocations are written here.
+    # Engineer assignment and resource commitment are deferred until "Mark as Won".
     return {"success": True, "status": status, "intake_id": intake_id, "project_number": intake.project_number}
 
 
@@ -1162,8 +1156,25 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
 
+    # Engineers and dates may come from the Won modal; fall back to whatever Mo saved earlier
+    body_engineers = body.get("assigned_engineers")
+    body_start     = body.get("proposed_start_date") or None
+    body_end       = body.get("proposed_end_date") or None
+
+    # Persist engineers + dates back to intake if supplied from Won modal
+    if body_engineers is not None or body_start or body_end:
+        update_payload: dict = {"updated_at": db._utc_now_iso()}
+        if body_engineers is not None:
+            update_payload["assigned_engineers"] = _json.dumps(body_engineers)
+        if body_start:
+            update_payload["proposed_start_date"] = body_start
+        if body_end:
+            update_payload["proposed_end_date"] = body_end
+        db._client().table("intakes").update(update_payload).eq("id", intake_id).execute()
+        intake = db.get_intake(intake_id)  # re-fetch with updated values
+
     # ── Commitment Lock: this is the single point where resources are allocated ──
-    # 1. Assign project number (if not already set — handles legacy projects)
+    # 1. Assign project number (if not already set)
     project_number = intake.project_number
     if not project_number:
         project_number = db.assign_next_project_number()
@@ -1209,12 +1220,48 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
 
     # 4. Mark as ACTIVE_PROJECT and record win probability
     db.mark_project_won(intake_id, win_probability=win_prob)
+
+    # 5. Auto-save to searchable historical database
+    try:
+        import datetime as _dt
+        answers: dict = {}
+        try:
+            answers = _json.loads(intake.answers_json or "{}")
+        except Exception:
+            pass
+        hist_record = {
+            "project_name":   intake.project_name or "",
+            "project_number": project_number or "",
+            "location":       intake.location_region or "",
+            "year_completed": _dt.datetime.utcnow().year,
+            "project_type":   answers.get("project_type") or getattr(intake, "project_type", None) or "",
+            "client":         intake.client_name or "",
+            "raw_description": answers.get("scope_description") or intake.project_name or "",
+        }
+        db._client().table("historical_projects").insert(hist_record).execute()
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "status": "ACTIVE_PROJECT",
         "intake_id": intake_id,
         "project_number": project_number,
     }
+
+
+@app.post("/api/intakes/{intake_id}/mark-lost")
+async def api_mark_project_lost(request: Request, intake_id: int) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    if intake.status != "PROPOSAL_OUT":
+        raise HTTPException(status_code=400, detail="Only proposals in PROPOSAL_OUT status can be marked lost.")
+    db._client().table("intakes").delete().eq("id", intake_id).execute()
+    return {"ok": True, "deleted": intake_id}
 
 
 @app.get("/api/active-bids")
@@ -2822,18 +2869,12 @@ def api_payroll_export_csv(start: Optional[str] = None, end: Optional[str] = Non
 def pipeline_page(request: Request) -> HTMLResponse:
     if redir := _check_page_access(request, "/pipeline"): return redir
     data = db.get_pipeline_data()
-    try:
-        active_bids = db.get_active_bids()
-    except Exception:
-        active_bids = []
     return templates.TemplateResponse(
         "pipeline.html",
         {
-            "request":         request,
-            "now_local":       _now_local_iso(),
-            "pipeline":        data,
-            "active_bids":     active_bids,
-            "active_bids_json": _json.dumps(active_bids),
+            "request":          request,
+            "now_local":        _now_local_iso(),
+            "pipeline":         data,
             "team_colors_json": _json.dumps(db.TEAM_COLORS),
             "phase_colors_json": _json.dumps(db.PHASE_COLORS),
             "prod_phase_order": _json.dumps(db.PRODUCTION_PHASE_ORDER),
