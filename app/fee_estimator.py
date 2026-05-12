@@ -2,9 +2,31 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+# ── Industrial shell override constants (CLAUDE.md Rule B + Rule D) ────────────
+# Rule B: Warehouse/Industrial > 100,000 SF → override standard rate card
+_INDUSTRIAL_SF_THRESHOLD  = 100_000
+_INDUSTRIAL_RATE_LOW      = 0.15   # $/SF floor
+_INDUSTRIAL_RATE_HIGH     = 0.20   # $/SF target
+_INDUSTRIAL_RATE_CEILING  = 0.30   # $/SF — above this triggers FEE_SANITY_ERROR
+_INDUSTRIAL_ABS_FLOOR     = 25_000.0  # absolute minimum fee for Rule B projects
+
+# Rule D: Scarcity Override — governs for projects > 150,000 SF
+# Sets WEU floor = 1.0 hr per 1,000 SF; fee = WEU × efficiency ratio
+_SCARCITY_SF_THRESHOLD    = 150_000
+_EFFICIENCY_RATIO_LOW     = 180.0  # $/hr low end of target band
+_EFFICIENCY_RATIO_HIGH    = 200.0  # $/hr target efficiency ratio
+_SCARCITY_SANITY_CAP      = 50_000.0  # escalate if standard warehouse fee > this
+
+# Rule C: High-Risk Historic Floor ("URM Rule")
+# Trigger: scope_risk_type == "adaptive_reuse" OR quick_historic_adaptive_reuse flag
+# Action: mandatory minimum fee of $40,000 regardless of SF
+_RULE_C_FLOOR             = 40_000.0
+
 # ── Rate card ──────────────────────────────────────────────────────────────────
 # Keyed by (delivery_bucket, building_type) → (rate_low $/SF, rate_high $/SF)
 # delivery_bucket: "new" | "ti" | "bts"
+# NOTE: The warehouse rates below apply to industrial projects ≤ 100,000 SF only.
+# For industrial projects > 100,000 SF, Rule B overrides these rates (see above).
 
 _RATE_CARD: dict[str, dict[str, tuple[float, float]]] = {
     "new": {
@@ -68,12 +90,12 @@ def _floor_fee(building_type: str, delivery_bucket: str) -> float:
 # ── Difficulty tier auto-selection ─────────────────────────────────────────────
 def select_difficulty_tier(answers: dict[str, Any]) -> int:
     """
-    Map project scope to Difficulty Tier 1–4.
+    Map project scope to Difficulty Tier 1–4 per CLAUDE.md Section 5.
 
-    1 – Basic assessment / small TI (< 5k SF)
-    2 – Standard design (new construction, moderate retrofit)
-    3 – Complex multi-phase (large projects, mixed-use, education)
-    4 – High-liability (healthcare, data center, historic adaptive reuse)
+    1 – Standard Industrial: warehouse/industrial shell, any size, low complexity
+    2 – Standard Design: new construction 5k–50k SF, moderate retrofit
+    3 – Complex Multi-Phase: mixed-use, education, multi-phase, or non-industrial > 50k SF
+    4 – High-Liability: healthcare, data center, historic/adaptive reuse
     """
     building_type = (answers.get("building_type") or "other").lower()
     project_type  = (answers.get("project_type")  or "").lower()
@@ -83,14 +105,41 @@ def select_difficulty_tier(answers: dict[str, Any]) -> int:
     except (ValueError, TypeError):
         sq_ft = 0
 
-    if building_type in {"healthcare", "data_center"} or scope_risk == "adaptive_reuse":
+    # Tier 4: Healthcare, data center, or historic/adaptive reuse — highest liability
+    if building_type in {"healthcare", "data_center"} or scope_risk in {
+        "adaptive_reuse", "ti_high_liability_medical_critical", "ti_high_liability"
+    }:
         return 4
+
+    # Tier 1: Standard industrial / warehouse shell — always Tier 1 regardless of size
+    # This matches CLAUDE.md "Standard Industrial: standard warehouse/shell, low complexity"
+    # Guard: scope must be LOCKED. Partially-defined or evolving scope disqualifies Tier 1
+    # because it means additional coordination cycles that add engineer hours.
+    _is_industrial = building_type in {
+        "warehouse", "warehouse_industrial", "industrial", "industrial_shell"
+    }
+    _is_standard_scope = scope_risk in {
+        "standard_retail_warehouse", "warehouse_shell", "", None
+    } or not scope_risk
+    scope_def   = (answers.get("scope_definition") or "").lower()
+    scope_creep = (answers.get("scope_creep_likelihood") or "").lower()
+    _scope_locked = scope_def not in {"undefined", "evolving", "partially_defined"} \
+                    and scope_creep not in {"likely", "very_likely"}
+    if _is_industrial and _is_standard_scope and _scope_locked and project_type == "new_construction":
+        return 1
+
+    # Tier 3: Complex multi-phase — mixed-use, education, or non-industrial > 50k SF,
+    # OR industrial > 50k SF with partially-defined / evolving scope
     if sq_ft > 50_000 or building_type in {"mixed_use", "education"}:
         return 3
-    if project_type == "tenant_improvement" and sq_ft < 5_000:
+
+    # Tier 1: Small TI, assessment-only, or capacity check
+    if project_type in {"tenant_improvement"} and sq_ft < 5_000:
         return 1
     if scope_risk in {"assessment_only", "capacity_check"}:
         return 1
+
+    # Tier 2: Standard design — default for everything else
     return 2
 
 
@@ -181,6 +230,15 @@ class RiskAdjustedFeeEstimator:
         bucket_rates = _RATE_CARD.get(delivery, _RATE_CARD["ti"])
         rate_low, rate_high = bucket_rates.get(building_type, bucket_rates["other"])
 
+        # Rule B: Industrial Shell Override — warehouse > 100,000 SF uses
+        # industrial PSF instead of the standard warehouse rate card.
+        industrial_override = (
+            building_type == "warehouse" and sq_ft > _INDUSTRIAL_SF_THRESHOLD
+        )
+        if industrial_override:
+            rate_low  = _INDUSTRIAL_RATE_LOW
+            rate_high = _INDUSTRIAL_RATE_HIGH
+
         base_low  = sq_ft * rate_low
         base_high = sq_ft * rate_high
 
@@ -189,11 +247,33 @@ class RiskAdjustedFeeEstimator:
         cx_low  = base_low  * cx_mult
         cx_high = base_high * cx_mult
 
-        # ── 3. Effective multiplier: max(complexity, risk) — no stacking ────
+        # ── 3. Effective multiplier: max(complexity, risk, tier) — no stacking ─
+        # CLAUDE.md: "Use the Highest Single Multiplier (no stacking)".
+        # Difficulty Tier 4 carries a fixed 2.0× floor (healthcare, data_center,
+        # adaptive_reuse/historic) that overrides the complexity/risk calculations.
+        answers_ref    = data.get("_answers", {})
+        scope_risk_ans = (answers_ref.get("scope_risk_type") or "").lower()
+        _BUILDING_TIER_MULT: dict[str, float] = {
+            "healthcare":  2.00,
+            "data_center": 2.00,
+        }
+        # Scope-risk-based Tier 4 multiplier — for adaptive reuse the building_type
+        # may still read as "warehouse_industrial" or "mixed_use" but the scope
+        # demands the same 2.0× liability premium as healthcare/data_center.
+        _SCOPE_TIER_MULT: dict[str, float] = {
+            "adaptive_reuse":                  2.00,
+            "ti_high_liability_medical_critical": 2.00,
+            "ti_high_liability":               2.00,
+        }
+        tier_mult = max(
+            _BUILDING_TIER_MULT.get(building_type, 1.0),
+            _SCOPE_TIER_MULT.get(scope_risk_ans, 1.0),
+        )
+
         active_flags   = [k for k, v in flags.items() if v]
         flag_count     = len(active_flags)
         risk_mult_val  = _risk_mult(flag_count)
-        effective_mult = max(cx_mult, risk_mult_val)
+        effective_mult = max(cx_mult, risk_mult_val, tier_mult)
         risk_low       = base_low  * effective_mult
         risk_high      = base_high * effective_mult
 
@@ -213,13 +293,55 @@ class RiskAdjustedFeeEstimator:
             risk_low  = min(risk_low,  _SMALL_TI_CAP)
             risk_high = min(risk_high, _SMALL_TI_CAP)
 
+        # ── 3c. Rule D: Scarcity Override — governs for projects > 150,000 SF ─
+        # Sets fee = 1.0 WEU per 1,000 SF × efficiency ratio band.
+        # This overrides PSF-derived figures when the scarcity fee is higher.
+        scarcity_override = sq_ft > _SCARCITY_SF_THRESHOLD
+        scarcity_sanity_flag = False
+        if scarcity_override:
+            weus       = sq_ft / 1_000.0
+            scar_low   = weus * _EFFICIENCY_RATIO_LOW
+            scar_high  = weus * _EFFICIENCY_RATIO_HIGH
+            risk_low   = max(risk_low,  scar_low)
+            risk_high  = max(risk_high, scar_high)
+            # Sanity trap: standard warehouse fee > $50,000 → escalate to Mo
+            if building_type == "warehouse" and risk_high > _SCARCITY_SANITY_CAP:
+                scarcity_sanity_flag = True
+
+        # ── 3d. Rule B industrial absolute floor ($25,000 for > 100,000 SF) ──
+        if industrial_override and risk_low < _INDUSTRIAL_ABS_FLOOR:
+            scale     = _INDUSTRIAL_ABS_FLOOR / risk_low if risk_low > 0 else 1.0
+            risk_low  = _INDUSTRIAL_ABS_FLOOR
+            risk_high = risk_high * scale
+
         # ── 4. Floor fee ──────────────────────────────────────────────────────
+        # The floor only raises the LOW end. The high end is left as-is
+        # unless it too falls below the floor (inverted range guard).
         floor = _floor_fee(building_type, delivery)
         floor_applied = risk_low < floor
         if floor_applied:
-            scale     = floor / risk_low if risk_low > 0 else 1.0
             risk_low  = floor
-            risk_high = risk_high * scale
+            risk_high = max(risk_high, floor)
+
+        # ── 4b. Rule C: URM / Historic / Seismic Retrofit minimum ($40,000) ──
+        # Trigger: scope_risk_type = adaptive_reuse OR quick_historic flag present.
+        # Action: mandatory $40,000 floor; scale high end proportionally to preserve
+        # the uncertainty range (Rule C sets the floor, not a ceiling).
+        quick_flags_ans = answers_ref.get("quick_flags") or []
+        rule_c_triggered = (
+            scope_risk_ans == "adaptive_reuse"
+            or "quick_historic_adaptive_reuse" in quick_flags_ans
+        )
+        rule_c_applied = False
+        if rule_c_triggered and risk_low < _RULE_C_FLOOR:
+            # Scale the high end proportionally so the range width is preserved
+            if risk_low > 0:
+                scale_c   = _RULE_C_FLOOR / risk_low
+                risk_high = risk_high * scale_c
+            else:
+                risk_high = max(risk_high, _RULE_C_FLOOR)
+            risk_low      = _RULE_C_FLOOR
+            rule_c_applied = True
 
         # Round to nearest $100 for display
         def r(x: float) -> float:
@@ -247,9 +369,14 @@ class RiskAdjustedFeeEstimator:
             "floor_fee":                 floor,
             "floor_applied":             floor_applied,
             "suggested_fee_range":       {"low": r(risk_low),  "high": r(risk_high)},
+            # Rule B / D override flags
+            "industrial_override":       industrial_override,
+            "scarcity_override":         scarcity_override,
+            "scarcity_sanity_flag":      scarcity_sanity_flag,
+            "rule_c_applied":            rule_c_applied,
             # Warnings
-            "warnings":                  active_flags,
-            "needs_manual_review":       False,
+            "warnings":                  active_flags + (["SCARCITY_SANITY_FLAG"] if scarcity_sanity_flag else []),
+            "needs_manual_review":       scarcity_sanity_flag,
             # Review flag
             **dict(zip(
                 ("fee_requires_review", "review_reason"),
@@ -267,6 +394,9 @@ def _delivery_bucket(answers: dict[str, Any]) -> str:
 
 def _building_type(answers: dict[str, Any]) -> str:
     bt = (answers.get("building_type") or "other").strip().lower()
+    # Normalize extractor enum "warehouse_industrial" → "warehouse" (rate card key)
+    if bt in {"warehouse_industrial", "industrial", "industrial_shell"}:
+        bt = "warehouse"
     return bt if bt in _RATE_CARD["ti"] else "other"
 
 
@@ -315,7 +445,7 @@ def _map_risk_flags(answers: dict[str, Any]) -> dict[str, bool]:
         ),
         "unresponsive_architect": (
             answers.get("architect_responsiveness") == "unresponsive"
-            or answers.get("architect_status") in {"new", "unknown"}
+            or answers.get("architect_status") in {"new", "unknown", "new_no_track_record"}
             or "quick_architect_unresponsive" in quick
         ),
         "no_clear_decision_maker": (

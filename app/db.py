@@ -393,10 +393,29 @@ def mark_proposal_sent(intake_id: int) -> None:
 
 def mark_project_won(intake_id: int, win_probability: int = 100) -> None:
     now = _utc_now_iso()
+    # Read current state to avoid overwriting fields already set by create_billing_phases_for_project
+    current = (
+        _client()
+        .table("intakes")
+        .select("current_billing_phase,current_production_phase")
+        .eq("id", intake_id)
+        .maybe_single()
+        .execute()
+    ).data or {}
+    update: dict[str, Any] = {
+        "status":          "ACTIVE_PROJECT",
+        "win_probability": win_probability,
+        "pipeline_active": 1,
+        "updated_at":      now,
+    }
+    if not current.get("current_billing_phase"):
+        update["current_billing_phase"]    = "retainer"
+    if not current.get("current_production_phase"):
+        update["current_production_phase"] = "SD"
     (
         _client()
         .table("intakes")
-        .update({"status": "ACTIVE_PROJECT", "win_probability": win_probability, "updated_at": now})
+        .update(update)
         .eq("id", intake_id)
         .execute()
     )
@@ -427,7 +446,7 @@ def get_active_bids() -> list[dict[str, Any]]:
             .select(
                 "id,project_name,client_name,location_region,lead_contact,"
                 "proposal_sent_date,follow_up_count,win_probability,answers_json,"
-                "mo_fee_override,ifp_due_date"
+                "mo_fee_override,ifp_due_date,inquiry_date"
             )
             .eq("status", "PROPOSAL_OUT")
             .order("proposal_sent_date", desc=False)
@@ -463,6 +482,7 @@ def get_active_bids() -> list[dict[str, Any]]:
             "win_probability":   int(r.get("win_probability") or 50),
             "approved_fee":      approved_fee,
             "ifp_due_date":      r.get("ifp_due_date") or "",
+            "inquiry_date":      r.get("inquiry_date") or "",
             "approx_sf":         answers.get("approx_sf") or "",
             "project_type":      answers.get("project_type") or "",
         })
@@ -1856,6 +1876,38 @@ def check_phase_hours_vs_budget(intake_id: int, billing_phase_code: str) -> dict
     }
 
 
+def auto_trigger_billing_phase(intake_id: int, billing_phase_code: str) -> bool:
+    """Marks a billing phase as complete_pending_approval when hours reach budget.
+    Returns True if newly triggered, False if already triggered or not applicable."""
+    pbp_resp = (
+        _client()
+        .table("project_billing_phases")
+        .select("id,status")
+        .eq("intake_id", intake_id)
+        .eq("billing_phase_code", billing_phase_code)
+        .maybe_single()
+        .execute()
+    )
+    pbp = pbp_resp.data
+    if not pbp or pbp.get("status") != "pending":
+        return False
+    now = _utc_now_iso()
+    (
+        _client()
+        .table("project_billing_phases")
+        .update({
+            "status":               "complete_pending_approval",
+            "phase_completed_at":   now,
+            "phase_completed_note": "Auto-triggered: phase hours reached budget",
+            "updated_at":           now,
+        })
+        .eq("intake_id", intake_id)
+        .eq("billing_phase_code", billing_phase_code)
+        .execute()
+    )
+    return True
+
+
 def advance_production_phase(
     intake_id: int,
     to_phase: str,
@@ -1991,10 +2043,12 @@ def get_pipeline_data() -> dict[str, Any]:
         return _empty_pipeline()
 
     intake_ids = [i["id"] for i in intakes]
-    pbp_by_intake: dict[int, list[dict]] = {}
-    budget_by_intake: dict[int, float]   = {}
-    actual_by_intake: dict[int, float]   = {}
-    team_by_pn: dict[str, list[str]]     = {}
+    pbp_by_intake: dict[int, list[dict]]   = {}
+    budget_by_intake: dict[int, float]     = {}
+    budget_by_phase: dict[tuple, float]    = {}
+    actual_by_intake: dict[int, float]     = {}
+    actual_by_phase: dict[tuple, float]    = {}
+    team_by_pn: dict[str, list[str]]       = {}
 
     if intake_ids:
         # billing phases
@@ -2008,29 +2062,34 @@ def get_pipeline_data() -> dict[str, Any]:
         for row in (pbp_resp.data or []):
             pbp_by_intake.setdefault(int(row["intake_id"]), []).append(row)
 
-        # phase budgets — total budgeted hours per project
+        # phase budgets — total and per-phase budgeted hours
         pb_resp = (
             _client()
             .table("phase_budgets")
-            .select("intake_id,budgeted_hours")
+            .select("intake_id,phase_code,budgeted_hours")
             .in_("intake_id", intake_ids)
             .execute()
         )
         for row in (pb_resp.data or []):
             iid = int(row["intake_id"])
-            budget_by_intake[iid] = budget_by_intake.get(iid, 0.0) + float(row["budgeted_hours"])
+            hrs = float(row["budgeted_hours"])
+            budget_by_intake[iid] = budget_by_intake.get(iid, 0.0) + hrs
+            budget_by_phase[(iid, row["phase_code"])] = hrs
 
-        # actual hours per project
+        # actual hours per project and per phase
         te_resp = (
             _client()
             .table("time_entries")
-            .select("intake_id,hours")
+            .select("intake_id,hours,phase_code")
             .in_("intake_id", intake_ids)
             .execute()
         )
         for row in (te_resp.data or []):
             iid = int(row["intake_id"])
-            actual_by_intake[iid] = actual_by_intake.get(iid, 0.0) + float(row["hours"])
+            hrs = float(row["hours"])
+            actual_by_intake[iid] = actual_by_intake.get(iid, 0.0) + hrs
+            pc = row.get("phase_code") or ""
+            actual_by_phase[(iid, pc)] = actual_by_phase.get((iid, pc), 0.0) + hrs
 
         # calendar team members per project
         project_numbers = [i["project_number"] for i in intakes if i.get("project_number")]
@@ -2083,19 +2142,24 @@ def get_pipeline_data() -> dict[str, Any]:
         budgeted = round(budget_by_intake.get(iid, 0.0), 1)
         actual   = round(actual_by_intake.get(iid, 0.0), 1)
         pn = intake.get("project_number") or ""
+        cur_prod = intake.get("current_production_phase") or "SD"
+        phase_budgeted = round(budget_by_phase.get((iid, cur_prod), 0.0), 1)
+        phase_actual   = round(actual_by_phase.get((iid, cur_prod), 0.0), 1)
 
         project = {
             "intake_id":              iid,
             "project_number":         pn,
             "project_name":           intake["project_name"],
             "client":                 intake.get("client_name") or "",
-            "current_production_phase": intake.get("current_production_phase") or "SD",
+            "current_production_phase": cur_prod,
             "current_billing_phase":  billing_col,
             "billing_fee":            billing_fee,
             "billing_fee_pct":        billing_fee_pct,
             "team":                   team_by_pn.get(pn, []),
             "budgeted_hours":         budgeted,
             "actual_hours":           actual,
+            "phase_budgeted_hours":   phase_budgeted,
+            "phase_actual_hours":     phase_actual,
             "change_order_pending":   bool(int(intake.get("change_order_pending") or 0)),
             "invoice_status":         invoice_status,
             "can_advance":            invoice_status not in ("complete_pending_approval", "invoice_approved"),

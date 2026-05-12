@@ -98,6 +98,7 @@
       </div>
     </div>
     <div id="phase-matrix-wrap"><div class="subtle small">Loading…</div></div>
+    <div id="matrix-billing-toast" style="display:none;margin-top:10px;padding:10px 14px;background:oklch(22% 0.09 145 / 30%);border:1px solid oklch(46% 0.14 145 / 50%);border-radius:8px;font-size:12px;font-weight:700;color:var(--good)"></div>
   </div>
 
   {# Panel 3: Schedule Dial #}
@@ -160,6 +161,28 @@
   </div>
 
 </div>
+
+{% if intake.project_number %}
+<div class="card" id="assigned-team-card" style="padding:20px;margin-top:16px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <h2 style="margin:0">Assigned Team</h2>
+    <span id="team-save-status" style="font-size:12px;color:var(--good);display:none">✓ Saved</span>
+  </div>
+  <div id="team-chips" style="display:flex;flex-wrap:wrap;gap:8px;min-height:28px;margin-bottom:14px;align-items:center">
+    <span class="subtle small">Loading…</span>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <select id="team-add-select" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card-bg-deeper);color:var(--text);font-size:13px;flex:1;min-width:160px">
+      <option value="">Add team member…</option>
+      {% for m in (db_team_members or []) %}
+      <option value="{{ m }}">{{ m }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn" style="font-size:12px;padding:5px 12px;white-space:nowrap" onclick="teamAddMember()">+ Add</button>
+  </div>
+  <div id="team-error" style="display:none;font-size:12px;color:var(--bad);margin-top:8px"></div>
+</div>
+{% endif %}
 {% endif %}
 
 {# ── Zone 2: Accordion Sections ───────────────────────────────────────────── #}
@@ -907,11 +930,19 @@ function copyProposal() {
       }),
     })
     .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.detail || 'Error ' + r.status); }); return r.json(); })
-    .then(() => {
+    .then(result => {
       if (engEl)   engEl.value   = '';
       if (hoursEl) hoursEl.value = '';
       if (noteEl)  noteEl.value  = '';
       if (btn) { btn.textContent = '+ Log'; btn.disabled = false; }
+      if (result.billing_triggered) {
+        var toast = document.getElementById('matrix-billing-toast');
+        if (toast) {
+          toast.textContent = '✓ ' + result.billing_triggered.toUpperCase() + ' phase hit budget — queued for Mo\'s approval in the billing queue.';
+          toast.style.display = 'block';
+          setTimeout(function() { toast.style.display = 'none'; }, 7000);
+        }
+      }
       loadMatrix();
       if (window.loadProjectedBurn) window.loadProjectedBurn(_intakeId);
     })
@@ -1139,6 +1170,68 @@ async function markProposalSent(intakeId) {
     alert('Error: ' + e.message);
   }
 }
+
+// ── Assigned Team ─────────────────────────────────────────────────────────
+(function() {
+  var card = document.getElementById('assigned-team-card');
+  if (!card) return;
+
+  var _engineers = {{ (intake.assigned_engineers or '[]') | safe }};
+
+  function colorFor(ini) { return _teamColorsMap[ini] || '#64748b'; }
+
+  function renderChips() {
+    var container = document.getElementById('team-chips');
+    if (!container) return;
+    if (!_engineers.length) {
+      container.innerHTML = '<span class="subtle small">No team members assigned.</span>';
+      return;
+    }
+    container.innerHTML = _engineers.map(function(ini) {
+      var c = colorFor(ini);
+      return '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 12px;border-radius:20px;border:1px solid ' + c + '44;background:' + c + '18;color:' + c + ';font-size:12px;font-weight:700">' +
+        ini +
+        '<button onclick="teamRemoveMember(\'' + ini + '\')" style="background:none;border:none;cursor:pointer;color:' + c + ';font-size:15px;line-height:1;padding:0;opacity:.7" title="Remove">×</button>' +
+        '</span>';
+    }).join('');
+  }
+
+  function saveTeam() {
+    var errEl = document.getElementById('team-error');
+    if (errEl) errEl.style.display = 'none';
+    fetch('/api/intakes/' + _intakeId + '/assigned-engineers', {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({assigned_engineers: _engineers}),
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'Save failed'); });
+      var st = document.getElementById('team-save-status');
+      if (st) { st.style.display = 'inline'; setTimeout(function() { st.style.display = 'none'; }, 2000); }
+    }).catch(function(e) {
+      if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    });
+  }
+
+  window.teamAddMember = function() {
+    var sel = document.getElementById('team-add-select');
+    if (!sel || !sel.value) return;
+    var ini = sel.value.toUpperCase();
+    if (_engineers.indexOf(ini) < 0) {
+      _engineers.push(ini);
+      renderChips();
+      saveTeam();
+    }
+    sel.value = '';
+  };
+
+  window.teamRemoveMember = function(ini) {
+    _engineers = _engineers.filter(function(e) { return e !== ini; });
+    renderChips();
+    saveTeam();
+  };
+
+  renderChips();
+})();
 
 async function markProjectWon(intakeId) {
   if (!confirm('Mark as Won?\n\nThis will:\n• Assign the next project number\n• Commit WEU loads to engineer calendars\n• Activate pipeline tracking\n\nThis action cannot be undone automatically.')) return;

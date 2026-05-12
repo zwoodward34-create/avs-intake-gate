@@ -281,7 +281,8 @@
 
     <div class="won-cap-section">
       <label class="won-field-label">Assign Engineers</label>
-      <div id="won-cap-list"><div class="won-cap-loading">Loading capacity…</div></div>
+      <button class="btn" id="won-load-cap-btn" onclick="loadWonCapacity()" style="font-size:11px;padding:5px 12px;margin-bottom:10px;width:100%">Load Capacity</button>
+      <div id="won-cap-list"></div>
     </div>
 
     <div id="won-error" style="display:none;font-size:12px;font-weight:700;color:var(--bad);margin-bottom:10px"></div>
@@ -419,7 +420,7 @@
         : ''}
       <div class="pl-prop-actions">
         ${followupBtn}
-        <button class="btn-prop-won" onclick="openWonModal(${p.intake_id},'${esc(p.project_name)}',${p.approved_fee || 0})">✓ Won</button>
+        <button class="btn-prop-won" onclick="openWonModal(${p.intake_id},'${esc(p.project_name)}',${p.approved_fee || 0},'${p.inquiry_date||''}','${p.ifp_due_date||''}')">✓ Won</button>
         <button class="btn-prop-lost" onclick="markLost(${p.intake_id},'${esc(p.project_name)}')">✗ Lost</button>
       </div>
     </div>`;
@@ -434,6 +435,9 @@
     const pct      = p.budgeted_hours > 0 ? Math.min(p.actual_hours / p.budgeted_hours * 100, 120) : 0;
     const barColor = pct > 100 ? 'var(--bad)' : pct > 80 ? 'var(--warn)' : 'var(--good)';
     const pctStyle = pct > 100 ? 'color:var(--bad)' : pct > 80 ? 'color:var(--warn)' : 'color:var(--good)';
+    const phasePct      = p.phase_budgeted_hours > 0 ? Math.min(p.phase_actual_hours / p.phase_budgeted_hours * 100, 120) : 0;
+    const phaseBarColor = phasePct > 100 ? 'var(--bad)' : phasePct > 80 ? 'var(--warn)' : 'var(--accent)';
+    const phasePctStyle = phasePct > 100 ? 'color:var(--bad)' : phasePct > 80 ? 'color:var(--warn)' : 'color:var(--accent)';
 
     const teamHtml = (p.team || []).slice(0, 5).map(m => {
       const c = TEAM_COLORS[m] || 'var(--muted)';
@@ -463,13 +467,23 @@
       <div class="pl-name">${esc(p.project_name)}</div>
       <div class="pl-client">${esc(p.client)}</div>
 
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">Overall</div>
       <div class="pl-hours-row">
         <span class="pl-hours-nums">${p.actual_hours.toFixed(1)} / ${p.budgeted_hours.toFixed(1)} h</span>
         <span class="pl-hours-pct" style="${pctStyle}">${pct.toFixed(0)}%</span>
       </div>
-      <div class="pl-bar-track">
+      <div class="pl-bar-track" style="margin-bottom:8px">
         <div class="pl-bar-fill" style="width:${Math.min(pct,100)}%;background:${barColor}"></div>
       </div>
+      ${p.phase_budgeted_hours > 0 ? `
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">${p.current_production_phase} Phase</div>
+      <div class="pl-hours-row">
+        <span class="pl-hours-nums">${(p.phase_actual_hours||0).toFixed(1)} / ${p.phase_budgeted_hours.toFixed(1)} h</span>
+        <span class="pl-hours-pct" style="${phasePctStyle}">${phasePct.toFixed(0)}%</span>
+      </div>
+      <div class="pl-bar-track">
+        <div class="pl-bar-fill" style="width:${Math.min(phasePct,100)}%;background:${phaseBarColor}"></div>
+      </div>` : ''}
 
       <div class="pl-fee">Fee: <strong>${feeDisplay}</strong>${feePct}</div>
 
@@ -559,28 +573,21 @@
   // ── Won Modal ────────────────────────────────────────────────────────────────
   let _wonIntakeId = null;
 
-  window.openWonModal = function(intakeId, projectName, fee) {
+  window.openWonModal = function(intakeId, projectName, fee, startDate, ifpDate) {
     _wonIntakeId = intakeId;
     document.getElementById('won-title').textContent = 'Mark as Won — ' + projectName.substring(0, 40);
     document.getElementById('won-sub').textContent =
       (fee > 0 ? 'Approved fee: $' + Number(fee).toLocaleString(undefined,{maximumFractionDigits:0}) + '. ' : '') +
       'Assign engineers and set project dates.';
-    document.getElementById('won-start').value = '';
-    document.getElementById('won-ifp').value   = '';
+    document.getElementById('won-start').value = startDate || '';
+    document.getElementById('won-ifp').value   = ifpDate   || '';
     document.getElementById('won-error').style.display = 'none';
     const btn = document.getElementById('won-confirm-btn');
     if (btn) { btn.disabled = false; btn.textContent = 'Confirm Win'; }
-
-    const capList = document.getElementById('won-cap-list');
-    capList.innerHTML = '<div class="won-cap-loading">Loading capacity…</div>';
+    const loadBtn = document.getElementById('won-load-cap-btn');
+    if (loadBtn) { loadBtn.disabled = false; loadBtn.textContent = 'Load Capacity'; }
+    document.getElementById('won-cap-list').innerHTML = '';
     document.getElementById('won-overlay').classList.add('open');
-
-    const today = new Date().toISOString().split('T')[0];
-    const far   = new Date(Date.now() + 120*24*60*60*1000).toISOString().split('T')[0];
-    fetch('/api/capacity/projected?start=' + today + '&end=' + far)
-      .then(r => r.json())
-      .then(data => renderWonCapacity(data))
-      .catch(() => { capList.innerHTML = '<div class="won-cap-loading" style="color:var(--bad)">Could not load capacity.</div>'; });
   };
 
   function renderWonCapacity(data) {
@@ -606,6 +613,29 @@
     }
     capList.innerHTML = poolHtml('Engineering Pool', data.engineering_pool) + poolHtml('Drafting Pool', data.drafting_pool);
   }
+
+  window.loadWonCapacity = function() {
+    const startVal = document.getElementById('won-start').value;
+    const ifpVal   = document.getElementById('won-ifp').value;
+    const capList  = document.getElementById('won-cap-list');
+    const loadBtn  = document.getElementById('won-load-cap-btn');
+    if (!startVal || !ifpVal) {
+      capList.innerHTML = '<div class="won-cap-loading" style="color:var(--warn)">Set start and IFP dates first.</div>';
+      return;
+    }
+    if (loadBtn) { loadBtn.disabled = true; loadBtn.textContent = 'Loading…'; }
+    capList.innerHTML = '<div class="won-cap-loading">Loading capacity…</div>';
+    fetch('/api/capacity/projected?start=' + startVal + '&end=' + ifpVal)
+      .then(r => r.json())
+      .then(data => {
+        renderWonCapacity(data);
+        if (loadBtn) { loadBtn.disabled = false; loadBtn.textContent = 'Reload Capacity'; }
+      })
+      .catch(() => {
+        capList.innerHTML = '<div class="won-cap-loading" style="color:var(--bad)">Could not load capacity.</div>';
+        if (loadBtn) { loadBtn.disabled = false; loadBtn.textContent = 'Load Capacity'; }
+      });
+  };
 
   window.closeWonModal = function() {
     document.getElementById('won-overlay').classList.remove('open');

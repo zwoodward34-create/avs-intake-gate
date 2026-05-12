@@ -24,6 +24,16 @@ AUTHORIZED_DECISION_MAKER_TITLES: frozenset[str] = frozenset({
     "construction manager",
 })
 
+# Tier-1 architect firms — do NOT flag as new/unproven (CLAUDE.md Section 2).
+# Substring match against the lowercase architect field value.
+TIER_1_ARCHITECT_FIRMS: frozenset[str] = frozenset({
+    "butler design group",
+    "cuhaci & peterson",
+    "cuhaci and peterson",
+    "c&p architects",
+    "c & p architects",
+})
+
 # States where AVS is licensed — Unlicensed Jurisdiction flag only triggers outside these
 _LICENSED_STATES: frozenset[str] = frozenset({"AZ", "CA"})
 
@@ -401,10 +411,14 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
             ),
         })
 
-    docs_commitment = answers.get("docs_commitment")  # yes|no|unknown
+    docs_commitment = answers.get("docs_commitment")
+    # Extractor enum values: "architect_will_provide_with_timeline", "client_will_provide",
+    #   "nothing_committed", "refused", "unknown"
+    # "refused" = client explicitly said they will NOT provide the docs
+    # "nothing_committed" = docs not in hand yet but client hasn't refused
     if missing_docs:
-        if docs_commitment == "no":
-            # Client declined docs — flag as high (not critical); soft blockers carry the detail.
+        if docs_commitment in {"no", "refused"}:
+            # Client explicitly declined docs — flag as high; soft blockers carry the detail.
             red_flags.append(
                 RedFlag(
                     key="docs_refused",
@@ -421,11 +435,18 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
             needs_clarification_reasons.append(
                 "Missing required documentation and commitment to provide is unclear."
             )
-        # docs expected but missing → handled via soft_blockers, not a blocking red flag
+        # "nothing_committed" / "architect_will_provide_with_timeline" / "client_will_provide"
+        # → docs expected but not yet in hand → handled via soft_blockers, not a blocking red flag
 
     # Architect/client
     architect_status = answers.get("architect_status")  # known_good|known_fair|new|unknown|not_identified|inhouse
     architect_responsive = answers.get("architect_responsiveness")  # responsive|unresponsive|unknown
+
+    # Check whether the named architect firm is a recognised Tier-1 partner.
+    # Tier-1 firms are never flagged as "new/unknown" regardless of status enum.
+    raw_architect_name = (answers.get("architect") or "").strip().lower()
+    _is_tier1_architect = any(firm in raw_architect_name for firm in TIER_1_ARCHITECT_FIRMS)
+
     if architect_status == "not_identified":
         needs_clarification_reasons.append("Architect is not identified yet.")
     if architect_responsive == "unresponsive":
@@ -438,7 +459,7 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
                 detail="Communication risk; track record of delays/issues.",
             )
         )
-    elif architect_status in {"new", "unknown"}:
+    elif architect_status in {"new", "unknown", "new_no_track_record"} and not _is_tier1_architect:
         red_flags.append(
             RedFlag(
                 key="architect_unknown",
@@ -500,23 +521,26 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
     quick_flags = answers.get("quick_flags") or []
     if isinstance(quick_flags, str):
         quick_flags = [quick_flags]
+    # 4-tuple: (title, severity, category, canonical_key)
+    # canonical_key must match the key used in the detailed screening blocks above
+    # so the deduplication pass (by_key) correctly merges quick + detailed flags.
     quick_map = {
-        "quick_scope_unclear": ("Scope is unclear / will evolve", "high", "Scope"),
-        "quick_ti_high_liability": ("TI + high liability (medical/critical)", "high", "Scope"),
-        "quick_historic_adaptive_reuse": ("Historic building / adaptive reuse", "high", "Scope"),
-        "quick_schedule_compressed": ("Schedule compressed or unrealistic", "high", "Timeline"),
-        "quick_hard_stop_deadline": ("Hard-stop deadline", "high", "Timeline"),
-        "quick_no_site_access": ("Existing building + no site access", "critical", "Site/Docs"),
-        "quick_missing_geotech_or_drawings": ("Missing geotech or existing drawings", "high", "Site/Docs"),
-        "quick_architect_unresponsive": ("Architect unresponsive or unproven", "high", "Client/Architect"),
-        "quick_no_decision_maker": ("No clear decision-maker", "medium", "Client/Architect"),
+        "quick_scope_unclear":              ("Scope is unclear / will evolve",              "high",     "Scope",             "scope_undefined"),
+        "quick_ti_high_liability":          ("TI + high liability (medical/critical)",      "high",     "Scope",             "scope_ti_high_liability"),
+        "quick_historic_adaptive_reuse":    ("Historic building / adaptive reuse",          "high",     "Scope",             "scope_adaptive_reuse"),
+        "quick_schedule_compressed":        ("Schedule compressed or unrealistic",          "high",     "Timeline",          "timeline_compressed"),
+        "quick_hard_stop_deadline":         ("Hard-stop deadline",                          "high",     "Timeline",          "timeline_hard_stop"),
+        "quick_no_site_access":             ("Existing building + no site access",          "critical", "Site/Docs",         "site_no_access"),
+        "quick_missing_geotech_or_drawings":("Missing geotech or existing drawings",        "high",     "Site/Docs",         "missing_geotech_or_drawings"),
+        "quick_architect_unresponsive":     ("Architect unresponsive or unproven",          "high",     "Client/Architect",  "architect_unresponsive"),
+        "quick_no_decision_maker":          ("No clear decision-maker",                     "medium",   "Client/Architect",  "decision_maker_unclear"),
     }
     for q in quick_flags:
         if q in quick_map:
-            title, severity, category = quick_map[q]
+            title, severity, category, canonical_key = quick_map[q]
             red_flags.append(
                 RedFlag(
-                    key=q,
+                    key=canonical_key,
                     title=title,
                     severity=severity,
                     category=category,

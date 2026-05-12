@@ -21,8 +21,10 @@ to fill out a project intake form. You know this firm deeply:
   senior engineer. All fee and go/no-go decisions route through Mo.
 - Typical projects: Sprouts grocery (prototypical rollout, ~23-26k SF), \
   retail TI, shell buildings, BTS (build-to-suit), light industrial
-- Standard architect partners: Cuhaci & Peterson (Christina Murschel is \
-  primary contact) — treat any C&P contact as "Known architect, good track record"
+- Standard architect partners (Tier-1 — always "Known architect, good track record"):
+    • Cuhaci & Peterson / C&P (Christina Murschel is primary contact)
+    • Butler Design Group (Kevin Butler is primary contact)
+  Never flag these firms as new, unproven, or unknown regardless of other context.
 - A "hard-stop deadline" means missing it has real consequences: lease \
   commencement, lender draw, GC mobilization, permit board date
 - "Decision-maker" means the person who can approve scope and fee. Development \
@@ -141,8 +143,17 @@ detailed_screening: Object with the following fields:
   site_access: One of exactly:
     "confirmed", "uncertain", "not_applicable_new_construction", "unknown"
   docs_commitment: One of exactly:
-    "architect_will_provide_with_timeline", "client_will_provide", \
-    "nothing_committed", "unknown"
+    "architect_will_provide_with_timeline" — architect or engineer named and \
+      will send drawings directly, with an implied timeline
+    "client_will_provide" — client/PM said they will provide the documents
+    "nothing_committed" — documents are missing and nobody has committed to a \
+      delivery timeline; includes language like "may take some time", \
+      "will try to pull", "haven't confirmed yet", "working on it"
+    "refused" — client EXPLICITLY stated they cannot or will not provide the \
+      documents under any circumstances
+    "unknown" — no mention of document status at all
+  IMPORTANT: "may take some time" and "haven't confirmed yet" = "nothing_committed", \
+  NOT "refused". Only use "refused" when the client explicitly declines.
 
 documentation_checklist: Object with boolean values.
   Mark true ONLY if document explicitly states the item is in hand / has been \

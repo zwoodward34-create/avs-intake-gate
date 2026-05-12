@@ -513,6 +513,23 @@ def api_delete_intake(intake_id: int) -> dict[str, Any]:
     return {"deleted": intake_id}
 
 
+@app.patch("/api/intakes/{intake_id}/assigned-engineers")
+async def api_update_assigned_engineers(request: Request, intake_id: int) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    body = await request.json()
+    engineers = body.get("assigned_engineers")
+    if not isinstance(engineers, list):
+        raise HTTPException(status_code=400, detail="assigned_engineers must be a list.")
+    engineers = [str(e).strip().upper() for e in engineers if str(e).strip()]
+    db._client().table("intakes").update({
+        "assigned_engineers": _json.dumps(engineers),
+        "updated_at":         db._utc_now_iso(),
+    }).eq("id", intake_id).execute()
+    return {"success": True, "assigned_engineers": engineers}
+
+
 @app.post("/intakes")
 async def intake_create(request: Request) -> RedirectResponse:
     form = await request.form()
@@ -2507,7 +2524,17 @@ async def api_create_time_entry(request: Request) -> dict[str, Any]:
         hours=hours,
         notes=notes,
     )
-    return {"id": entry_id, "success": True}
+    # Check if logging these hours pushed a billing phase to capacity
+    billing_triggered: Optional[str] = None
+    if intake_id:
+        for bp_code, prod_phases in db.BILLING_TO_PRODUCTION.items():
+            if phase_code in prod_phases:
+                check = db.check_phase_hours_vs_budget(intake_id, bp_code)
+                if check.get("budgeted", 0) > 0 and check.get("actual", 0) >= check.get("budgeted", 0):
+                    if db.auto_trigger_billing_phase(intake_id, bp_code):
+                        billing_triggered = bp_code
+                break
+    return {"id": entry_id, "success": True, "billing_triggered": billing_triggered}
 
 
 @app.patch("/api/time-entries/{entry_id}")
