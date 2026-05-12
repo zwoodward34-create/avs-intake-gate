@@ -562,14 +562,15 @@ TEAM_COLORS = {
 
 ENGINEER_ROLES = {
     "MK": "President",
-    "NK": "PE",
-    "RS": "Engineer",
-    "RO": "Engineer",
-    "SW": "Engineer",
-    "JP": "Designer",
-    "JW": "Designer",
-    "JR": "Project Manager",
-    "RK": "EIT",
+    "NK": "Principal",
+    "RS": "CAD/BIM Manager",
+    "RO": "Project Manager",
+    "SW": "Senior CAD Designer",
+    "JP": "CAD Designer",
+    "JW": "Project Engineer",
+    "JR": "Engineer in Training (EIT)",
+    "RK": "Engineer in Training (EIT)",
+    "NS": "Office Manager",
 }
 
 VALID_PHASES = list(PHASE_COLORS.keys())
@@ -831,13 +832,14 @@ PHASE_LABELS: dict[str, str] = {
 TEAM_FULL_NAMES: dict[str, str] = {
     "MK": "Mo Kateeb",
     "NK": "Nathan Kline",
-    "RS": "R. Schwan",
-    "RO": "R. Ochoa",
-    "SW": "S. Woodward",
-    "JP": "J. Prado",
-    "JW": "J. Woodward",
-    "JR": "J. Rodriguez",
-    "RK": "R. Kanth",
+    "RS": "Randall Smith",
+    "RO": "Ryan Olson",
+    "SW": "Scott Webb",
+    "JP": "Jesus Prado",
+    "JW": "Jacob Wadman",
+    "JR": "Josh Robinder",
+    "RK": "Rajul Kanth",
+    "NS": "Natalie Songco",
 }
 
 

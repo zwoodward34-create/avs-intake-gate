@@ -210,15 +210,15 @@ app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="stati
 # Emails are compared case-insensitively (stored lowercase here).
 _USER_DIRECTORY: dict[str, dict[str, str]] = {
     "mkateeb@avschwan.com":   {"role": "admin",          "initials": "MK", "name": "Mo Kateeb"},
-    "nkline@avschwan.com":    {"role": "admin",          "initials": "NK", "name": "Natalie Kline"},
+    "nkline@avschwan.com":    {"role": "admin",          "initials": "NK", "name": "Nathan Kline"},
     "zwoodward@avschwan.com": {"role": "admin",          "initials": "ZW", "name": "Zac Woodward"},
-    "rolson@avschwan.com":    {"role": "admin",          "initials": "RO", "name": "R. Olson"},
-    "rsmith@avschwan.com":    {"role": "employee",       "initials": "RS", "name": "R. Smith"},
-    "swebb@avschwan.com":     {"role": "employee",       "initials": "SW", "name": "S. Webb"},
-    "jprado@avschwan.com":    {"role": "employee",       "initials": "JP", "name": "J. Prado"},
-    "jwadman@avschwan.com":   {"role": "employee",       "initials": "JW", "name": "J. Wadman"},
-    "jrobinder@avschwan.com": {"role": "employee",       "initials": "JR", "name": "J. Robinder"},
-    "rkanth@avschwan.com":    {"role": "employee",       "initials": "RK", "name": "R. Kanth"},
+    "rolson@avschwan.com":    {"role": "admin",          "initials": "RO", "name": "Ryan Olson"},
+    "rsmith@avschwan.com":    {"role": "employee",       "initials": "RS", "name": "Randall Smith"},
+    "swebb@avschwan.com":     {"role": "employee",       "initials": "SW", "name": "Scott Webb"},
+    "jprado@avschwan.com":    {"role": "employee",       "initials": "JP", "name": "Jesus Prado"},
+    "jwadman@avschwan.com":   {"role": "employee",       "initials": "JW", "name": "Jacob Wadman"},
+    "jrobinder@avschwan.com": {"role": "employee",       "initials": "JR", "name": "Josh Robinder"},
+    "rkanth@avschwan.com":    {"role": "employee",       "initials": "RK", "name": "Rajul Kanth"},
     "nsongco@avschwan.com":   {"role": "office_manager", "initials": "NS", "name": "Natalie Songco"},
 }
 
