@@ -370,7 +370,7 @@
       projects.forEach(p => {
         const wrap = document.createElement('div');
         wrap.className = 'pl-card-wrap';
-        wrap.innerHTML = isProposals ? buildProposalCard(p) : buildCard(p);
+        wrap.innerHTML = isProposals ? buildProposalCard(p) : (key === 'retainer' ? buildRetainerCard(p) : buildCard(p));
         container.appendChild(wrap);
       });
     });
@@ -425,6 +425,101 @@
       </div>
     </div>`;
   }
+
+  // ── Retainer card ────────────────────────────────────────────────────────────
+  function buildRetainerCard(p) {
+    const retainerFee = p.billing_fee || 0;
+    const feeDisplay  = retainerFee ? '$' + retainerFee.toLocaleString(undefined,{maximumFractionDigits:0}) : '—';
+    const totalFee    = p.approved_fee ? '$' + p.approved_fee.toLocaleString(undefined,{maximumFractionDigits:0}) : '—';
+
+    return `
+    <div class="pl-card" id="pcard-${p.intake_id}" onclick="navToIntake(event,${p.intake_id})">
+      <div class="pl-card-hdr">
+        <span class="pl-pn">#${p.project_number || '—'}</span>
+        <span class="pl-phase-badge" style="color:var(--warn)">Retainer</span>
+      </div>
+      <div class="pl-name">${esc(p.project_name)}</div>
+      <div class="pl-client">${esc(p.client)}</div>
+
+      <div style="margin:10px 0 8px;padding:10px 12px;background:var(--card-bg-deeper);border:1px solid var(--border);border-radius:8px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Retainer Amount</div>
+        <div id="ret-fee-display-${p.intake_id}" style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--warn)">${feeDisplay}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">of ${totalFee} approved fee</div>
+        <input id="ret-fee-input-${p.intake_id}" type="number" step="100" min="0"
+               value="${retainerFee}"
+               style="display:none;width:100%;box-sizing:border-box;margin-top:8px;padding:6px 10px;background:var(--card-bg);border:1px solid var(--accent);border-radius:6px;color:var(--text);font-size:14px;font-family:var(--mono);font-weight:700"
+               onkeydown="if(event.key==='Enter')saveRetainerFee(event,${p.intake_id})"
+        />
+      </div>
+
+      <div class="pl-card-footer" style="gap:6px">
+        <button class="btn btn-sm" id="ret-edit-btn-${p.intake_id}"
+                onclick="toggleRetainerEdit(event,${p.intake_id})">Edit</button>
+        <button class="btn btn-sm" id="ret-save-btn-${p.intake_id}" style="display:none"
+                onclick="saveRetainerFee(event,${p.intake_id})">Save</button>
+        <button class="btn btn-sm btn-primary" style="background:var(--good);border-color:var(--good);flex:1"
+                onclick="approveRetainer(event,${p.intake_id})">✓ Approve &amp; Start SD</button>
+      </div>
+    </div>`;
+  }
+
+  window.toggleRetainerEdit = function(evt, id) {
+    evt.stopPropagation();
+    const disp  = document.getElementById('ret-fee-display-' + id);
+    const inp   = document.getElementById('ret-fee-input-' + id);
+    const edit  = document.getElementById('ret-edit-btn-' + id);
+    const save  = document.getElementById('ret-save-btn-' + id);
+    const isEditing = inp.style.display !== 'none';
+    if (isEditing) {
+      disp.style.display = '';
+      inp.style.display  = 'none';
+      edit.style.display = '';
+      save.style.display = 'none';
+    } else {
+      disp.style.display = 'none';
+      inp.style.display  = '';
+      edit.style.display = 'none';
+      save.style.display = '';
+      inp.focus();
+    }
+  };
+
+  window.saveRetainerFee = async function(evt, id) {
+    evt.stopPropagation();
+    const inp = document.getElementById('ret-fee-input-' + id);
+    const newFee = parseFloat(inp.value);
+    if (isNaN(newFee) || newFee < 0) { showToast('Enter a valid fee amount.', 'bad'); return; }
+    try {
+      const resp = await fetch('/api/projects/' + id + '/billing-phases/retainer/fee', {
+        method: 'PATCH', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({fee_amount: newFee}),
+      });
+      if (!resp.ok) throw new Error('Failed to save');
+      const disp = document.getElementById('ret-fee-display-' + id);
+      disp.textContent = '$' + newFee.toLocaleString(undefined,{maximumFractionDigits:0});
+      toggleRetainerEdit(evt, id);
+      showToast('Retainer updated.', 'good');
+    } catch(e) {
+      showToast('Save failed: ' + e.message, 'bad');
+    }
+  };
+
+  window.approveRetainer = async function(evt, id) {
+    evt.stopPropagation();
+    if (!confirm('Mark retainer as approved and move project to Schematic Design?')) return;
+    try {
+      const resp = await fetch('/api/projects/' + id + '/billing-phases/retainer/approve-invoice', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({approved_by: 'MO', note: 'Retainer approved via pipeline card'}),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Failed');
+      showToast('Retainer approved. Project moved to SD.', 'good');
+      setTimeout(() => location.reload(), 1000);
+    } catch(e) {
+      showToast('Error: ' + e.message, 'bad');
+    }
+  };
 
   // ── Active project card ──────────────────────────────────────────────────────
   function buildCard(p) {

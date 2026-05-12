@@ -367,6 +367,60 @@
   </table>
 </div>
 
+{# ── Engineer × Project Hours ──────────────────────────────────────────────── #}
+{% if engineer_project_hours %}
+<div class="card" style="padding:20px;margin-bottom:16px">
+  <div style="margin-bottom:16px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Billable Hours by Engineer</div>
+    <div style="font-size:18px;font-weight:800;margin-top:2px">All Active Projects</div>
+  </div>
+
+  {% for eng in engineer_project_hours %}
+  <details style="margin-bottom:8px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+    <summary style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:var(--card-bg-deeper);list-style:none;user-select:none">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:{{ eng.color }}22;color:{{ eng.color }};font-size:11px;font-weight:700;flex-shrink:0;border:1px solid {{ eng.color }}44">{{ eng.initials }}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:var(--text)">{{ eng.full_name }}</div>
+        <div style="font-size:11px;color:var(--muted)">{{ eng.role }}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-right:8px">
+        <div style="font-size:14px;font-family:var(--mono);font-weight:800;color:{% if eng.total_hours > 0 %}var(--accent){% else %}var(--muted){% endif %}">{{ eng.total_hours }}h</div>
+        <div style="font-size:10px;color:var(--muted)">total billable</div>
+      </div>
+      <span style="font-size:11px;color:var(--muted)">▾</span>
+    </summary>
+    <div style="padding:0">
+      <table class="table" style="margin:0">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Client</th>
+            <th style="text-align:right">Hours</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for proj in eng.projects %}
+          <tr style="{% if proj.hours == 0 %}opacity:0.5;{% endif %}">
+            <td>
+              <a href="/intakes/{{ proj.intake_id }}" style="text-decoration:none">
+                {% if proj.project_number != '—' %}<span style="font-family:var(--mono);font-weight:700;color:var(--accent);font-size:11px">{{ proj.project_number }}</span> · {% endif %}
+                <span style="font-size:12px">{{ proj.project_name[:40] }}</span>
+              </a>
+            </td>
+            <td class="subtle small">{{ proj.client_name }}</td>
+            <td style="text-align:right;font-family:var(--mono);font-weight:{% if proj.hours > 0 %}700{% else %}400{% endif %};color:{% if proj.hours > 0 %}var(--text){% else %}var(--muted){% endif %}">
+              {{ proj.hours }}h
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+
 {# ── Burn vs Bill Detail Table ─────────────────────────────────────────────── #}
 {% if burn_vs_bill %}
 <div class="card" style="padding:20px;margin-bottom:16px">

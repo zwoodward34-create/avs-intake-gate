@@ -257,7 +257,7 @@ _ROLE_HOME = {
 }
 
 # Pages each role may visit (admin implicit everywhere)
-_EMPLOYEE_PAGES = {"/timesheet", "/calendar", "/time-off", "/past-projects", "/my-launch"}
+_EMPLOYEE_PAGES = {"/timesheet", "/calendar", "/time-off", "/past-projects", "/my-launch", "/my-time"}
 _OFFICE_PAGES   = {"/timesheet", "/calendar", "/time-off",
                    "/billing-queue", "/payroll-export", "/burn-health", "/capacity",
                    "/approvals"}
@@ -639,6 +639,15 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
         except (ValueError, AttributeError):
             pass
 
+    # Days since proposal was sent
+    days_since_proposal: Optional[int] = None
+    if intake.proposal_sent_date:
+        try:
+            sent_d = date.fromisoformat(str(intake.proposal_sent_date)[:10])
+            days_since_proposal = (today_d - sent_d).days
+        except (ValueError, AttributeError):
+            pass
+
     # All accordion sections default to collapsed — user expands what they need
     default_open: set[str] = set()
 
@@ -669,6 +678,7 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
             "db_team_members":  db.TEAM_MEMBERS,
             "has_budget":       bool(phase_budgets),
             "budget_fee":       phase_budgets[0]["approved_fee"] if phase_budgets else 0.0,
+            "days_since_proposal": days_since_proposal,
         },
     )
 
@@ -2079,15 +2089,53 @@ async def api_create_schedule(request: Request) -> dict[str, Any]:
 
 @app.get("/time-off", response_class=HTMLResponse)
 def timeoff_page(request: Request) -> HTMLResponse:
-    if redir := _check_page_access(request, "/time-off"): return redir
+    return RedirectResponse(url="/my-time#timeoff", status_code=302)
+
+
+@app.get("/my-time", response_class=HTMLResponse)
+def my_time_page(
+    request: Request,
+    engineer: Optional[str] = None,
+) -> HTMLResponse:
+    if redir := _check_page_access(request, "/my-time"): return redir
+    user     = _session_user(request) or {}
+    is_admin = user.get("role") == "admin"
+
+    # My Hours data
+    if engineer and is_admin:
+        target = engineer.upper()
+    else:
+        target = (user.get("initials") or "NK").upper()
+    view = db.get_engineer_bucket_view(target)
+    team_members = {k: v for k, v in db.TEAM_FULL_NAMES.items() if k in _WEU_ROLE_BUCKETS}
+
+    # Timesheet data
+    import json as _json
+    start, end = _current_pay_period()
+    current_user_role     = user.get("role", "")
+    current_user_initials = user.get("initials", "")
+
     return templates.TemplateResponse(
-        "timeoff.html",
+        "my_time.html",
         {
-            "request":       request,
-            "now_local":     _now_local_iso(),
-            "team_members":  db.TEAM_MEMBERS,
-            "reasons":       db.TIME_OFF_REASONS,
-            "team_colors":   _json.dumps(db.TEAM_COLORS),
+            "request":               request,
+            "now_local":             _now_local_iso(),
+            # My Hours
+            "view":                  view,
+            "is_admin":              is_admin,
+            "team_members":          team_members,
+            # Timesheet
+            "team_members_list":     db.TEAM_MEMBERS,
+            "team_full_names_json":  _json.dumps(db.TEAM_FULL_NAMES),
+            "phase_colors_json":     _json.dumps(db.PHASE_COLORS),
+            "valid_phases":          db.VALID_PHASES,
+            "default_period_start":  start,
+            "default_period_end":    end,
+            "current_user_role":     current_user_role,
+            "current_user_initials": current_user_initials,
+            # Time Off
+            "reasons":               db.TIME_OFF_REASONS,
+            "team_colors_json":      _json.dumps(db.TEAM_COLORS),
         },
     )
 
@@ -2636,35 +2684,9 @@ def api_all_submissions() -> dict[str, Any]:
 
 
 @app.get("/my-launch", response_class=HTMLResponse)
-def engineer_launch_page(
-    request: Request,
-    engineer: Optional[str] = None,
-) -> HTMLResponse:
-    if redir := _check_page_access(request, "/my-launch"): return redir
-    user     = _session_user(request) or {}
-    is_admin = user.get("role") == "admin"
-
-    # Determine which engineer's view to render
-    if engineer and is_admin:
-        target = engineer.upper()
-    else:
-        target = (user.get("initials") or "NK").upper()
-
-    view = db.get_engineer_bucket_view(target)
-
-    # Build a name map for the admin engineer-switcher dropdown
-    team_members = {k: v for k, v in db.TEAM_FULL_NAMES.items() if k in _WEU_ROLE_BUCKETS}
-
-    return templates.TemplateResponse(
-        "engineer_launch.html",
-        {
-            "request":      request,
-            "now_local":    _now_local_iso(),
-            "view":         view,
-            "is_admin":     is_admin,
-            "team_members": team_members,
-        },
-    )
+def engineer_launch_page(request: Request, engineer: Optional[str] = None) -> HTMLResponse:
+    qs = f"?engineer={engineer}" if engineer else ""
+    return RedirectResponse(url=f"/my-time{qs}#hours", status_code=302)
 
 
 @app.get("/approvals", response_class=HTMLResponse)
@@ -2702,25 +2724,7 @@ def api_active_projects(engineer: Optional[str] = None) -> list[dict[str, Any]]:
 
 @app.get("/timesheet", response_class=HTMLResponse)
 def timesheet_page(request: Request) -> HTMLResponse:
-    if redir := _check_page_access(request, "/timesheet"): return redir
-    import json as _json
-    start, end = _current_pay_period()
-    current_user = _session_user(request) or {}
-    return templates.TemplateResponse(
-        "timesheet.html",
-        {
-            "request": request,
-            "now_local": _now_local_iso(),
-            "team_members": db.TEAM_MEMBERS,
-            "team_full_names_json": _json.dumps(db.TEAM_FULL_NAMES),
-            "phase_colors_json": _json.dumps(db.PHASE_COLORS),
-            "valid_phases": db.VALID_PHASES,
-            "default_period_start": start,
-            "default_period_end": end,
-            "current_user_role":     current_user.get("role", ""),
-            "current_user_initials": current_user.get("initials", ""),
-        },
-    )
+    return RedirectResponse(url="/my-time#timesheet", status_code=302)
 
 
 # ── Payroll Export ────────────────────────────────────────────────────────────
@@ -2769,6 +2773,10 @@ def billing_queue_page(request: Request) -> HTMLResponse:
         utilization = db.get_utilization_summary(start, end)
     except Exception:
         utilization = {"total": 0.0, "billable": 0.0, "admin": 0.0, "billable_pct": 0.0}
+    try:
+        engineer_project_hours = db.get_engineer_project_hours()
+    except Exception:
+        engineer_project_hours = []
     submitted   = sum(1 for e in timecard_summary if e["submission_status"] == "SUBMITTED")
     approved    = sum(1 for e in timecard_summary if e["submission_status"] == "APPROVED")
     not_started = sum(1 for e in timecard_summary if e["submission_status"] == "NOT_STARTED")
@@ -2777,28 +2785,29 @@ def billing_queue_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         "billing_queue.html",
         {
-            "request":            request,
-            "title":              "Billing & Payroll — AVS",
-            "now_local":          _now_local_iso(),
-            "period_start":       start,
-            "period_end":         end,
-            "pending_invoices":   pending_invoices,
-            "pending_billables":  pending_billables,
-            "recent_invoices":    recent_invoices,
-            "burn_vs_bill":       burn_vs_bill,
-            "profit_risk_count":  profit_risk_count,
-            "timecard_summary":   timecard_summary,
-            "today_entries":      today_entries,
-            "submitted":          submitted,
-            "approved":           approved,
-            "not_started":        not_started,
-            "today_total":        today_total,
-            "staff_count":        len(timecard_summary),
-            "team_colors":        db.TEAM_COLORS,
-            "payroll_audit":      payroll_audit,
-            "cash_flow":          cash_flow,
-            "stale_projects":     stale_projects,
-            "utilization":        utilization,
+            "request":                request,
+            "title":                  "Billing & Payroll — AVS",
+            "now_local":              _now_local_iso(),
+            "period_start":           start,
+            "period_end":             end,
+            "pending_invoices":       pending_invoices,
+            "pending_billables":      pending_billables,
+            "recent_invoices":        recent_invoices,
+            "burn_vs_bill":           burn_vs_bill,
+            "profit_risk_count":      profit_risk_count,
+            "timecard_summary":       timecard_summary,
+            "today_entries":          today_entries,
+            "submitted":              submitted,
+            "approved":               approved,
+            "not_started":            not_started,
+            "today_total":            today_total,
+            "staff_count":            len(timecard_summary),
+            "team_colors":            db.TEAM_COLORS,
+            "payroll_audit":          payroll_audit,
+            "cash_flow":              cash_flow,
+            "stale_projects":         stale_projects,
+            "utilization":            utilization,
+            "engineer_project_hours": engineer_project_hours,
         },
     )
 
@@ -3019,6 +3028,20 @@ async def api_decline_invoice(request: Request, intake_id: int, billing_phase_co
         declined_by=str(body.get("declined_by") or "MO"),
         reason=reason,
     )
+
+
+@app.patch("/api/projects/{intake_id}/billing-phases/{billing_phase_code}/fee")
+async def api_update_billing_phase_fee(request: Request, intake_id: int, billing_phase_code: str) -> dict[str, Any]:
+    body = await request.json()
+    new_fee = body.get("fee_amount")
+    if new_fee is None:
+        raise HTTPException(status_code=400, detail="fee_amount required")
+    try:
+        new_fee = float(new_fee)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="fee_amount must be a number")
+    db.update_billing_phase_fee(intake_id, billing_phase_code, new_fee)
+    return {"success": True, "fee_amount": new_fee}
 
 
 @app.post("/api/projects/{intake_id}/toggle-change-order")

@@ -33,14 +33,12 @@
           <a class="nav-item {% if request.url.path == '/pipeline' %}active{% endif %}" href="/pipeline">Pipeline</a>
           <a class="nav-item {% if request.url.path == '/calendar' %}active{% endif %}" href="/calendar">Calendar</a>
           <a class="nav-item {% if request.url.path == '/capacity' %}active{% endif %}" href="/capacity">Capacity &amp; WEU</a>
-          <a class="nav-item {% if request.url.path == '/time-off' %}active{% endif %}" href="/time-off">Time Off</a>
         </div>
 
         <div class="nav-group">
           <div class="nav-group-label">People</div>
-          <a class="nav-item {% if request.url.path == '/my-launch' %}active{% endif %}" href="/my-launch">My Hours</a>
-          <a class="nav-item {% if request.url.path == '/timesheet' %}active{% endif %}" href="/timesheet">
-            Timesheet
+          <a class="nav-item {% if request.url.path == '/my-time' %}active{% endif %}" href="/my-time">
+            My Time
             {% set _tc = timesheet_period_count() %}
             {% if _tc > 0 %}
               <span class="nav-badge">{{ _tc }}</span>

@@ -101,88 +101,94 @@
     <div id="matrix-billing-toast" style="display:none;margin-top:10px;padding:10px 14px;background:oklch(22% 0.09 145 / 30%);border:1px solid oklch(46% 0.14 145 / 50%);border-radius:8px;font-size:12px;font-weight:700;color:var(--good)"></div>
   </div>
 
-  {# Panel 3: Schedule Dial #}
-  <div class="card" style="padding:20px">
-    <h2 style="margin-top:0">Schedule</h2>
-    {% if schedule_data %}
-      {% set sd = schedule_data %}
-      <div class="sched-dates">
-        <span>{{ sd.start }}</span>
-        <span style="color:var(--text)">{{ sd.today }} ▲ today</span>
-        <span id="sched-end-label">{{ sd.end }}</span>
-      </div>
-      <div class="sched-bar-wrap">
-        {% set bar_color %}{% if sd.pct > 100 %}var(--bad){% elif sd.pct >= 80 %}var(--warn){% else %}var(--good){% endif %}{% endset %}
-        <div class="sched-bar-fill" id="sched-fill" style="width:{{ [sd.pct, 100] | min }}%;background:{{ bar_color }}"></div>
-        <div class="sched-bar-today-pin" style="left:{{ [sd.pct, 100] | min }}%"></div>
-      </div>
-      <div style="font-size:11px;color:var(--muted);font-family:var(--mono);text-align:right">{{ sd.pct }}% elapsed</div>
+  {# Right column: Schedule Dial + Assigned Team stacked #}
+  <div style="display:flex;flex-direction:column;gap:14px">
 
-      <div class="sched-stats" style="margin-top:12px">
-        <div class="sched-stat">
-          <div class="sched-stat-label">Elapsed</div>
-          <div class="sched-stat-val">{{ sd.elapsed_days }}d</div>
+    {# Panel 3: Schedule Dial #}
+    <div class="card" style="padding:20px">
+      <h2 style="margin-top:0">Schedule</h2>
+      {% if schedule_data %}
+        {% set sd = schedule_data %}
+        <div class="sched-dates">
+          <span>{{ sd.start }}</span>
+          <span style="color:var(--text)">{{ sd.today }} ▲ today</span>
+          <span id="sched-end-label">{{ sd.end }}</span>
         </div>
-        <div class="sched-stat">
-          <div class="sched-stat-label">Remaining</div>
-          <div class="sched-stat-val" id="sched-days-rem" style="color:{% if sd.days_remaining < 0 %}var(--bad){% elif sd.days_remaining <= 7 %}var(--warn){% else %}var(--good){% endif %}">
-            {% if sd.days_remaining < 0 %}{{ -sd.days_remaining }}d late{% elif sd.days_remaining == 0 %}Today{% else %}{{ sd.days_remaining }}d{% endif %}
+        <div class="sched-bar-wrap">
+          {% set bar_color %}{% if sd.pct > 100 %}var(--bad){% elif sd.pct >= 80 %}var(--warn){% else %}var(--good){% endif %}{% endset %}
+          <div class="sched-bar-fill" id="sched-fill" style="width:{{ [sd.pct, 100] | min }}%;background:{{ bar_color }}"></div>
+          <div class="sched-bar-today-pin" style="left:{{ [sd.pct, 100] | min }}%"></div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);font-family:var(--mono);text-align:right">{{ sd.pct }}% elapsed</div>
+
+        <div class="sched-stats" style="margin-top:12px">
+          <div class="sched-stat">
+            <div class="sched-stat-label">Elapsed</div>
+            <div class="sched-stat-val">{{ sd.elapsed_days }}d</div>
+          </div>
+          <div class="sched-stat">
+            <div class="sched-stat-label">Remaining</div>
+            <div class="sched-stat-val" id="sched-days-rem" style="color:{% if sd.days_remaining < 0 %}var(--bad){% elif sd.days_remaining <= 7 %}var(--warn){% else %}var(--good){% endif %}">
+              {% if sd.days_remaining < 0 %}{{ -sd.days_remaining }}d late{% elif sd.days_remaining == 0 %}Today{% else %}{{ sd.days_remaining }}d{% endif %}
+            </div>
+          </div>
+          <div class="sched-stat" style="grid-column:1/-1">
+            <div class="sched-stat-label">Total Duration</div>
+            <div class="sched-stat-val">{{ sd.total_days }}d</div>
           </div>
         </div>
-        <div class="sched-stat" style="grid-column:1/-1">
-          <div class="sched-stat-label">Total Duration</div>
-          <div class="sched-stat-val">{{ sd.total_days }}d</div>
-        </div>
-      </div>
 
-      <div style="margin-top:16px">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Shift IFP deadline</div>
-        <input type="range" class="sched-slider" id="sched-slider" min="-14" max="14" value="0" step="1" />
-        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:2px">
-          <span>−14d</span>
-          <span id="sched-shift-label" style="color:var(--text);font-weight:700">0</span>
-          <span>+14d</span>
+        <div style="margin-top:16px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Shift IFP deadline</div>
+          <input type="range" class="sched-slider" id="sched-slider" min="-14" max="14" value="0" step="1" />
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:2px">
+            <span>−14d</span>
+            <span id="sched-shift-label" style="color:var(--text);font-weight:700">0</span>
+            <span>+14d</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn" id="sched-apply-btn" style="font-size:12px;padding:5px 14px;flex:1">Apply shift</button>
+            <button class="btn" id="sched-reset-btn" style="font-size:12px;padding:5px 10px" title="Reset slider">✕</button>
+          </div>
+          <div id="sched-save-msg" style="font-size:12px;color:var(--good);margin-top:6px;display:none">✓ Saved</div>
+          <div id="sched-err-msg"  style="font-size:12px;color:var(--bad);margin-top:6px;display:none"></div>
         </div>
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <button class="btn" id="sched-apply-btn" style="font-size:12px;padding:5px 14px;flex:1">Apply shift</button>
-          <button class="btn" id="sched-reset-btn" style="font-size:12px;padding:5px 10px" title="Reset slider">✕</button>
-        </div>
-        <div id="sched-save-msg" style="font-size:12px;color:var(--good);margin-top:6px;display:none">✓ Saved</div>
-        <div id="sched-err-msg"  style="font-size:12px;color:var(--bad);margin-top:6px;display:none"></div>
-      </div>
-    {% else %}
-      <div class="subtle small">Set an inquiry date and IFP due date on the intake to see the schedule dial.</div>
-      {% if intake.ifp_due_date %}
-      <div class="subtle small" style="margin-top:8px">IFP: {{ intake.ifp_due_date }}</div>
       {% else %}
-      <div class="subtle small" style="margin-top:8px">No IFP date set. <a href="/intakes/{{ intake.id }}/edit">Edit intake</a> to add one.</div>
+        <div class="subtle small">Set an inquiry date and IFP due date on the intake to see the schedule dial.</div>
+        {% if intake.ifp_due_date %}
+        <div class="subtle small" style="margin-top:8px">IFP: {{ intake.ifp_due_date }}</div>
+        {% else %}
+        <div class="subtle small" style="margin-top:8px">No IFP date set. <a href="/intakes/{{ intake.id }}/edit">Edit intake</a> to add one.</div>
+        {% endif %}
       {% endif %}
+    </div>
+
+    {# Assigned Team (only for won projects) #}
+    {% if intake.project_number %}
+    <div class="card" id="assigned-team-card" style="padding:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <h2 style="margin:0">Assigned Team</h2>
+        <span id="team-save-status" style="font-size:12px;color:var(--good);display:none">✓ Saved</span>
+      </div>
+      <div id="team-chips" style="display:flex;flex-wrap:wrap;gap:8px;min-height:28px;margin-bottom:14px;align-items:center">
+        <span class="subtle small">Loading…</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="team-add-select" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card-bg-deeper);color:var(--text);font-size:13px;flex:1;min-width:0">
+          <option value="">Add team member…</option>
+          {% for m in (db_team_members or []) %}
+          <option value="{{ m }}">{{ m }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn" style="font-size:12px;padding:5px 12px;white-space:nowrap" onclick="teamAddMember()">+ Add</button>
+      </div>
+      <div id="team-error" style="display:none;font-size:12px;color:var(--bad);margin-top:8px"></div>
+    </div>
     {% endif %}
-  </div>
 
-</div>
+  </div>{# end right column #}
 
-{% if intake.project_number %}
-<div class="card" id="assigned-team-card" style="padding:20px;margin-top:16px">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-    <h2 style="margin:0">Assigned Team</h2>
-    <span id="team-save-status" style="font-size:12px;color:var(--good);display:none">✓ Saved</span>
-  </div>
-  <div id="team-chips" style="display:flex;flex-wrap:wrap;gap:8px;min-height:28px;margin-bottom:14px;align-items:center">
-    <span class="subtle small">Loading…</span>
-  </div>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <select id="team-add-select" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card-bg-deeper);color:var(--text);font-size:13px;flex:1;min-width:160px">
-      <option value="">Add team member…</option>
-      {% for m in (db_team_members or []) %}
-      <option value="{{ m }}">{{ m }}</option>
-      {% endfor %}
-    </select>
-    <button class="btn" style="font-size:12px;padding:5px 12px;white-space:nowrap" onclick="teamAddMember()">+ Add</button>
-  </div>
-  <div id="team-error" style="display:none;font-size:12px;color:var(--bad);margin-top:8px"></div>
-</div>
-{% endif %}
+</div>{# end cmd-panels #}
 {% endif %}
 
 {# ── Zone 2: Accordion Sections ───────────────────────────────────────────── #}
@@ -232,6 +238,25 @@
             <div><div class="subtle">Source of inquiry</div><div>{{ answers.get('inquiry_source') or "—" }}</div></div>
             <div></div>
           </div>
+          {% if intake.proposal_sent_date %}
+          <div class="row row-2" style="margin-top:10px">
+            <div>
+              <div class="subtle">Proposal sent</div>
+              <div>{{ intake.proposal_sent_date[:10] if intake.proposal_sent_date else "—" }}</div>
+            </div>
+            <div style="display:flex;align-items:flex-end;padding-bottom:2px">
+              {% if days_since_proposal is not none %}
+                {% if days_since_proposal <= 2 %}
+                  <span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;background:oklch(94% 0.06 145);color:var(--good)">{{ days_since_proposal }}d ago</span>
+                {% elif days_since_proposal <= 5 %}
+                  <span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;background:rgba(255,183,77,.15);color:#ffb74d;cursor:default" title="Send follow-up email">{{ days_since_proposal }}d · Send follow-up email</span>
+                {% else %}
+                  <span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;background:rgba(239,68,68,.12);color:#f87171;cursor:default" title="Call contact">{{ days_since_proposal }}d · Call contact</span>
+                {% endif %}
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
           <div class="hr"></div>
           <div class="subtle">Auto reason</div>
           <div>{{ intake.recommendation_reason or "—" }}</div>

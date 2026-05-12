@@ -3533,6 +3533,14 @@ def list_time_entries_today() -> list[dict[str, Any]]:
 
 # ── Natalie Dashboard helpers ─────────────────────────────────────────────────
 
+def update_billing_phase_fee(intake_id: int, billing_phase_code: str, fee_amount: float) -> None:
+    now = _utc_now_iso()
+    _client().table("project_billing_phases").update({
+        "fee_amount": fee_amount,
+        "updated_at": now,
+    }).eq("intake_id", intake_id).eq("billing_phase_code", billing_phase_code).execute()
+
+
 def mark_billing_phase_invoiced(intake_id: int, billing_phase_code: str, invoiced_by: str) -> None:
     now = _utc_now_iso()
     _client().table("project_billing_phases").update({
@@ -3650,6 +3658,67 @@ def get_payroll_audit(period_start: str, period_end: str) -> list[dict[str, Any]
             "billable_pct":   pct,
             "status":         sub.get("status", "NOT_STARTED"),
             "discrepancy":    discrepancy,
+        })
+    return result
+
+
+def get_engineer_project_hours() -> list[dict[str, Any]]:
+    """Per-engineer breakdown across ALL active projects, including 0-hour entries."""
+    # Fetch all active projects
+    proj_resp = (
+        _client()
+        .table("intakes")
+        .select("id,project_number,project_name,client_name")
+        .eq("pipeline_active", 1)
+        .neq("status", "PROPOSAL_OUT")
+        .order("project_number")
+        .execute()
+    )
+    projects = proj_resp.data or []
+    if not projects:
+        return []
+
+    intake_ids = [p["id"] for p in projects]
+    proj_map = {p["id"]: p for p in projects}
+
+    # Fetch all time entries for those projects
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("engineer_initials,intake_id,hours")
+        .in_("intake_id", intake_ids)
+        .execute()
+    )
+    entries = te_resp.data or []
+
+    # Build (engineer, intake_id) → hours map
+    hours_map: dict[tuple, float] = {}
+    for e in entries:
+        key = (e["engineer_initials"], int(e["intake_id"]))
+        hours_map[key] = hours_map.get(key, 0.0) + float(e["hours"] or 0)
+
+    # Build per-engineer list with all projects
+    result = []
+    for ini in _ALL_STAFF:
+        project_rows = []
+        total_h = 0.0
+        for p in projects:
+            h = round(hours_map.get((ini, p["id"]), 0.0), 1)
+            total_h += h
+            project_rows.append({
+                "intake_id":      p["id"],
+                "project_number": p.get("project_number") or "—",
+                "project_name":   p.get("project_name") or "",
+                "client_name":    p.get("client_name") or "",
+                "hours":          h,
+            })
+        result.append({
+            "initials":     ini,
+            "role":         ENGINEER_ROLES.get(ini, ""),
+            "color":        TEAM_COLORS.get(ini, "#888"),
+            "full_name":    TEAM_FULL_NAMES.get(ini, ini),
+            "total_hours":  round(total_h, 1),
+            "projects":     project_rows,
         })
     return result
 
