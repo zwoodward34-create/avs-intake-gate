@@ -1621,7 +1621,7 @@ def create_billing_phases_for_project(intake_id: int, approved_fee: float) -> No
     rows = []
     for d in defs:
         fee_amount = round(approved_fee * float(d["default_pct"]), 2)
-        status = "complete_pending_approval" if d["code"] == "retainer" else "pending"
+        status = "pending"
         rows.append({
             "intake_id":           intake_id,
             "billing_phase_code":  d["code"],
@@ -1978,6 +1978,7 @@ def get_pipeline_data() -> dict[str, Any]:
             "change_order_pending,change_order_note,mo_fee_override"
         )
         .eq("pipeline_active", 1)
+        .neq("status", "PROPOSAL_OUT")   # proposals belong in the Proposal Submitted column only
         .order("project_number")
         .execute()
     )
