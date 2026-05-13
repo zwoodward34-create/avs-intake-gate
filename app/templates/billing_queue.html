@@ -1211,7 +1211,7 @@ function downloadInvoicePDF(invoiceId, invoiceNumber, intakeId, phaseLabel, amou
   <div class="field"><label>Period End</label><input type="date" id="pr-end" value="{{ payroll_default_end }}" onchange="prClearLockStatus()" /></div>
   <button class="btn btn-primary" type="button" onclick="prLoadPreview()" style="flex:0 0 auto;white-space:nowrap">Preview</button>
   <button class="btn" type="button" onclick="prDownloadCsv()" style="flex:0 0 auto;white-space:nowrap">Export CSV</button>
-  <button class="btn" type="button" id="pr-lock-btn" onclick="prLockPeriod()" style="flex:0 0 auto;white-space:nowrap;display:none">Lock Pay Period</button>
+  <button class="btn" type="button" id="pr-lock-btn" onclick="prLockPeriod()" style="flex:0 0 auto;white-space:nowrap">Lock Pay Period</button>
 </div>
 <div id="pr-lock-status" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600"></div>
 
@@ -1302,29 +1302,44 @@ function downloadInvoicePDF(invoiceId, invoiceNumber, intakeId, phaseLabel, amou
 
   window.prClearLockStatus = function() {
     document.getElementById('pr-lock-status').style.display = 'none';
-    document.getElementById('pr-lock-btn').style.display = 'none';
+    var btn = document.getElementById('pr-lock-btn');
+    btn.disabled    = false;
+    btn.textContent = 'Lock Pay Period';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+    // Re-check status for new dates
+    var start = document.getElementById('pr-start').value;
+    var end   = document.getElementById('pr-end').value;
+    if (start && end) prCheckLockStatus(start, end);
   };
 
   function prShowLockStatus(locked) {
     var statusEl = document.getElementById('pr-lock-status');
     var btn      = document.getElementById('pr-lock-btn');
     if (locked) {
-      statusEl.style.display      = 'block';
-      statusEl.style.background   = 'rgba(74,222,128,.08)';
-      statusEl.style.border       = '1px solid rgba(74,222,128,.25)';
-      statusEl.style.color        = 'var(--good)';
-      statusEl.textContent        = '🔒 This pay period is locked. No further edits are permitted.';
-      btn.style.display           = 'none';
+      statusEl.style.display    = 'block';
+      statusEl.style.background = 'rgba(74,222,128,.08)';
+      statusEl.style.border     = '1px solid rgba(74,222,128,.25)';
+      statusEl.style.color      = 'var(--good)';
+      statusEl.textContent      = '🔒 This pay period is locked. No further edits are permitted.';
+      btn.disabled              = true;
+      btn.textContent           = '🔒 Period Locked';
+      btn.style.color           = 'var(--good)';
+      btn.style.borderColor     = 'rgba(74,222,128,.3)';
     } else {
-      statusEl.style.display      = 'block';
-      statusEl.style.background   = 'rgba(255,255,255,.04)';
-      statusEl.style.border       = '1px solid var(--border)';
-      statusEl.style.color        = 'var(--muted)';
-      statusEl.textContent        = 'This pay period is not yet locked.';
-      btn.style.display           = '';
-      btn.disabled                = false;
-      btn.textContent             = 'Lock Pay Period';
+      statusEl.style.display = 'none';
+      btn.disabled           = false;
+      btn.textContent        = 'Lock Pay Period';
+      btn.style.color        = '';
+      btn.style.borderColor  = '';
     }
+  }
+
+  function prCheckLockStatus(start, end) {
+    fetch('/api/payroll/period-lock-status?start=' + start + '&end=' + end)
+      .then(function(r) { return r.json(); })
+      .then(function(d) { prShowLockStatus(d.locked); })
+      .catch(function() {});
   }
 
   window.prLockPeriod = function() {
@@ -1345,18 +1360,21 @@ function downloadInvoicePDF(invoiceId, invoiceNumber, intakeId, phaseLabel, amou
     .catch(function(e) { btn.disabled = false; btn.textContent = 'Lock Pay Period'; alert('Error: ' + e.message); });
   };
 
-  // Extend prLoadPreview to also fetch lock status
+  // Extend prLoadPreview to also refresh lock status
   var _origPrLoadPreview = window.prLoadPreview;
   window.prLoadPreview = function() {
     _origPrLoadPreview();
     var start = document.getElementById('pr-start').value;
     var end   = document.getElementById('pr-end').value;
-    if (!start || !end) return;
-    fetch('/api/payroll/period-lock-status?start=' + start + '&end=' + end)
-      .then(function(r) { return r.json(); })
-      .then(function(d) { prShowLockStatus(d.locked); })
-      .catch(function() {});
+    if (start && end) prCheckLockStatus(start, end);
   };
+
+  // Auto-check lock status for the default period on tab open
+  (function() {
+    var start = document.getElementById('pr-start').value;
+    var end   = document.getElementById('pr-end').value;
+    if (start && end) prCheckLockStatus(start, end);
+  })();
 })();
 </script>
 </div>{# end ph-pane-payroll #}
