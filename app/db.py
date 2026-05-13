@@ -1524,6 +1524,103 @@ def is_period_locked(engineer: str, entry_date: str) -> bool:
     return bool(resp2.data)
 
 
+# ── Project Expenses ──────────────────────────────────────────────────────────
+
+def create_expense(
+    intake_id: int,
+    engineer_initials: str,
+    phase: Optional[str],
+    amount: float,
+    category: str,
+    description: Optional[str],
+    receipt_url: Optional[str],
+    is_reimbursable: bool,
+) -> dict[str, Any]:
+    now = _utc_now_iso()
+    resp = (
+        _client()
+        .table("project_expenses")
+        .insert({
+            "intake_id":         intake_id,
+            "engineer_initials": engineer_initials,
+            "phase":             phase or None,
+            "amount":            round(float(amount), 2),
+            "category":          category,
+            "description":       description or None,
+            "receipt_url":       receipt_url or None,
+            "status":            "pending",
+            "is_reimbursable":   bool(is_reimbursable),
+            "created_at":        now,
+            "updated_at":        now,
+        })
+        .execute()
+    )
+    return resp.data[0] if resp.data else {}
+
+
+def get_expenses_for_project(intake_id: int) -> list[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("project_expenses")
+        .select("*")
+        .eq("intake_id", intake_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return resp.data or []
+
+
+def get_expenses_for_engineer(engineer_initials: str, limit: int = 20) -> list[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("project_expenses")
+        .select("*, intakes(project_number, project_name)")
+        .eq("engineer_initials", engineer_initials)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    rows = resp.data or []
+    for row in rows:
+        intake = row.pop("intakes", None) or {}
+        row["project_number"] = intake.get("project_number") or "—"
+        row["project_name"]   = intake.get("project_name") or "—"
+    return rows
+
+
+def update_expense(expense_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+    updates = {**updates, "updated_at": _utc_now_iso()}
+    resp = (
+        _client()
+        .table("project_expenses")
+        .update(updates)
+        .eq("id", expense_id)
+        .execute()
+    )
+    return resp.data[0] if resp.data else {}
+
+
+def get_pending_reimbursable_expenses() -> list[dict[str, Any]]:
+    resp = (
+        _client()
+        .table("project_expenses")
+        .select("*, intakes(project_number, project_name, client_name)")
+        .eq("is_reimbursable", True)
+        .in_("status", ["pending", "approved"])
+        .order("created_at", desc=True)
+        .execute()
+    )
+    rows = resp.data or []
+    result = []
+    for row in rows:
+        intake = row.pop("intakes", None) or {}
+        row["project_number"] = intake.get("project_number") or "—"
+        row["project_name"]   = intake.get("project_name") or "—"
+        row["client_name"]    = intake.get("client_name") or "—"
+        result.append(row)
+    return result
+
+
 def submit_period(engineer: str, period_start: str, period_end: str, total_hours: float) -> dict[str, Any]:
     now = _utc_now_iso()
     existing = get_submission(engineer, period_start)

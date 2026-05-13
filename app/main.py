@@ -2870,6 +2870,10 @@ def billing_queue_page(request: Request) -> HTMLResponse:
         pending_submissions = db.get_review_queue()
     except Exception:
         pending_submissions = []
+    try:
+        pending_expenses = db.get_pending_reimbursable_expenses()
+    except Exception:
+        pending_expenses = []
     today_d = date.today()
     pr_start, pr_end = _current_pay_period()
     if pr_end >= today_d.isoformat():
@@ -2910,8 +2914,99 @@ def billing_queue_page(request: Request) -> HTMLResponse:
             "pending_submissions":    pending_submissions,
             "payroll_default_start":  pr_start,
             "payroll_default_end":    pr_end,
+            # Expenses
+            "pending_expenses":       pending_expenses,
         },
     )
+
+
+@app.post("/api/expenses")
+async def api_create_expense(request: Request) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    receipt_url: Optional[str] = None
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        intake_id_raw   = form.get("intake_id", "")
+        phase           = (form.get("phase") or "").strip() or None
+        amount_raw      = form.get("amount", "0")
+        category        = (form.get("category") or "").strip()
+        description     = (form.get("description") or "").strip() or None
+        is_reimbursable = str(form.get("is_reimbursable", "true")).lower() in ("true", "1", "on")
+        receipt_file    = form.get("receipt")
+        if receipt_file and hasattr(receipt_file, "filename") and receipt_file.filename:
+            try:
+                import mimetypes as _mt
+                contents  = await receipt_file.read()
+                safe_name = receipt_file.filename.replace(" ", "_")
+                path      = f"expenses/{user['initials']}/{_now_local_iso()[:10]}_{safe_name}"
+                ct        = receipt_file.content_type or _mt.guess_type(safe_name)[0] or "application/octet-stream"
+                db._client().storage.from_("receipts").upload(path, contents, {"content-type": ct})
+                receipt_url = db._client().storage.from_("receipts").get_public_url(path)
+            except Exception:
+                pass
+    else:
+        body            = await request.json()
+        intake_id_raw   = body.get("intake_id", "")
+        phase           = (body.get("phase") or "").strip() or None
+        amount_raw      = body.get("amount", 0)
+        category        = (body.get("category") or "").strip()
+        description     = (body.get("description") or "").strip() or None
+        is_reimbursable = bool(body.get("is_reimbursable", True))
+        receipt_url     = (body.get("receipt_url") or "").strip() or None
+    try:
+        intake_id = int(intake_id_raw)
+        amount    = float(amount_raw)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid intake_id or amount")
+    if not intake_id or amount <= 0 or not category:
+        raise HTTPException(status_code=400, detail="intake_id, amount, and category are required")
+    return db.create_expense(
+        intake_id=intake_id,
+        engineer_initials=user["initials"],
+        phase=phase,
+        amount=amount,
+        category=category,
+        description=description,
+        receipt_url=receipt_url,
+        is_reimbursable=is_reimbursable,
+    )
+
+
+@app.get("/api/expenses/project/{intake_id}")
+def api_expenses_for_project(intake_id: int, request: Request) -> list[dict[str, Any]]:
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return db.get_expenses_for_project(intake_id)
+
+
+@app.get("/api/expenses/engineer/{initials}")
+def api_expenses_for_engineer(initials: str, request: Request) -> list[dict[str, Any]]:
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    target = initials.upper()
+    if user.get("role") not in ("admin", "office_manager") and user.get("initials", "").upper() != target:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return db.get_expenses_for_engineer(target)
+
+
+@app.patch("/api/expenses/{expense_id}")
+async def api_update_expense(expense_id: str, request: Request) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user or user.get("role") not in ("admin", "office_manager"):
+        raise HTTPException(status_code=403, detail="Access denied")
+    body = await request.json()
+    allowed = {"status", "is_reimbursable"}
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid update fields provided")
+    if "status" in updates and updates["status"] not in ("pending", "approved", "billed"):
+        raise HTTPException(status_code=400, detail="Invalid status value")
+    return db.update_expense(expense_id, updates)
 
 
 @app.get("/api/payroll/all-timecards")

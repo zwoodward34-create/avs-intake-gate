@@ -86,6 +86,14 @@
                  opacity:0; transition:opacity .25s; pointer-events:none }
 .ed-toast.show { opacity:1 }
 
+/* ── Expense card ── */
+.ed-exp-card   { background:var(--card-bg); border:1px solid var(--border); border-radius:12px; padding:18px 20px }
+.ed-exp-row    { display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.04); font-size:12px }
+.ed-exp-row:last-child { border-bottom:none }
+.ed-exp-cat    { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; padding:2px 7px; border-radius:3px; flex-shrink:0 }
+.ed-exp-amt    { font-family:var(--mono); font-weight:700; color:var(--text); white-space:nowrap }
+.ed-exp-status { font-size:9px; font-weight:700; text-transform:uppercase; padding:2px 6px; border-radius:3px; flex-shrink:0; white-space:nowrap }
+
 @media (max-width: 900px) {
   .ed-layout { grid-template-columns: 1fr }
   .ed-sidebar { order: -1 }
@@ -219,6 +227,21 @@
       {% endif %}
     </div>
 
+    {# ── Expense Tracker ── #}
+    <div class="ed-exp-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div class="ed-grid-label" style="margin-bottom:2px">Expenses</div>
+          <div style="font-size:15px;font-weight:700;color:var(--text)">Project Expenses</div>
+        </div>
+        <button class="btn btn-primary" type="button" onclick="openExpenseModal()"
+          style="font-size:12px;padding:6px 14px;font-weight:700">+ Log Expense</button>
+      </div>
+      <div id="ed-exp-list">
+        <div style="text-align:center;padding:24px 0;color:var(--muted);font-size:13px">Loading…</div>
+      </div>
+    </div>
+
   </div><!-- end .ed-main -->
 
   <!-- ── Right: Sidebar ── -->
@@ -316,6 +339,66 @@
     <div class="ed-modal-actions">
       <button class="btn" type="button" onclick="closeLogModal()">Cancel</button>
       <button class="btn btn-primary" type="button" id="lt-submit" onclick="submitLogTime()">Log Time</button>
+    </div>
+  </div>
+</div>
+
+{# ── Log Expense Modal ── #}
+<div class="ed-modal-bg" id="exp-modal-bg" onclick="closeExpenseModal(event)">
+  <div class="ed-modal" style="width:440px" onclick="event.stopPropagation()">
+    <h3>Log Expense</h3>
+    <div class="field">
+      <label>Project</label>
+      <select id="exp-project">
+        <option value="">— Select project —</option>
+        {% for proj in data.projects %}
+        <option value="{{ proj.intake_id }}" data-pn="{{ proj.project_number }}">{{ proj.project_number }} — {{ (proj.project_name or '')[:40] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="field">
+        <label>Category</label>
+        <select id="exp-category">
+          <option value="mileage">Mileage</option>
+          <option value="software">Software</option>
+          <option value="prints">Prints / Reprographics</option>
+          <option value="sub_consultant">Sub-Consultant</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Phase (optional)</label>
+        <select id="exp-phase">
+          <option value="">— Any —</option>
+          {% for ph in ['SD','50%','75%','90%','IFP','CA','REV'] %}
+          <option value="{{ ph }}">{{ ph }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Amount ($)</label>
+      <input type="number" id="exp-amount" min="0.01" step="0.01" placeholder="0.00" />
+    </div>
+    <div class="field">
+      <label>Description</label>
+      <input type="text" id="exp-description" placeholder="Brief description of expense" />
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div class="field" style="margin:0;flex:1">
+        <label>Receipt (optional)</label>
+        <input type="file" id="exp-receipt" accept="image/*,.pdf" style="font-size:12px;padding:6px 10px" />
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;flex-shrink:0;margin-left:16px;margin-top:10px">
+        <input type="checkbox" id="exp-reimbursable" checked style="width:auto;margin:0" />
+        Reimbursable
+      </label>
+    </div>
+    <div id="exp-error" style="display:none;color:var(--bad);font-size:12px;margin-top:-8px;margin-bottom:8px"></div>
+    <div class="ed-modal-actions">
+      <button class="btn" type="button" onclick="closeExpenseModal()">Cancel</button>
+      <button class="btn btn-primary" type="button" id="exp-submit" onclick="submitExpense()">Log Expense</button>
     </div>
   </div>
 </div>
@@ -424,8 +507,131 @@
 
   // ── Keyboard close ────────────────────────────────────────────────────────
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') document.getElementById('log-modal-bg').classList.remove('open');
+    if (e.key === 'Escape') {
+      document.getElementById('log-modal-bg').classList.remove('open');
+      document.getElementById('exp-modal-bg').classList.remove('open');
+    }
   });
+
+  // ── Expense tracker ───────────────────────────────────────────────────────
+  const EXP_CAT_COLORS = {
+    mileage:        { bg: 'rgba(99,179,237,.12)',  color: '#63b3ed', label: 'Mileage' },
+    software:       { bg: 'rgba(139,92,246,.12)',  color: '#a78bfa', label: 'Software' },
+    prints:         { bg: 'rgba(251,191,36,.10)',  color: '#fbbf24', label: 'Prints' },
+    sub_consultant: { bg: 'rgba(52,211,153,.10)',  color: 'var(--good)', label: 'Sub-Con' },
+    other:          { bg: 'rgba(255,255,255,.07)', color: 'var(--muted)', label: 'Other' },
+  };
+
+  function loadMyExpenses() {
+    fetch('/api/expenses/engineer/' + MY_INITIALS)
+      .then(r => r.json())
+      .then(rows => renderExpenseList(rows))
+      .catch(() => {
+        document.getElementById('ed-exp-list').innerHTML =
+          '<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:12px">Unable to load expenses.</div>';
+      });
+  }
+
+  function renderExpenseList(rows) {
+    const el = document.getElementById('ed-exp-list');
+    if (!rows.length) {
+      el.innerHTML = '<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:12px">No expenses logged yet.</div>';
+      return;
+    }
+    const STATUS_STYLE = {
+      pending:  'background:rgba(251,191,36,.12);color:#fbbf24',
+      approved: 'background:rgba(52,211,153,.10);color:var(--good)',
+      billed:   'background:rgba(255,255,255,.07);color:var(--muted)',
+    };
+    el.innerHTML = rows.slice(0, 8).map(r => {
+      const cat  = EXP_CAT_COLORS[r.category] || EXP_CAT_COLORS.other;
+      const ss   = STATUS_STYLE[r.status] || STATUS_STYLE.pending;
+      return `<div class="ed-exp-row">
+        <span class="ed-exp-cat" style="background:${cat.bg};color:${cat.color}">${cat.label}</span>
+        <span style="flex:1;min-width:0;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          ${r.project_number} ${r.description ? '· ' + r.description.substring(0, 30) : ''}
+        </span>
+        <span class="ed-exp-amt">$${parseFloat(r.amount).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        <span class="ed-exp-status" style="${ss}">${r.status}</span>
+        ${r.receipt_url ? `<a href="${r.receipt_url}" target="_blank" style="font-size:10px;color:var(--accent);text-decoration:none;flex-shrink:0">📎</a>` : ''}
+      </div>`;
+    }).join('');
+    if (rows.length > 8) {
+      el.innerHTML += `<div style="font-size:11px;color:var(--muted);text-align:right;padding-top:6px">+${rows.length - 8} more</div>`;
+    }
+  }
+
+  window.openExpenseModal = function(intakeId) {
+    const sel = document.getElementById('exp-project');
+    if (intakeId) {
+      for (let i = 0; i < sel.options.length; i++) {
+        if (parseInt(sel.options[i].value) === intakeId) { sel.selectedIndex = i; break; }
+      }
+    }
+    document.getElementById('exp-amount').value      = '';
+    document.getElementById('exp-description').value = '';
+    document.getElementById('exp-receipt').value     = '';
+    document.getElementById('exp-error').style.display = 'none';
+    document.getElementById('exp-reimbursable').checked = true;
+    document.getElementById('exp-modal-bg').classList.add('open');
+    document.getElementById('exp-amount').focus();
+  };
+
+  window.closeExpenseModal = function(e) {
+    if (e && e.target !== document.getElementById('exp-modal-bg')) return;
+    document.getElementById('exp-modal-bg').classList.remove('open');
+  };
+
+  window.submitExpense = function() {
+    const intakeId    = parseInt(document.getElementById('exp-project').value);
+    const category    = document.getElementById('exp-category').value;
+    const phase       = document.getElementById('exp-phase').value || null;
+    const amount      = parseFloat(document.getElementById('exp-amount').value);
+    const description = document.getElementById('exp-description').value.trim() || null;
+    const reimbursable = document.getElementById('exp-reimbursable').checked;
+    const receiptFile  = document.getElementById('exp-receipt').files[0] || null;
+    const errEl        = document.getElementById('exp-error');
+    errEl.style.display = 'none';
+
+    if (!intakeId) { errEl.textContent = 'Select a project.'; errEl.style.display = 'block'; return; }
+    if (!amount || amount <= 0) { errEl.textContent = 'Enter a valid amount.'; errEl.style.display = 'block'; return; }
+    if (!category) { errEl.textContent = 'Select a category.'; errEl.style.display = 'block'; return; }
+
+    const btn = document.getElementById('exp-submit');
+    btn.disabled = true; btn.textContent = 'Saving…';
+
+    let fetchPromise;
+    if (receiptFile) {
+      const fd = new FormData();
+      fd.append('intake_id',      intakeId);
+      fd.append('category',       category);
+      fd.append('amount',         amount);
+      fd.append('phase',          phase || '');
+      fd.append('description',    description || '');
+      fd.append('is_reimbursable', reimbursable ? 'true' : 'false');
+      fd.append('receipt',        receiptFile);
+      fetchPromise = fetch('/api/expenses', {method: 'POST', body: fd});
+    } else {
+      fetchPromise = fetch('/api/expenses', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({intake_id: intakeId, category, amount, phase, description, is_reimbursable: reimbursable}),
+      });
+    }
+
+    fetchPromise
+      .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.detail || 'Save failed'); }); return r.json(); })
+      .then(() => {
+        document.getElementById('exp-modal-bg').classList.remove('open');
+        showToast('✓ Expense logged — $' + amount.toFixed(2));
+        loadMyExpenses();
+      })
+      .catch(e => { errEl.textContent = e.message; errEl.style.display = 'block'; })
+      .finally(() => { btn.disabled = false; btn.textContent = 'Log Expense'; });
+  };
+
+  // Load expenses on page boot
+  loadMyExpenses();
 })();
 </script>
 {% endblock %}

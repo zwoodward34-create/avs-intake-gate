@@ -75,6 +75,108 @@
 </div>
 {% endif %}
 
+{# ── Reimbursable Expenses ────────────────────────────────────────────────── #}
+{% if pending_expenses %}
+<div class="card" style="padding:0;margin-bottom:16px;overflow:hidden;border:1px solid rgba(139,92,246,.2)" id="exp-card">
+  <div style="padding:14px 18px;border-bottom:1px solid rgba(139,92,246,.15);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#a78bfa">Reimbursable Expenses</div>
+      <div style="font-size:18px;font-weight:800;margin-top:2px">Pending Reimbursements</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="background:rgba(139,92,246,.12);color:#a78bfa;border:1px solid rgba(139,92,246,.3);font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">
+        {{ pending_expenses|length }} pending
+        · ${{ "{:,.2f}".format(pending_expenses | sum(attribute='amount')) }}
+      </span>
+      <button onclick="expSelectAll()" id="exp-select-all-btn"
+        style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:5px;cursor:pointer;background:rgba(139,92,246,.08);color:#a78bfa;border:1px solid rgba(139,92,246,.3);transition:all .15s"
+        onmouseover="this.style.background='rgba(139,92,246,.18)'" onmouseout="this.style.background='rgba(139,92,246,.08)'">
+        Select All for Invoice
+      </button>
+      <button onclick="expBulkBill()" id="exp-bulk-btn" style="display:none;font-size:11px;font-weight:700;padding:4px 12px;border-radius:5px;cursor:pointer;background:rgba(52,211,153,.10);color:var(--good);border:1px solid rgba(52,211,153,.3);transition:all .15s"
+        onmouseover="this.style.background='rgba(52,211,153,.2)'" onmouseout="this.style.background='rgba(52,211,153,.10)'">
+        Mark Selected Billed
+      </button>
+    </div>
+  </div>
+  <table class="table" style="margin:0">
+    <thead>
+      <tr>
+        <th style="width:28px"><input type="checkbox" id="exp-check-all" onchange="expToggleAll(this.checked)" style="cursor:pointer" /></th>
+        <th>Engineer</th><th>Project</th><th>Category</th><th>Phase</th>
+        <th style="text-align:right">Amount</th>
+        <th style="text-align:center">Reimbursable</th>
+        <th style="text-align:center">Status</th>
+        <th>Description</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for exp in pending_expenses %}
+      {% set cat_labels = {'mileage':'Mileage','software':'Software','prints':'Prints','sub_consultant':'Sub-Con','other':'Other'} %}
+      {% set cat_colors = {'mileage':'rgba(99,179,237,.12);color:#63b3ed','software':'rgba(139,92,246,.12);color:#a78bfa','prints':'rgba(251,191,36,.10);color:#fbbf24','sub_consultant':'rgba(52,211,153,.10);color:var(--good)','other':'rgba(255,255,255,.07);color:var(--muted)'} %}
+      <tr id="exp-row-{{ exp.id }}">
+        <td><input type="checkbox" class="exp-check" data-id="{{ exp.id }}" data-amount="{{ exp.amount }}" style="cursor:pointer" /></td>
+        <td style="font-family:var(--mono);font-weight:700">{{ exp.engineer_initials }}</td>
+        <td>
+          <div style="font-size:11px;font-family:var(--mono);font-weight:700;color:var(--accent)">{{ exp.project_number }}</div>
+          <div style="font-size:11px;color:var(--muted)">{{ (exp.project_name or '')[:28] }}</div>
+        </td>
+        <td>
+          <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;background:{{ cat_colors.get(exp.category, 'rgba(255,255,255,.07);color:var(--muted)') }}">
+            {{ cat_labels.get(exp.category, exp.category) }}
+          </span>
+        </td>
+        <td style="font-family:var(--mono);font-size:11px">{{ exp.phase or '—' }}</td>
+        <td style="text-align:right;font-family:var(--mono);font-weight:700;color:var(--good)">${{ "{:,.2f}".format(exp.amount|float) }}</td>
+        <td style="text-align:center">
+          {% if exp.is_reimbursable %}
+            <span style="color:var(--good);font-size:13px">✓</span>
+          {% else %}
+            <span style="color:var(--muted);font-size:13px">—</span>
+          {% endif %}
+        </td>
+        <td style="text-align:center">
+          <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;
+            {% if exp.status == 'approved' %}background:rgba(52,211,153,.10);color:var(--good)
+            {% elif exp.status == 'pending' %}background:rgba(251,191,36,.10);color:#fbbf24
+            {% else %}background:rgba(255,255,255,.07);color:var(--muted){% endif %}">
+            {{ exp.status | upper }}
+          </span>
+        </td>
+        <td style="color:var(--muted);font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          {{ exp.description or '—' }}
+          {% if exp.receipt_url %}
+            <a href="{{ exp.receipt_url }}" target="_blank" style="color:var(--accent);margin-left:4px;font-size:10px">📎</a>
+          {% endif %}
+        </td>
+        <td style="white-space:nowrap">
+          {% if exp.status == 'pending' %}
+          <button onclick="expUpdateStatus('{{ exp.id }}', 'approved')"
+            style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;cursor:pointer;background:rgba(52,211,153,.10);color:var(--good);border:1px solid rgba(52,211,153,.3);transition:all .15s;margin-right:3px"
+            onmouseover="this.style.background='rgba(52,211,153,.2)'" onmouseout="this.style.background='rgba(52,211,153,.10)'">Approve</button>
+          {% endif %}
+          {% if exp.status in ('pending', 'approved') %}
+          <button onclick="expUpdateStatus('{{ exp.id }}', 'billed')"
+            style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;cursor:pointer;background:rgba(255,255,255,.05);color:var(--muted);border:1px solid rgba(255,255,255,.12);transition:all .15s"
+            onmouseover="this.style.background='rgba(255,255,255,.1)';this.style.color='var(--text)'" onmouseout="this.style.background='rgba(255,255,255,.05)';this.style.color='var(--muted)'">Billed</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div id="exp-bulk-status" style="display:none;padding:10px 18px;font-size:12px;color:var(--muted)"></div>
+</div>
+{% else %}
+<div class="card" style="padding:18px 20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
+  <div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#a78bfa">Reimbursable Expenses</div>
+    <div style="font-size:14px;color:var(--muted);margin-top:4px">No pending reimbursable expenses.</div>
+  </div>
+</div>
+{% endif %}
+
 {# ── Bento row 1: Invoicing + Payroll Status ──────────────────────────────── #}
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
 
@@ -790,6 +892,75 @@ function confirmGenerateInvoice() {
     btn.textContent = 'Confirm & Create Invoice';
     statusEl.style.color = 'var(--bad)';
     statusEl.textContent = 'Error: ' + e.message;
+  });
+}
+
+// ── Expense management ────────────────────────────────────────────────────
+function expUpdateStatus(id, status) {
+  fetch('/api/expenses/' + id, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status: status}),
+  })
+  .then(function(r) { if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Failed'); }); return r.json(); })
+  .then(function() {
+    var row = document.getElementById('exp-row-' + id);
+    if (row) { row.style.opacity = '0.4'; row.style.pointerEvents = 'none'; }
+    setTimeout(function() { location.reload(); }, 600);
+  })
+  .catch(function(e) { alert('Error: ' + e.message); });
+}
+
+function expToggleAll(checked) {
+  document.querySelectorAll('.exp-check').forEach(function(cb) { cb.checked = checked; });
+  expUpdateBulkBtn();
+}
+
+function expUpdateBulkBtn() {
+  var checked = document.querySelectorAll('.exp-check:checked');
+  var btn = document.getElementById('exp-bulk-btn');
+  if (btn) btn.style.display = checked.length > 0 ? '' : 'none';
+}
+
+document.addEventListener('change', function(e) {
+  if (e.target.classList.contains('exp-check')) expUpdateBulkBtn();
+});
+
+function expSelectAll() {
+  document.querySelectorAll('.exp-check').forEach(function(cb) { cb.checked = true; });
+  var allCheck = document.getElementById('exp-check-all');
+  if (allCheck) allCheck.checked = true;
+  expUpdateBulkBtn();
+}
+
+function expBulkBill() {
+  var ids = [];
+  document.querySelectorAll('.exp-check:checked').forEach(function(cb) { ids.push(cb.dataset.id); });
+  if (!ids.length) return;
+  var total = 0;
+  document.querySelectorAll('.exp-check:checked').forEach(function(cb) { total += parseFloat(cb.dataset.amount || 0); });
+  if (!confirm('Mark ' + ids.length + ' expense(s) totalling $' + total.toFixed(2) + ' as billed?')) return;
+  var btn = document.getElementById('exp-bulk-btn');
+  btn.disabled = true; btn.textContent = 'Processing…';
+  var statusEl = document.getElementById('exp-bulk-status');
+  statusEl.style.display = 'block';
+  statusEl.textContent = 'Updating ' + ids.length + ' expense(s)…';
+  Promise.all(ids.map(function(id) {
+    return fetch('/api/expenses/' + id, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({status: 'billed'}),
+    }).then(function(r) { return r.json(); });
+  }))
+  .then(function() {
+    statusEl.textContent = '✓ ' + ids.length + ' expense(s) marked as billed.';
+    statusEl.style.color = 'var(--good)';
+    setTimeout(function() { location.reload(); }, 1000);
+  })
+  .catch(function(e) {
+    btn.disabled = false; btn.textContent = 'Mark Selected Billed';
+    statusEl.textContent = 'Error: ' + e.message;
+    statusEl.style.color = 'var(--bad)';
   });
 }
 
