@@ -52,7 +52,7 @@
             {% endif %}
           </a>
           <a class="nav-item {% if request.url.path == '/mo-queue' %}active{% endif %}" href="/mo-queue">
-            Mo's Queue
+            Decision Queue
             {% set _mc = pending_mo_count() %}
             {% set _ic = pending_invoice_count() %}
             {% set _total = _mc + _ic %}
@@ -65,23 +65,18 @@
             {% set _ac = pending_review_count() %}
             {% if _ac > 0 %}<span class="nav-badge">{{ _ac }}</span>{% endif %}
           </a>
-          <a class="nav-item {% if request.url.path == '/payroll-export' %}active{% endif %}" href="/payroll-export">
-            Payroll Export
-            {% set _rc = pending_review_count() %}
-            {% if _rc > 0 %}
-              <span class="nav-badge">{{ _rc }}</span>
-            {% endif %}
-          </a>
         </div>
 
         {% set _nav_user = request.session.get('user') %}
         {% if _nav_user and _nav_user.role in ('admin', 'office_manager') %}
         <div class="nav-group">
           <div class="nav-group-label">Billing &amp; Payroll</div>
-          <a class="nav-item {% if request.url.path == '/billing-queue' %}active{% endif %}" href="/billing-queue">
-            Natalie's Hub
+          <a class="nav-item {% if request.url.path in ('/billing-queue', '/payroll-export') %}active{% endif %}" href="/billing-queue">
+            Payroll Hub
             {% set _bq = pending_invoice_count() %}
-            {% if _bq > 0 %}<span class="nav-badge">{{ _bq }}</span>{% endif %}
+            {% set _bpr = pending_review_count() %}
+            {% set _bq_total = _bq + _bpr %}
+            {% if _bq_total > 0 %}<span class="nav-badge">{{ _bq_total }}</span>{% endif %}
           </a>
         </div>
         {% endif %}

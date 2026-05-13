@@ -3,8 +3,26 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-<div class="page-eyebrow">Billing &amp; Payroll Hub</div>
-<h1 style="margin:4px 0 4px;font-size:1.6rem;font-weight:800;letter-spacing:-.3px">Natalie's Dashboard</h1>
+<div class="page-eyebrow">Billing &amp; Payroll</div>
+<h1 style="margin:4px 0 18px;font-size:1.6rem;font-weight:800;letter-spacing:-.3px">Payroll Hub</h1>
+
+{# ── Tab bar ─────────────────────────────────────────────────────────────────#}
+<div style="display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0" id="ph-tab-bar">
+  <button class="myt-tab active" id="ph-tab-billing" onclick="phSwitchTab('billing')" style="font-size:13px;padding:8px 16px">
+    Billing
+    {% set _bq_pending = pending_invoices|length %}
+    {% if _bq_pending > 0 %}<span class="nav-badge" style="margin-left:5px">{{ _bq_pending }}</span>{% endif %}
+  </button>
+  <button class="myt-tab" id="ph-tab-payroll" onclick="phSwitchTab('payroll')" style="font-size:13px;padding:8px 16px">
+    Payroll Export
+    {% if pending_submissions %}
+    <span class="nav-badge" style="margin-left:5px">{{ pending_submissions|length }}</span>
+    {% endif %}
+  </button>
+</div>
+
+{# ── Tab 1: Billing ────────────────────────────────────────────────────────── #}
+<div id="ph-pane-billing">
 <div class="subtle small" style="margin-bottom:24px">Pay period {{ period_start }} → {{ period_end }}</div>
 
 {# ── Pending Billables Action Queue ───────────────────────────────────────────#}
@@ -961,6 +979,170 @@ function downloadInvoicePDF(invoiceId, invoiceNumber, intakeId, phaseLabel, amou
     })
     .catch(function() { alert('PDF generation failed.'); });
 }
+</script>
+
+</div>{# end ph-pane-billing #}
+
+{# ── Tab 2: Payroll Export ─────────────────────────────────────────────────── #}
+<div id="ph-pane-payroll" style="display:none">
+<style>
+  .pr-controls { display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:16px 18px;margin-bottom:16px }
+  .pr-controls .field { margin:0;flex:1;min-width:140px;max-width:200px }
+  .kpi-strip { display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px }
+  .kpi-chip  { flex:1;min-width:120px;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px }
+  .kpi-num   { font-size:28px;font-weight:700;line-height:1;font-family:var(--mono) }
+  .kpi-label { font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-top:4px }
+  .chip-blue  { border-left:3px solid var(--accent) }  .chip-blue  .kpi-num { color:var(--accent) }
+  .chip-green { border-left:3px solid var(--good) }    .chip-green .kpi-num { color:var(--good) }
+  .chip-amber { border-left:3px solid var(--warn) }    .chip-amber .kpi-num { color:var(--warn) }
+  .pr-table { width:100%;border-collapse:collapse;font-size:13px }
+  .pr-table th { padding:10px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:var(--card-bg-deeper);border-bottom:1px solid var(--border) }
+  .pr-table td { padding:9px 12px;border-bottom:1px solid var(--border) }
+  .pr-subtotal td { background:var(--card-bg-deeper);font-weight:700;font-size:13px;border-top:1px solid var(--border) }
+  .pr-total    td { background:var(--surface-3);font-weight:700;font-size:14px;border-top:2px solid var(--border-hover) }
+  .pr-detail td   { color:var(--muted) }
+  .pr-detail td:first-child { padding-left:28px }
+  .pct-good { color:var(--good);font-weight:700 }
+  .pct-warn { color:var(--warn);font-weight:700 }
+  .pct-bad  { color:var(--bad);font-weight:700 }
+  .pr-unapproved-warn { background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.4);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--warn);display:none }
+</style>
+
+{% if pending_submissions %}
+<div class="card" style="padding:0;margin-bottom:16px;overflow:hidden" id="pr-rq-card">
+  <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+    <div style="font-size:14px;font-weight:700">Pending Timesheet Approvals
+      <span style="background:rgba(251,191,36,.15);color:#fbbf24;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:8px">{{ pending_submissions|length }}</span>
+    </div>
+  </div>
+  <table class="table" style="margin:0">
+    <thead><tr><th>Engineer</th><th>Period</th><th>Hours</th><th>Submitted</th><th>Actions</th></tr></thead>
+    <tbody id="pr-rq-tbody">
+      {% for sub in pending_submissions %}
+      <tr id="pr-rq-row-{{ sub.id }}">
+        <td style="font-family:var(--mono);font-weight:700">{{ sub.engineer_initials }}</td>
+        <td style="font-family:var(--mono);font-size:12px">{{ sub.period_start }} – {{ sub.period_end }}</td>
+        <td style="font-family:var(--mono)">{{ "%.1f"|format(sub.total_hours or 0) }} h</td>
+        <td style="color:var(--muted);font-size:12px">{{ sub.submitted_at[:10] if sub.submitted_at else '—' }}</td>
+        <td style="white-space:nowrap">
+          <button class="btn" style="font-size:11px;padding:3px 8px;color:var(--good);border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.07)" onclick="prReview({{ sub.id }}, 'approve')">Approve</button>
+          <button class="btn" style="font-size:11px;padding:3px 8px;color:var(--bad);border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.07);margin-left:4px" onclick="prReview({{ sub.id }}, 'reject')">Reject</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card pr-controls">
+  <div class="field"><label>Period Start</label><input type="date" id="pr-start" value="{{ payroll_default_start }}" /></div>
+  <div class="field"><label>Period End</label><input type="date" id="pr-end" value="{{ payroll_default_end }}" /></div>
+  <button class="btn btn-primary" type="button" onclick="prLoadPreview()" style="flex:0 0 auto;white-space:nowrap">Preview</button>
+  <button class="btn" type="button" onclick="prDownloadCsv()" style="flex:0 0 auto;white-space:nowrap">Export CSV</button>
+</div>
+
+<div class="pr-unapproved-warn" id="pr-unapproved-warn"></div>
+<div id="pr-preview" style="display:none">
+  <div class="kpi-strip" id="pr-kpis"></div>
+  <div class="card" style="overflow:auto;margin-bottom:12px;padding:0"><div id="pr-table-wrap"></div></div>
+  <div id="pr-entry-count" class="subtle small" style="text-align:right;margin-bottom:8px"></div>
+</div>
+<div id="pr-loading" style="display:none;text-align:center;padding:40px;color:var(--muted);font-size:13px">Loading payroll data…</div>
+<div id="pr-empty"   style="display:none;text-align:center;padding:40px;color:var(--muted);font-size:13px">No time entries found for this period.</div>
+
+<script>
+(function() {
+  window.prReview = function(id, action) {
+    var notes = action === 'reject' ? (prompt('Rejection reason (optional):') || '') : '';
+    fetch('/api/timesheet/review/' + id, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:action, notes:notes})})
+      .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.detail||'Failed'); }); return r.json(); })
+      .then(() => {
+        var row = document.getElementById('pr-rq-row-' + id);
+        if (row) row.remove();
+        var tbody = document.getElementById('pr-rq-tbody');
+        if (tbody && !tbody.querySelector('tr')) { var c = document.getElementById('pr-rq-card'); if (c) c.style.display='none'; }
+      })
+      .catch(e => alert(e.message));
+  };
+
+  window.prLoadPreview = function() {
+    var start = document.getElementById('pr-start').value;
+    var end   = document.getElementById('pr-end').value;
+    if (!start || !end) { alert('Select a date range.'); return; }
+    document.getElementById('pr-preview').style.display  = 'none';
+    document.getElementById('pr-empty').style.display    = 'none';
+    document.getElementById('pr-loading').style.display  = 'block';
+    document.getElementById('pr-unapproved-warn').style.display = 'none';
+    fetch('/api/payroll-export?start=' + start + '&end=' + end)
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('pr-loading').style.display = 'none';
+        if (!data.kpis || data.kpis.total_hours === 0) { document.getElementById('pr-empty').style.display='block'; return; }
+        var ua = data.unapproved_entry_count || 0;
+        if (ua > 0) {
+          var w = document.getElementById('pr-unapproved-warn');
+          w.textContent = '⚠ ' + ua + ' entr' + (ua===1?'y':'ies') + ' belong to engineers who have not yet been approved for this period. Approve all timesheets before exporting.';
+          w.style.display = 'block';
+        }
+        prRenderKpis(data.kpis);
+        prRenderTable(data.summary_rows);
+        var cnt = (data.entries||[]).length;
+        document.getElementById('pr-entry-count').textContent = 'This export contains ' + cnt + ' entr' + (cnt===1?'y':'ies') + '. Download the CSV to import into accounting software.';
+        document.getElementById('pr-preview').style.display = 'block';
+      })
+      .catch(() => { document.getElementById('pr-loading').style.display='none'; document.getElementById('pr-empty').textContent='Error loading data.'; document.getElementById('pr-empty').style.display='block'; });
+  };
+
+  function prRenderKpis(k) {
+    document.getElementById('pr-kpis').innerHTML =
+      `<div class="kpi-chip chip-blue"><div class="kpi-num">${k.total_hours.toFixed(1)}</div><div class="kpi-label">Total Hours</div></div>
+       <div class="kpi-chip chip-green"><div class="kpi-num">${k.engineers_active}</div><div class="kpi-label">Engineers Active</div></div>
+       <div class="kpi-chip chip-amber"><div class="kpi-num">${k.projects_billed}</div><div class="kpi-label">Projects Billed</div></div>`;
+  }
+
+  function prPctClass(p) { return p===null||p===undefined?'': p>100?'pct-bad': p>=80?'pct-warn':'pct-good'; }
+
+  function prRenderTable(rows) {
+    if (!rows.length) { document.getElementById('pr-table-wrap').innerHTML=''; return; }
+    var html = `<table class="pr-table"><thead><tr><th>Engineer</th><th>Project #</th><th>Client</th><th>Phase</th><th>Hours (period)</th><th>Budget (total)</th><th>% of Budget</th></tr></thead><tbody>`;
+    var tot = 0;
+    rows.forEach(r => {
+      if (r.is_subtotal) {
+        html += `<tr class="pr-subtotal"><td>${r.engineer}</td><td colspan="3" style="color:var(--muted)">Engineer total</td><td style="font-family:var(--mono)">${r.hours.toFixed(1)} h</td><td colspan="2"></td></tr>`;
+        tot += r.hours;
+      } else {
+        var pct=r.pct_budget, ps=pct!==null?pct.toFixed(0)+'%':'—', pc=prPctClass(pct), bg=r.budget?r.budget.toFixed(1)+' h':'—';
+        html += `<tr class="pr-detail"><td></td><td style="font-family:var(--mono);font-weight:700">${r.project_number||'—'}</td><td>${r.client||'—'}</td><td style="font-family:var(--mono)">${r.phase||'—'}</td><td style="font-family:var(--mono)">${r.hours.toFixed(1)} h</td><td style="font-family:var(--mono)">${bg}</td><td class="${pc}" style="font-family:var(--mono)">${ps}</td></tr>`;
+      }
+    });
+    html += `</tbody><tfoot><tr class="pr-total"><td colspan="4" style="font-family:var(--mono)">PERIOD TOTAL</td><td style="font-family:var(--mono)">${tot.toFixed(1)} h</td><td colspan="2"></td></tr></tfoot></table>`;
+    document.getElementById('pr-table-wrap').innerHTML = html;
+  }
+
+  window.prDownloadCsv = function() {
+    var start = document.getElementById('pr-start').value;
+    var end   = document.getElementById('pr-end').value;
+    if (!start || !end) { alert('Select a date range.'); return; }
+    window.location.href = '/api/payroll-export/csv?start=' + start + '&end=' + end;
+  };
+})();
+</script>
+</div>{# end ph-pane-payroll #}
+
+<script>
+(function() {
+  function phSwitchTab(which) {
+    ['billing','payroll'].forEach(function(t) {
+      document.getElementById('ph-pane-' + t).style.display = t === which ? '' : 'none';
+      document.getElementById('ph-tab-' + t).classList.toggle('active', t === which);
+    });
+    history.replaceState(null, '', '#' + which);
+  }
+  window.phSwitchTab = phSwitchTab;
+  var hash = location.hash.slice(1);
+  if (hash === 'payroll') phSwitchTab('payroll');
+})();
 </script>
 
 {% endblock %}

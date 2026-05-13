@@ -259,7 +259,7 @@ _ROLE_HOME = {
 # Pages each role may visit (admin implicit everywhere)
 _EMPLOYEE_PAGES = {"/timesheet", "/calendar", "/time-off", "/past-projects", "/my-launch", "/my-time"}
 _OFFICE_PAGES   = {"/timesheet", "/calendar", "/time-off",
-                   "/billing-queue", "/payroll-export", "/burn-health", "/capacity",
+                   "/billing-queue", "/burn-health", "/capacity",
                    "/approvals"}
 
 _ROLE_ALLOWED: dict[str, set[str]] = {
@@ -2793,6 +2793,16 @@ def billing_queue_page(request: Request) -> HTMLResponse:
         engineer_project_hours = db.get_engineer_project_hours()
     except Exception:
         engineer_project_hours = []
+    # Payroll Export tab data
+    try:
+        pending_submissions = db.get_review_queue()
+    except Exception:
+        pending_submissions = []
+    today_d = date.today()
+    pr_start, pr_end = _current_pay_period()
+    if pr_end >= today_d.isoformat():
+        pr_start = (date.fromisoformat(pr_start) - timedelta(days=14)).isoformat()
+        pr_end   = (date.fromisoformat(pr_end)   - timedelta(days=14)).isoformat()
     submitted   = sum(1 for e in timecard_summary if e["submission_status"] == "SUBMITTED")
     approved    = sum(1 for e in timecard_summary if e["submission_status"] == "APPROVED")
     not_started = sum(1 for e in timecard_summary if e["submission_status"] == "NOT_STARTED")
@@ -2802,7 +2812,7 @@ def billing_queue_page(request: Request) -> HTMLResponse:
         "billing_queue.html",
         {
             "request":                request,
-            "title":                  "Billing & Payroll — AVS",
+            "title":                  "Payroll Hub — AVS",
             "now_local":              _now_local_iso(),
             "period_start":           start,
             "period_end":             end,
@@ -2824,6 +2834,10 @@ def billing_queue_page(request: Request) -> HTMLResponse:
             "stale_projects":         stale_projects,
             "utilization":            utilization,
             "engineer_project_hours": engineer_project_hours,
+            # Payroll Export tab
+            "pending_submissions":    pending_submissions,
+            "payroll_default_start":  pr_start,
+            "payroll_default_end":    pr_end,
         },
     )
 
@@ -2839,25 +2853,7 @@ def api_all_timecards(request: Request) -> list[dict[str, Any]]:
 
 @app.get("/payroll-export", response_class=HTMLResponse)
 def payroll_export_page(request: Request) -> HTMLResponse:
-    if redir := _check_page_access(request, "/payroll-export"): return redir
-    today = date.today()
-    start, end = _current_pay_period()
-    if end >= today.isoformat():
-        # go back one period
-        prev_start = date.fromisoformat(start) - timedelta(days=14)
-        prev_end = date.fromisoformat(end) - timedelta(days=14)
-        start, end = prev_start.isoformat(), prev_end.isoformat()
-    pending_submissions = db.get_review_queue()
-    return templates.TemplateResponse(
-        "payroll_export.html",
-        {
-            "request": request,
-            "now_local": _now_local_iso(),
-            "default_start": start,
-            "default_end": end,
-            "pending_submissions": pending_submissions,
-        },
-    )
+    return RedirectResponse(url="/billing-queue#payroll", status_code=302)
 
 
 @app.get("/api/payroll-export")
