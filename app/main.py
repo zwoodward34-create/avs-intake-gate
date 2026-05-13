@@ -2923,6 +2923,28 @@ def api_all_timecards(request: Request) -> list[dict[str, Any]]:
     return db.get_firm_timecard_summary(start, end)
 
 
+@app.get("/api/payroll/period-lock-status")
+def api_period_lock_status(start: str, end: str, request: Request) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user or user.get("role") not in ("admin", "office_manager"):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return {"locked": db.is_period_globally_locked(start, end)}
+
+
+@app.post("/api/payroll/lock-period")
+async def api_lock_pay_period(request: Request) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user or user.get("role") not in ("admin", "office_manager"):
+        raise HTTPException(status_code=403, detail="Access denied")
+    body = await request.json()
+    period_start = (body.get("period_start") or "").strip()
+    period_end   = (body.get("period_end") or "").strip()
+    if not period_start or not period_end:
+        raise HTTPException(status_code=400, detail="period_start and period_end are required")
+    db.lock_pay_period(period_start, period_end, user.get("initials", "?"))
+    return {"ok": True, "period_start": period_start, "period_end": period_end}
+
+
 @app.get("/payroll-export", response_class=HTMLResponse)
 def payroll_export_page(request: Request) -> HTMLResponse:
     return RedirectResponse(url="/billing-queue#payroll", status_code=302)

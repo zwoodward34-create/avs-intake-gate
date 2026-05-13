@@ -1460,8 +1460,43 @@ def get_or_create_submission(engineer: str, period_start: str, period_end: str) 
     return resp.data[0]
 
 
+_PERIOD_LOCK_SENTINEL = "__PERIOD_LOCK__"
+
+
+def is_period_globally_locked(period_start: str, period_end: str) -> bool:
+    """Return True if an admin has explicitly locked this pay period firm-wide."""
+    resp = (
+        _client()
+        .table("timesheet_submissions")
+        .select("id")
+        .eq("engineer_initials", _PERIOD_LOCK_SENTINEL)
+        .eq("period_start", period_start)
+        .limit(1)
+        .execute()
+    )
+    return bool(resp.data)
+
+
+def lock_pay_period(period_start: str, period_end: str, locked_by: str) -> None:
+    """Firm-wide pay period lock. Stored as a sentinel row in timesheet_submissions."""
+    now = _utc_now_iso()
+    _client().table("timesheet_submissions").upsert(
+        {
+            "engineer_initials": _PERIOD_LOCK_SENTINEL,
+            "period_start":      period_start,
+            "period_end":        period_end,
+            "status":            "APPROVED",
+            "reviewed_by":       locked_by,
+            "reviewed_at":       now,
+            "total_hours":       0,
+        },
+        on_conflict="engineer_initials,period_start",
+    ).execute()
+
+
 def is_period_locked(engineer: str, entry_date: str) -> bool:
-    """Return True if the pay period covering entry_date is SUBMITTED or APPROVED for this engineer."""
+    """Return True if the pay period covering entry_date is locked for this engineer or globally by admin."""
+    # Per-engineer submission lock
     resp = (
         _client()
         .table("timesheet_submissions")
@@ -1473,7 +1508,20 @@ def is_period_locked(engineer: str, entry_date: str) -> bool:
         .limit(1)
         .execute()
     )
-    return bool(resp.data)
+    if resp.data:
+        return True
+    # Global period lock (admin-set via Lock Pay Period button)
+    resp2 = (
+        _client()
+        .table("timesheet_submissions")
+        .select("id")
+        .eq("engineer_initials", _PERIOD_LOCK_SENTINEL)
+        .lte("period_start", entry_date)
+        .gte("period_end", entry_date)
+        .limit(1)
+        .execute()
+    )
+    return bool(resp2.data)
 
 
 def submit_period(engineer: str, period_start: str, period_end: str, total_hours: float) -> dict[str, Any]:
