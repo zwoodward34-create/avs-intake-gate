@@ -37,6 +37,10 @@
 
         <div class="nav-group">
           <div class="nav-group-label">People</div>
+          {% set _nav_emp = request.session.get('user') %}
+          {% if _nav_emp and _nav_emp.role not in ('admin', 'office_manager', 'billing') %}
+          <a class="nav-item {% if request.url.path == '/engineer-dashboard' %}active{% endif %}" href="/engineer-dashboard">My Dashboard</a>
+          {% endif %}
           <a class="nav-item {% if request.url.path == '/my-time' %}active{% endif %}" href="/my-time">
             My Time
             {% set _tc = timesheet_period_count() %}

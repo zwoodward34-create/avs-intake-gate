@@ -250,14 +250,17 @@ def _require_auth(request: Request) -> Optional[RedirectResponse]:
 _ROLE_HOME = {
     "admin":          "/",
     "office_manager": "/billing-queue",
-    "employee":       "/timesheet",
-    "engineer":       "/timesheet",
-    "drafter":        "/timesheet",
+    "employee":       "/engineer-dashboard",
+    "engineer":       "/engineer-dashboard",
+    "drafter":        "/engineer-dashboard",
     "billing":        "/billing-queue",
 }
 
 # Pages each role may visit (admin implicit everywhere)
-_EMPLOYEE_PAGES = {"/timesheet", "/calendar", "/time-off", "/past-projects", "/my-launch", "/my-time"}
+_EMPLOYEE_PAGES = {
+    "/timesheet", "/calendar", "/time-off", "/past-projects",
+    "/my-launch", "/my-time", "/engineer-dashboard",
+}
 _OFFICE_PAGES   = {"/timesheet", "/calendar", "/time-off",
                    "/billing-queue", "/burn-health", "/capacity",
                    "/approvals"}
@@ -2703,6 +2706,74 @@ def api_all_submissions() -> dict[str, Any]:
 def engineer_launch_page(request: Request, engineer: Optional[str] = None) -> HTMLResponse:
     qs = f"?engineer={engineer}" if engineer else ""
     return RedirectResponse(url=f"/my-time{qs}#hours", status_code=302)
+
+
+# ── Engineer Dashboard ────────────────────────────────────────────────────────
+
+@app.get("/engineer-dashboard", response_class=HTMLResponse)
+def engineer_dashboard_page(request: Request) -> HTMLResponse:
+    if redir := _check_page_access(request, "/engineer-dashboard"): return redir
+    user     = _session_user(request) or {}
+    initials = (user.get("initials") or "").upper()
+    import json as _json
+    data: dict[str, Any] = {}
+    error: Optional[str] = None
+    try:
+        data = db.get_engineer_dashboard_data(initials)
+    except Exception as exc:
+        error = str(exc)
+        data  = {
+            "engineer": initials, "name": user.get("name", ""),
+            "role_title": "", "color": "#888",
+            "is_eit": False, "mentor_initials": None, "mentor_name": None,
+            "week": {"start": "", "end": "", "logged_hours": 0,
+                     "capacity_hours": 40, "utilization_pct": 0, "ooo_days": 0},
+            "projects": [], "milestones": [],
+        }
+    return templates.TemplateResponse("engineer_dashboard.html", {
+        "request":          request,
+        "title":            f"{data.get('name', initials)} — Dashboard",
+        "data":             data,
+        "phase_colors":     db.PHASE_COLORS,
+        "phase_colors_json": _json.dumps(db.PHASE_COLORS),
+        "error":            error,
+    })
+
+
+@app.get("/api/engineer/dashboard/{initials}")
+def api_engineer_dashboard(request: Request, initials: str) -> dict[str, Any]:
+    user        = _session_user(request) or {}
+    user_ini    = (user.get("initials") or "").upper()
+    user_role   = user.get("role", "")
+    target      = initials.upper()
+    if user_role not in ("admin", "office_manager") and target != user_ini:
+        raise HTTPException(status_code=403, detail="You can only view your own dashboard.")
+    return db.get_engineer_dashboard_data(target)
+
+
+@app.post("/api/engineer/qa-review/{intake_id}")
+async def api_request_qa_review(request: Request, intake_id: int) -> dict[str, Any]:
+    user     = _session_user(request) or {}
+    initials = (user.get("initials") or "").strip()
+    if not initials:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    existing = (
+        db._client()
+        .table("intakes")
+        .select("id,mo_conditions")
+        .eq("id", intake_id)
+        .maybe_single()
+        .execute()
+    )
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    note = f"QA REVIEW REQUESTED by {initials} on {date.today().isoformat()}"
+    cur  = (existing.data.get("mo_conditions") or "").strip()
+    db._client().table("intakes").update({
+        "mo_conditions": f"{cur}\n{note}".strip() if cur else note,
+        "updated_at":    db._utc_now_iso(),
+    }).eq("id", intake_id).execute()
+    return {"success": True, "note": note}
 
 
 @app.get("/approvals", response_class=HTMLResponse)

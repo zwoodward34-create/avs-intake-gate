@@ -3129,6 +3129,150 @@ def get_engineer_bucket_view(engineer: str) -> dict[str, Any]:
     }
 
 
+# ── Engineer Dashboard ────────────────────────────────────────────────────────
+
+# EIT → mentor mapping (initials of senior engineer assigned as mentor)
+_MENTOR_MAP: dict[str, str] = {
+    "JR": "NK",  # Josh Robinder → Nathan Kline
+    "RK": "NK",  # Rajul Kanth   → Nathan Kline
+}
+
+
+def get_engineer_dashboard_data(engineer: str) -> dict[str, Any]:
+    """
+    Aggregate the data needed for the Engineer Dashboard page in a single call.
+    Returns weekly capacity, active project burn data, 7-day milestones, and
+    soft blockers drawn from each project's red flags.
+    """
+    from datetime import date as _date, timedelta as _td
+
+    today     = _date.today()
+    week_start = today - _td(days=today.weekday())   # Monday
+    week_end   = week_start + _td(days=4)             # Friday
+
+    # ── Engineer identity ──────────────────────────────────────────────────────
+    color      = TEAM_COLORS.get(engineer, "#888")
+    name       = TEAM_FULL_NAMES.get(engineer, engineer)
+    role_title = ENGINEER_ROLES.get(engineer, "")
+    is_eit     = "EIT" in role_title
+    mentor_ini = _MENTOR_MAP.get(engineer)
+    mentor_name = TEAM_FULL_NAMES.get(mentor_ini, "") if mentor_ini else None
+
+    # ── Project bucket view (phases + own hours) ───────────────────────────────
+    bucket_view = get_engineer_bucket_view(engineer)
+
+    # ── This-week logged hours ─────────────────────────────────────────────────
+    te_resp = (
+        _client()
+        .table("time_entries")
+        .select("hours")
+        .eq("engineer_initials", engineer)
+        .gte("entry_date", week_start.isoformat())
+        .lte("entry_date", week_end.isoformat())
+        .execute()
+    )
+    week_logged = round(sum(float(e.get("hours") or 0) for e in (te_resp.data or [])), 1)
+
+    # ── Weekly capacity ────────────────────────────────────────────────────────
+    cap = get_projected_capacity(engineer, week_start, week_end)
+    capacity_hours  = cap["available_hours"]  # 8h × available working days
+    utilization_pct = round((week_logged / capacity_hours * 100) if capacity_hours > 0 else 0.0, 1)
+
+    # ── 7-day milestones for this engineer ────────────────────────────────────
+    horizon = today + _td(days=7)
+    ce_resp = (
+        _client()
+        .table("calendar_events")
+        .select("project_number,phase,start_date,end_date,client,team")
+        .gte("end_date", today.isoformat() + "T00:00:00Z")
+        .lte("start_date", horizon.isoformat() + "T23:59:59Z")
+        .neq("is_ooo", True)
+        .order("end_date", desc=False)
+        .execute()
+    )
+    pn_to_name = {p["project_number"]: p.get("project_name", p["project_number"])
+                  for p in bucket_view["projects"]}
+    milestones: list[dict] = []
+    for ev in (ce_resp.data or []):
+        if engineer not in (ev.get("team") or []):
+            continue
+        raw_end = (ev.get("end_date") or "")[:10]
+        if not raw_end:
+            continue
+        try:
+            days_away = (_date.fromisoformat(raw_end) - today).days
+        except Exception:
+            continue
+        pn = ev.get("project_number", "")
+        milestones.append({
+            "project_number": pn,
+            "project_name":   pn_to_name.get(pn, pn),
+            "phase":          ev.get("phase", ""),
+            "date":           raw_end,
+            "days_away":      days_away,
+        })
+
+    # ── Soft blockers from project red flags ──────────────────────────────────
+    intake_ids = [p["intake_id"] for p in bucket_view["projects"] if p.get("intake_id")]
+    blockers_by_iid: dict[int, list[str]] = {}
+    if intake_ids:
+        rf_resp = (
+            _client()
+            .table("intakes")
+            .select("id,red_flags_json")
+            .in_("id", intake_ids)
+            .execute()
+        )
+        for row in (rf_resp.data or []):
+            flags = json.loads(row.get("red_flags_json") or "[]")
+            soft  = [
+                f.get("title", "Issue")
+                for f in flags
+                if f.get("severity", "").lower() in ("low", "medium")
+            ]
+            if soft:
+                blockers_by_iid[row["id"]] = soft
+
+    # ── Attach blockers to projects + compute personal burn pulse ─────────────
+    enriched_projects: list[dict] = []
+    for proj in bucket_view["projects"]:
+        iid = proj.get("intake_id")
+        cpd = proj.get("current_phase_data") or {}
+        own   = cpd.get("own_hours",    0.0)
+        total = cpd.get("bucket_total", 0.0)
+        if total > 0:
+            own_pct = own / total * 100
+        else:
+            own_pct = 0.0
+        burn_pulse = "critical" if own > total else ("warn" if own_pct >= 80 else "good")
+        enriched_projects.append({
+            **proj,
+            "soft_blockers": blockers_by_iid.get(iid, []),
+            "burn_pulse":    burn_pulse,
+            "own_pct":       round(own_pct, 1),
+        })
+
+    return {
+        "engineer":        engineer,
+        "name":            name,
+        "role_title":      role_title,
+        "color":           color,
+        "is_eit":          is_eit,
+        "mentor_initials": mentor_ini,
+        "mentor_name":     mentor_name,
+        "week": {
+            "start":           week_start.isoformat(),
+            "end":             week_end.isoformat(),
+            "logged_hours":    week_logged,
+            "capacity_hours":  capacity_hours,
+            "utilization_pct": utilization_pct,
+            "ooo_days":        cap["ooo_days"],
+        },
+        "projects":   enriched_projects,
+        "milestones": milestones[:10],
+    }
+
+
 # ── Potential Burn helpers ────────────────────────────────────────────────────
 
 def _get_submitted_periods() -> list[tuple[str, str, str]]:
