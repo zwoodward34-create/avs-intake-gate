@@ -45,7 +45,8 @@
   {% if not submitted %}
   <div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">
     No timesheets awaiting approval.<br>
-    <span style="font-size:12px">Engineers must click "Submit for Review" on the Timesheet page first.</span>
+    <span style="font-size:12px">Engineers must click "Submit for Review" on the Timesheet page first.</span><br>
+    <a href="/api/timesheet/all-submissions" target="_blank" style="font-size:11px;color:var(--accent);margin-top:8px;display:inline-block">Debug: view all submission rows →</a>
   </div>
   {% else %}
   <table class="table" style="margin:0">

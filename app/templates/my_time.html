@@ -528,7 +528,7 @@
     console.log('[Timesheet] submitting period', eng, start, end);
     fetch('/api/timesheet/submit', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({engineer:eng, period_start:start, period_end:end})})
       .then(r => { if (!r.ok) return r.text().then(text => { var msg='Submit failed'; try { msg=JSON.parse(text).detail||msg; } catch(_){} throw new Error(msg); }); return r.json(); })
-      .then(sub => { console.log('[Timesheet] submit success', sub); renderSubmissionBanner(sub, eng, start, end); loadEntries(); })
+      .then(sub => { console.log('[Timesheet] submit success', sub); renderSubmissionBanner(sub, eng, start, end); loadEntries(true); })
       .catch(e => { showSubmitError(e.message || 'Submit failed — check your browser console.'); if (btn) { btn.disabled = false; btn.textContent = 'Submit for Review'; } });
   };
 
@@ -540,22 +540,27 @@
       .catch(e => { alert(e.message); });
   };
 
-  window.loadEntries = function() {
+  // preserveBanner=true skips hiding the submission banner (used after submit success)
+  window.loadEntries = function(preserveBanner) {
     var eng   = document.getElementById('eng-select').value;
     var start = document.getElementById('period-start').value;
     var end   = document.getElementById('period-end').value;
     if (!start || !end) { alert('Please select a date range.'); return; }
     document.getElementById('ts-table-wrap').innerHTML = '<div class="ts-empty">Loading…</div>';
-    document.getElementById('ts-submit-banner').style.display = 'none';
-    _lockedPeriod = false;
+    if (!preserveBanner) {
+      document.getElementById('ts-submit-banner').style.display = 'none';
+      _lockedPeriod = false;
+    }
     var params = new URLSearchParams({start, end});
     if (eng) params.append('engineer', eng);
     fetch('/api/time-entries?' + params.toString())
       .then(r => r.json())
       .then(entries => {
         renderTable(entries);
-        var liveHours = entries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
-        loadSubmissionStatus(eng, start, end, liveHours);
+        if (!preserveBanner) {
+          var liveHours = entries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
+          loadSubmissionStatus(eng, start, end, liveHours);
+        }
       })
       .catch(() => { document.getElementById('ts-table-wrap').innerHTML = '<div class="ts-empty">Could not load entries.</div>'; });
   };
