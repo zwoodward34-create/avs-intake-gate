@@ -2145,8 +2145,25 @@ def get_pipeline_data() -> dict[str, Any]:
         actual   = round(actual_by_intake.get(iid, 0.0), 1)
         pn = intake.get("project_number") or ""
         cur_prod = intake.get("current_production_phase") or "SD"
-        phase_budgeted = round(budget_by_phase.get((iid, cur_prod), 0.0), 1)
-        phase_actual   = round(actual_by_phase.get((iid, cur_prod), 0.0), 1)
+        # Aggregate budget/actual by billing column, not by raw production phase code,
+        # because phase_budgets uses milestone codes (50%, 75%, etc.) that don't match
+        # the production phase codes stored in current_production_phase.
+        _budget_map: dict[str, list[str]] = {
+            "SD": ["SD"],
+            "DD": ["50%", "75%"],
+            "CD": ["90%", "IFP"],
+            "CA": ["CA", "REV"],
+        }
+        _actual_map: dict[str, list[str]] = {
+            "SD": ["SD", "RFP"],
+            "DD": ["DD", "50%", "75%"],
+            "CD": ["90%", "CD", "IFP"],
+            "CA": ["CA", "REV"],
+        }
+        budget_codes = _budget_map.get(billing_col, [])
+        actual_codes = _actual_map.get(billing_col, [])
+        phase_budgeted = round(sum(budget_by_phase.get((iid, pc), 0.0) for pc in budget_codes), 1)
+        phase_actual   = round(sum(actual_by_phase.get((iid, pc), 0.0) for pc in actual_codes), 1)
 
         project = {
             "intake_id":              iid,

@@ -115,9 +115,10 @@
 <div class="page-title" style="margin-bottom:20px">My Time</div>
 
 <!-- Tab bar -->
+{% set _is_employee_user = current_user_role not in ('admin', 'office_manager', 'billing') %}
 <div class="myt-tabs">
-  <button class="myt-tab active" onclick="switchTab('hours')">My Hours</button>
-  <button class="myt-tab" onclick="switchTab('timesheet')">
+  <button class="myt-tab {% if _is_employee_user %}{% else %}active{% endif %}" onclick="switchTab('hours')">My Hours</button>
+  <button class="myt-tab {% if _is_employee_user %}active{% endif %}" onclick="switchTab('timesheet')">
     Timesheet
     {% set _tc = timesheet_period_count() %}
     {% if _tc > 0 %}<span class="nav-badge" style="margin-left:5px">{{ _tc }}</span>{% endif %}
@@ -126,7 +127,7 @@
 </div>
 
 <!-- ───────────────────────────────────── Tab 1: My Hours ── -->
-<div class="myt-pane active" id="pane-hours">
+<div class="myt-pane {% if not _is_employee_user %}active{% endif %}" id="pane-hours">
 
   <div class="el-header">
     <div class="el-name">{{ view.name }}</div>
@@ -188,7 +189,7 @@
 </div>
 
 <!-- ──────────────────────────────────── Tab 2: Timesheet ── -->
-<div class="myt-pane" id="pane-timesheet">
+<div class="myt-pane {% if _is_employee_user %}active{% endif %}" id="pane-timesheet">
 
   <div class="ts-header">Timesheet</div>
   <div class="ts-sub" style="margin-bottom:16px">Log hours against active projects by engineer and phase</div>
@@ -376,9 +377,10 @@
     // Persist via URL hash
     history.replaceState(null, '', '#' + which);
   };
-  // Restore tab from hash
+  // Restore tab from hash; employees default to Timesheet so they see the submit button
   var hash = location.hash.slice(1);
-  if (panes.includes(hash)) switchTab(hash);
+  var _defaultTab = '{{ "timesheet" if current_user_role not in ("admin", "office_manager", "billing") else "hours" }}';
+  switchTab(panes.includes(hash) ? hash : _defaultTab);
 
   // ── Timesheet ────────────────────────────────────────────────────────────────
   const PHASE_COLORS    = {{ phase_colors_json | safe }};
