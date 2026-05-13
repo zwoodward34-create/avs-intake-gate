@@ -225,7 +225,9 @@ _USER_DIRECTORY: dict[str, dict[str, str]] = {
 _ROLE_REDIRECT: dict[str, str] = {
     "office_manager": "/billing-queue",
     "admin":          "/",
-    "employee":       "/timesheet",
+    "employee":       "/engineer-dashboard",
+    "engineer":       "/engineer-dashboard",
+    "drafter":        "/engineer-dashboard",
 }
 
 app.add_middleware(
@@ -364,9 +366,8 @@ def api_logout(request: Request) -> RedirectResponse:
 @app.get("/", response_class=HTMLResponse)
 def launch(request: Request) -> HTMLResponse:
     if redir := _check_page_access(request, "/"): return redir
-    now = datetime.now()
-    hour = now.hour
-    time_of_day = "morning" if hour < 12 else "afternoon" if hour < 17 else "evening"
+    user = _session_user(request) or {}
+    user_name = user.get("name", "")
 
     all_intakes = db.list_intakes()
     proceed_count  = sum(1 for i in all_intakes if i.status == "PROCEED_TO_PROPOSAL")
@@ -430,7 +431,7 @@ def launch(request: Request) -> HTMLResponse:
         {
             "request": request,
             "now_local": _now_local_iso(),
-            "time_of_day": time_of_day,
+            "user_name": user_name,
             "total_intakes": len(all_intakes),
             "proceed_count": proceed_count,
             "declined_count": declined_count,

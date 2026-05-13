@@ -92,17 +92,9 @@
 }
 </style>
 
-<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap">
-  <div>
-    <div class="page-eyebrow">Engineer Dashboard</div>
-    <h1 style="margin:3px 0 0;font-size:1.5rem;font-weight:800;letter-spacing:-.3px">
-      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ data.color }};margin-right:8px;vertical-align:middle"></span>
-      {{ data.name }}
-    </h1>
-  </div>
-  <div style="font-size:12px;color:var(--muted)">
-    Week of {{ data.week.start }} → {{ data.week.end }}
-  </div>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:8px">
+  <div class="page-eyebrow" style="margin-bottom:0">My Dashboard</div>
+  <div style="font-size:13px;font-weight:600;color:var(--muted)">{{ data.name }}</div>
 </div>
 
 {% if error %}

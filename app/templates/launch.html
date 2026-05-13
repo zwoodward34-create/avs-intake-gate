@@ -1,8 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="home-date">{{ now_local[:10] }}</div>
-<div class="home-title">Good {{ time_of_day }}, Mo.</div>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:8px">
+  <div class="home-date" style="margin-bottom:0">{{ now_local[:10] }}</div>
+  {% if user_name %}<div style="font-size:13px;font-weight:600;color:var(--muted)">{{ user_name }}</div>{% endif %}
+</div>
 
 <div class="home-grid">
   <!-- Mo's Queue alert -->
