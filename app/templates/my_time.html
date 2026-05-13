@@ -231,7 +231,7 @@
         <span style="font-size:12px;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:.05em">Submitted</span>
         <span style="font-size:13px;color:var(--text);margin-left:8px">Pay Period {{ current_submission.period_start }} – {{ current_submission.period_end }}</span>
       </div>
-      <span style="font-size:12px;color:#fbbf24;white-space:nowrap">⏳ Awaiting Mo's approval</span>
+      <span style="font-size:12px;color:#fbbf24;white-space:nowrap">⏳ Awaiting approval</span>
     </div>
     {% elif _ss == 'APPROVED' %}
     <div style="padding:14px 18px;border-radius:8px;margin-bottom:12px;background:rgba(0,230,118,.10);border:1px solid rgba(0,230,118,.3)">
@@ -479,7 +479,7 @@
     if (status === 'SUBMITTED' && sub.submitted_at) metaLine = 'Submitted ' + new Date(sub.submitted_at).toLocaleDateString();
     else if (status === 'APPROVED' && sub.reviewed_at) { metaLine = 'Approved ' + new Date(sub.reviewed_at).toLocaleDateString(); if (sub.reviewer_notes) metaLine += ' · ' + sub.reviewer_notes; }
     else if (status === 'REJECTED' && sub.reviewer_notes) metaLine = sub.reviewer_notes;
-    else if (status === 'DRAFT') metaLine = displayHours > 0 ? "Hours logged — ready to submit for Mo's approval." : "Log your hours for this period, then submit for Mo's approval.";
+    else if (status === 'DRAFT') metaLine = displayHours > 0 ? "Hours logged — ready to submit for approval." : "Log your hours for this period, then submit for approval.";
     var hoursHtml = `<span style="font-size:20px;font-weight:900;font-family:var(--mono);color:${displayHours>0?'var(--text)':'var(--muted)'}">${displayHours.toFixed(1)}h</span>`;
     var actionHtml = '';
     if (status === 'DRAFT' || status === 'REJECTED') {
@@ -493,7 +493,7 @@
           <button class="btn" type="button" onclick="reviewPeriod('${sub.id}','REJECTED',prompt('Reason (optional):'),'${eng}','${start}','${end}')" style="white-space:nowrap;font-size:12px;color:var(--bad);border-color:var(--bad)">Reject</button>
         </div>`;
       } else {
-        actionHtml = `<span style="font-size:12px;color:#fbbf24;display:flex;align-items:center;gap:6px"><span>⏳</span><span>Awaiting Mo's approval</span></span>`;
+        actionHtml = `<span style="font-size:12px;color:#fbbf24;display:flex;align-items:center;gap:6px"><span>⏳</span><span>Awaiting approval</span></span>`;
       }
     } else if (status === 'APPROVED') {
       actionHtml = `<span style="font-size:13px;font-weight:700;color:var(--good)">✓ Approved — period locked</span>`;

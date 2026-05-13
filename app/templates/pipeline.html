@@ -539,7 +539,7 @@
       return `<span class="pl-avatar" style="background:${c}" title="${m}">${m}</span>`;
     }).join('');
 
-    const advDisabled = (!canAdvance) ? 'disabled title="' + (co ? 'Resolve change order first' : "Invoice pending Mo's approval") + '"' : '';
+    const advDisabled = (!canAdvance) ? 'disabled title="' + (co ? 'Resolve change order first' : "Invoice pending approval") + '"' : '';
 
     const curIdx  = PROD_ORDER.indexOf(p.current_production_phase);
     const nextProd = curIdx >= 0 && curIdx < PROD_ORDER.length - 1 ? PROD_ORDER[curIdx + 1] : null;

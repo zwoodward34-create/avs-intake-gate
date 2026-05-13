@@ -120,7 +120,7 @@
           </label>
         </div>
         <div id="fee-override-wrap" style="display:{% if fd == 'OVERRIDE' %}block{% else %}none{% endif %}">
-          <label style="display:block; margin-bottom:4px; font-size:13px" class="subtle">Mo's fee ($)</label>
+          <label style="display:block; margin-bottom:4px; font-size:13px" class="subtle">Approved fee ($)</label>
           <input type="number" name="mo_fee_override" min="0" step="100"
                  value="{{ intake.mo_fee_override or '' }}"
                  placeholder="e.g. 42000"

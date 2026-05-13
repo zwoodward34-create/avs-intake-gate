@@ -266,10 +266,10 @@
             <a class="btn btn-primary" href="/mo-queue">Mo review</a>
             {% if not intake.mo_decision %}
               {% if intake.status == 'PENDING_MO_REVIEW' %}
-                <span class="badge" style="align-self:center">In Mo's Queue</span>
+                <span class="badge" style="align-self:center">In Decision Queue</span>
               {% else %}
                 <form method="post" action="/intakes/{{ intake.id }}/push-to-mo" style="display:inline">
-                  <button type="submit" class="btn btn-queue">Push to Mo's Queue</button>
+                  <button type="submit" class="btn btn-queue">Push to Decision Queue</button>
                 </form>
               {% endif %}
             {% endif %}
@@ -447,7 +447,7 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
   <details class="acc-item" {% if 'mo' in default_open %}open{% endif %}>
     <summary class="acc-hd">
       <div class="acc-hd-left">
-        <span>Mo's Decision</span>
+        <span>Decision</span>
         {% if intake.mo_decision %}
           <span class="badge" style="font-size:11px">{{ intake.mo_decision }}</span>
         {% else %}
@@ -655,7 +655,7 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
             <div class="field">
               <label>Approved Fee Amount ($) *</label>
               <input type="number" name="fee_amount" min="1000" step="500" value="{{ proposal_fee_default or '' }}" required />
-              {% if proposal_fee_default %}<div class="subtle small" style="margin-top:4px">Pre-filled from Mo's fee decision</div>{% endif %}
+              {% if proposal_fee_default %}<div class="subtle small" style="margin-top:4px">Pre-filled from fee decision</div>{% endif %}
             </div>
             <div class="field">
               <label>Structural system / scope notes (optional)</label>

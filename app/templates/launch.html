@@ -9,7 +9,7 @@
   {% set _mc = pending_mo_count() %}
   {% if _mc > 0 %}
   <div class="queue-alert">
-    <div class="panel-label">Mo's Queue — {{ _mc }} pending decision{{ 's' if _mc != 1 }}</div>
+    <div class="panel-label">Decision Queue — {{ _mc }} pending decision{{ 's' if _mc != 1 }}</div>
     {% for intake in mo_queue_intakes %}
     <a class="queue-alert-item" href="/intakes/{{ intake.id }}">
       <div class="queue-alert-name">{{ intake.project_name }}</div>
@@ -28,7 +28,7 @@
   </div>
   {% else %}
   <div class="queue-alert">
-    <div class="panel-label">Mo's Queue</div>
+    <div class="panel-label">Decision Queue</div>
     <div style="padding:20px 0;color:var(--muted);font-size:13px">No intakes pending your review.</div>
     <a class="btn btn-sm" href="/mo-queue">View queue</a>
   </div>
@@ -59,7 +59,7 @@
       <span class="inline-row-val" style="color:var(--good)">{{ proceed_count }}</span>
     </div>
     <div class="inline-row">
-      <span class="inline-row-label">Pending Mo's review</span>
+      <span class="inline-row-label">Pending review</span>
       <span class="inline-row-val">{{ pending_mo_count() }}</span>
     </div>
     <div class="inline-row">
