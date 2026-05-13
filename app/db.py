@@ -3921,7 +3921,7 @@ def get_payroll_audit(period_start: str, period_end: str) -> list[dict[str, Any]
     te_resp = (
         _client()
         .table("time_entries")
-        .select("engineer_initials,hours,intake_id")
+        .select("engineer_initials,hours,intake_id,project_number")
         .gte("entry_date", period_start)
         .lte("entry_date", period_end)
         .execute()
@@ -3932,17 +3932,38 @@ def get_payroll_audit(period_start: str, period_end: str) -> list[dict[str, Any]
         .table("timesheet_submissions")
         .select("engineer_initials,status,total_hours")
         .eq("period_start", period_start)
+        .neq("engineer_initials", _PERIOD_LOCK_SENTINEL)
         .execute()
     )
     subs = {r["engineer_initials"]: r for r in (sub_resp.data or [])}
+
+    # Build a set of project_numbers that exist in intakes so entries logged
+    # with a valid project but intake_id=null still count as billable.
+    pns_missing_id = {
+        e["project_number"] for e in entries
+        if not e.get("intake_id") and e.get("project_number")
+    }
+    known_project_numbers: set[str] = set()
+    if pns_missing_id:
+        pn_resp = (
+            _client()
+            .table("intakes")
+            .select("project_number")
+            .in_("project_number", list(pns_missing_id))
+            .execute()
+        )
+        known_project_numbers = {r["project_number"] for r in (pn_resp.data or [])}
 
     total_by_eng: dict[str, float] = {}
     billable_by_eng: dict[str, float] = {}
     for e in entries:
         ini = e["engineer_initials"]
-        h = float(e["hours"] or 0)
+        h   = float(e["hours"] or 0)
         total_by_eng[ini] = total_by_eng.get(ini, 0.0) + h
-        if e.get("intake_id"):
+        is_billable = bool(e.get("intake_id")) or (
+            e.get("project_number") in known_project_numbers
+        )
+        if is_billable:
             billable_by_eng[ini] = billable_by_eng.get(ini, 0.0) + h
 
     EXPECTED = 80.0
@@ -4003,29 +4024,31 @@ def get_engineer_project_hours() -> list[dict[str, Any]]:
         key = (e["engineer_initials"], int(e["intake_id"]))
         hours_map[key] = hours_map.get(key, 0.0) + float(e["hours"] or 0)
 
-    # Build per-engineer list with all projects
+    # Build per-engineer list — only include projects the engineer has logged hours on
     result = []
     for ini in _ALL_STAFF:
         project_rows = []
         total_h = 0.0
         for p in projects:
             h = round(hours_map.get((ini, p["id"]), 0.0), 1)
-            total_h += h
-            project_rows.append({
-                "intake_id":      p["id"],
-                "project_number": p.get("project_number") or "—",
-                "project_name":   p.get("project_name") or "",
-                "client_name":    p.get("client_name") or "",
-                "hours":          h,
+            if h > 0:
+                total_h += h
+                project_rows.append({
+                    "intake_id":      p["id"],
+                    "project_number": p.get("project_number") or "—",
+                    "project_name":   p.get("project_name") or "",
+                    "client_name":    p.get("client_name") or "",
+                    "hours":          h,
+                })
+        if project_rows:
+            result.append({
+                "initials":     ini,
+                "role":         ENGINEER_ROLES.get(ini, ""),
+                "color":        TEAM_COLORS.get(ini, "#888"),
+                "full_name":    TEAM_FULL_NAMES.get(ini, ini),
+                "total_hours":  round(total_h, 1),
+                "projects":     project_rows,
             })
-        result.append({
-            "initials":     ini,
-            "role":         ENGINEER_ROLES.get(ini, ""),
-            "color":        TEAM_COLORS.get(ini, "#888"),
-            "full_name":    TEAM_FULL_NAMES.get(ini, ini),
-            "total_hours":  round(total_h, 1),
-            "projects":     project_rows,
-        })
     return result
 
 
