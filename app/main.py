@@ -2115,6 +2115,14 @@ def my_time_page(
     current_user_role     = user.get("role", "")
     current_user_initials = user.get("initials", "")
 
+    # Pre-fetch submission status for the current period (employee-only, avoids JS round-trip)
+    current_submission: Optional[dict] = None
+    if current_user_initials and current_user_role not in ("admin", "office_manager", "billing"):
+        try:
+            current_submission = db.get_submission(current_user_initials, start)
+        except Exception:
+            current_submission = None
+
     return templates.TemplateResponse(
         "my_time.html",
         {
@@ -2133,6 +2141,7 @@ def my_time_page(
             "default_period_end":    end,
             "current_user_role":     current_user_role,
             "current_user_initials": current_user_initials,
+            "current_submission":    current_submission,
             # Time Off
             "reasons":               db.TIME_OFF_REASONS,
             "team_colors_json":      _json.dumps(db.TEAM_COLORS),
@@ -2642,10 +2651,17 @@ async def api_submit_period(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="engineer, period_start, period_end required.")
     _enforce_own_entries(request, engineer)
     # Compute total hours for this engineer/period
-    entries = db.list_time_entries(start=period_start, end=period_end, engineer=engineer)
-    total_hours = round(sum(float(e["hours"]) for e in entries), 2)
+    try:
+        entries = db.list_time_entries(start=period_start, end=period_end, engineer=engineer)
+        total_hours = round(sum(float(e.get("hours") or 0) for e in entries), 2)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not read time entries: {exc}")
     if total_hours == 0:
-        raise HTTPException(status_code=400, detail="No hours logged for this period.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"No hours logged for {engineer} between {period_start} and {period_end}. "
+                   "Make sure you've added time entries in the form below, then try again.",
+        )
     try:
         sub = db.submit_period(engineer, period_start, period_end, total_hours)
     except Exception as exc:
