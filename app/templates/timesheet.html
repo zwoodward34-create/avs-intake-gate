@@ -292,8 +292,8 @@
       metaLine = sub.reviewer_notes;
     } else if (status === 'DRAFT') {
       metaLine = displayHours > 0
-        ? 'Hours logged — ready to submit for Mo\'s approval.'
-        : 'Log your hours for this period, then submit for Mo\'s approval.';
+        ? 'Hours logged — ready to submit for approval.'
+        : 'Log your hours for this period, then submit for approval.';
     }
 
     var hoursHtml = `<span style="font-size:20px;font-weight:900;font-family:var(--mono);color:${displayHours > 0 ? 'var(--text)' : 'var(--muted)'}">${displayHours.toFixed(1)}h</span>`;

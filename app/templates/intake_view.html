@@ -36,7 +36,7 @@
     </div>
     {% endif %}
     <a class="btn" href="/intakes/{{ intake.id }}/edit" style="font-size:12px;padding:5px 12px">Edit</a>
-    <a class="btn btn-primary" href="/mo-queue" style="font-size:12px;padding:5px 12px">Mo Review</a>
+    <a class="btn btn-primary" href="/mo-queue" style="font-size:12px;padding:5px 12px">Decision Queue</a>
   </div>
 </div>
 
@@ -263,7 +263,7 @@
           <div class="hr"></div>
           <div class="actions">
             <a class="btn" href="/intakes/{{ intake.id }}/edit">Edit</a>
-            <a class="btn btn-primary" href="/mo-queue">Mo review</a>
+            <a class="btn btn-primary" href="/mo-queue">Decision Queue</a>
             {% if not intake.mo_decision %}
               {% if intake.status == 'PENDING_MO_REVIEW' %}
                 <span class="badge" style="align-self:center">In Decision Queue</span>
@@ -275,7 +275,7 @@
             {% endif %}
           </div>
           {% if mo_passcode_enabled %}
-            <div class="subtle small" style="margin-top:8px">Mo review is passcode-protected.</div>
+            <div class="subtle small" style="margin-top:8px">Review is passcode-protected.</div>
           {% endif %}
         </div>
 
@@ -325,8 +325,8 @@
           </table>
           {% endif %}
           <div class="hr"></div>
-          <h2>Email to Mo</h2>
-          <div class="subtle" style="margin-bottom:10px">If flagged, copy this template and send to Mo.</div>
+          <h2>Flag for Review</h2>
+          <div class="subtle" style="margin-bottom:10px">If flagged, copy this template and send for review.</div>
           <div class="email-card">
             <div id="mo-email" class="email-body">INTAKE FLAG: {{ intake.project_name }} — {{ intake.architect_name or "Architect TBD" }}
 
@@ -400,7 +400,7 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
       <div style="background:rgba(255,183,77,0.10);border:1px solid rgba(255,183,77,0.4);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:10px;align-items:flex-start">
         <span style="color:#ffb74d;font-size:16px;line-height:1.4">&#9888;</span>
         <div>
-          <div style="font-weight:700;color:#ffb74d;font-size:13px;margin-bottom:2px">Fee requires Mo review before proposal</div>
+          <div style="font-weight:700;color:#ffb74d;font-size:13px;margin-bottom:2px">Fee requires review before proposal</div>
           <div class="subtle small">{{ cfe.review_reason }} — this estimate is directional only.</div>
         </div>
       </div>
@@ -466,7 +466,7 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
         {% else %}{% set decision_class = "mo-banner mo-banner-neutral" %}
         {% endif %}
         <div class="{{ decision_class }}">
-          <div class="mo-banner-label">Mo Decision</div>
+          <div class="mo-banner-label">Decision</div>
           <div class="mo-banner-decision">{{ intake.mo_decision }}</div>
           <div class="mo-banner-meta">Reviewed {{ intake.mo_reviewed_at }}</div>
           {% if intake.mo_conditions %}
@@ -488,7 +488,7 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
               <div class="subtle small">${{ "{:,.0f}".format(cognasync_estimate.suggested_fee_range.low) }} – ${{ "{:,.0f}".format(cognasync_estimate.suggested_fee_range.high) }}</div>
               {% endif %}
             {% elif intake.mo_fee_decision == 'OVERRIDE' and intake.mo_fee_override %}
-              <div style="margin-top:4px;font-weight:700;color:#ffb74d">Mo override: ${{ "{:,.0f}".format(intake.mo_fee_override | float) }}</div>
+              <div style="margin-top:4px;font-weight:700;color:#ffb74d">Fee override: ${{ "{:,.0f}".format(intake.mo_fee_override | float) }}</div>
             {% elif intake.mo_fee_decision == 'DECLINED' %}
               <div style="margin-top:4px;font-weight:700;color:#888">Deferred — fee not set at this stage</div>
             {% endif %}
@@ -498,10 +498,10 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
         <div class="card mo-pending" style="margin-top:4px">
           <div class="mo-pending-inner">
             <div>
-              <div style="font-size:16px;font-weight:700;margin-bottom:4px">Mo Decision</div>
+              <div style="font-size:16px;font-weight:700;margin-bottom:4px">Decision</div>
               <div class="subtle">No decision recorded yet.</div>
             </div>
-            <a class="btn btn-primary btn-mo-decide" href="/mo-queue">Record Mo Decision</a>
+            <a class="btn btn-primary btn-mo-decide" href="/mo-queue">Record Decision</a>
           </div>
         </div>
       {% endif %}
@@ -648,7 +648,7 @@ Please advise: Proceed / Proceed w/ conditions / Request clarification / Decline
       <div id="proposal-section" style="border-left:3px solid rgba(79,142,247,0.4);padding-left:14px">
         <h2 style="margin-top:0">Generate Proposal Letter</h2>
         <div class="subtle" style="margin-bottom:14px">
-          Mo approved this intake. Enter the approved fee and Claude will draft the full proposal letter based on the AVS template.
+          Intake approved. Enter the approved fee and Claude will draft the full proposal letter based on the AVS template.
         </div>
         <form method="post" action="/intakes/{{ intake.id }}/generate-proposal" id="gen-form">
           <div class="row row-2" style="margin-bottom:12px">
@@ -963,7 +963,7 @@ function copyProposal() {
       if (result.billing_triggered) {
         var toast = document.getElementById('matrix-billing-toast');
         if (toast) {
-          toast.textContent = '✓ ' + result.billing_triggered.toUpperCase() + ' phase hit budget — queued for Mo\'s approval in the billing queue.';
+          toast.textContent = '✓ ' + result.billing_triggered.toUpperCase() + ' phase hit budget — queued for approval in the billing queue.';
           toast.style.display = 'block';
           setTimeout(function() { toast.style.display = 'none'; }, 7000);
         }

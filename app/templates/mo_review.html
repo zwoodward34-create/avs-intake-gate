@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="card">
-    <h2>Mo review</h2>
+    <h2>Decision Review</h2>
     <div style="font-weight:900; font-size:18px">{{ intake.project_name }}</div>
     <div class="subtle">{{ intake.client_name or "—" }} • {{ intake.architect_name or "—" }}</div>
     <div class="hr"></div>
@@ -24,7 +24,7 @@
       <div style="background:rgba(255,183,77,0.10); border:1px solid rgba(255,183,77,0.4); border-radius:6px; padding:9px 12px; margin-bottom:12px; display:flex; gap:9px; align-items:flex-start">
         <span style="color:#ffb74d; font-size:15px; line-height:1.4">&#9888;</span>
         <div>
-          <div style="font-weight:700; color:#ffb74d; font-size:12px; margin-bottom:2px">Fee requires Mo review before proposal</div>
+          <div style="font-weight:700; color:#ffb74d; font-size:12px; margin-bottom:2px">Fee requires review before proposal</div>
           <div class="subtle small">{{ fe.review_reason }} — this estimate is directional only.</div>
         </div>
       </div>
@@ -73,7 +73,7 @@
     <form method="post" action="/intakes/{{ intake.id }}/mo-review">
       {% if mo_passcode_enabled %}
         <div class="field">
-          <label>Mo passcode</label>
+          <label>Passcode</label>
           <input type="text" name="mo_passcode" placeholder="Required" />
         </div>
       {% endif %}
@@ -136,7 +136,7 @@
       <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap">
         <a class="btn" href="/intakes/{{ intake.id }}">Back</a>
         <a class="btn" href="/calendar?new=1&project_number={{ intake.project_number or '' }}&client={{ intake.client_name or '' }}">Create Calendar Event</a>
-        <button class="btn btn-primary" type="submit">Save Mo decision</button>
+        <button class="btn btn-primary" type="submit">Save Decision</button>
       </div>
     </form>
   </div>

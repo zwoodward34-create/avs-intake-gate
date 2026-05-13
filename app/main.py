@@ -1503,7 +1503,7 @@ def reports(request: Request) -> HTMLResponse:
     # Status donut
     _STATUS_LABELS = {
         "PROCEED_TO_PROPOSAL":     "Proceed",
-        "PENDING_MO_REVIEW":       "Mo Review",
+        "PENDING_MO_REVIEW":       "Decision Queue",
         "NEEDS_INFO":              "Needs Info",
         "PROCEED_WITH_CONDITIONS": "With Conditions",
         "DECLINED":                "Declined",

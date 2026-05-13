@@ -183,7 +183,7 @@
   </a>
   <a class="status-seg {% if status_filter == 'PENDING_MO_REVIEW' %}seg-active{% endif %}" href="/dashboard?status=PENDING_MO_REVIEW">
     <div class="seg-val">{{ counts.get('PENDING_MO_REVIEW', 0) }}</div>
-    <div class="seg-label"><span class="status-dot" style="background:var(--warn)"></span>Mo Review</div>
+    <div class="seg-label"><span class="status-dot" style="background:var(--warn)"></span>Decision Queue</div>
   </a>
   <a class="status-seg {% if status_filter == 'NEEDS_INFO' %}seg-active{% endif %}" href="/dashboard?status=NEEDS_INFO">
     <div class="seg-val">{{ counts.get('NEEDS_INFO', 0) }}</div>
@@ -232,7 +232,7 @@
         {# Status pill mapping #}
         {% set status_map = {
           'PROCEED_TO_PROPOSAL':     ('proceed', 'good',       'Proceed'),
-          'PENDING_MO_REVIEW':       ('pending', 'warn',       'Mo Review'),
+          'PENDING_MO_REVIEW':       ('pending', 'warn',       'Decision Queue'),
           'NEEDS_INFO':              ('info',    'needs-info',  'Needs Info'),
           'PROCEED_WITH_CONDITIONS': ('cond',    'conditions',  'Conditions'),
           'DECLINED':                ('declined','bad',         'Declined'),
