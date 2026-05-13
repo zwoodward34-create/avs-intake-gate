@@ -39,10 +39,8 @@ templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 
 
 def _status_from_recommendation(recommendation: str) -> str:
-    if recommendation == "PROCEED_TO_PROPOSAL":
-        return "PROCEED_TO_PROPOSAL"
-    if recommendation == "CLARIFY_FIRST":
-        return "NEEDS_INFO"
+    # All new intakes go directly into the decision queue regardless of recommendation.
+    # The actual proceed/conditions/decline/needs-info decision is made from the queue.
     return "PENDING_MO_REVIEW"
 
 

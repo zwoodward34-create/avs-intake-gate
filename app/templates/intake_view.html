@@ -36,7 +36,7 @@
     </div>
     {% endif %}
     <a class="btn" href="/intakes/{{ intake.id }}/edit" style="font-size:12px;padding:5px 12px">Edit</a>
-    <a class="btn btn-primary" href="/mo-queue" style="font-size:12px;padding:5px 12px">Decision Queue</a>
+    {% if not intake.mo_decision %}<a class="btn btn-primary" href="/mo-queue" style="font-size:12px;padding:5px 12px">Proceed →</a>{% endif %}
   </div>
 </div>
 
@@ -263,15 +263,8 @@
           <div class="hr"></div>
           <div class="actions">
             <a class="btn" href="/intakes/{{ intake.id }}/edit">Edit</a>
-            <a class="btn btn-primary" href="/mo-queue">Decision Queue</a>
             {% if not intake.mo_decision %}
-              {% if intake.status == 'PENDING_MO_REVIEW' %}
-                <span class="badge" style="align-self:center">In Decision Queue</span>
-              {% else %}
-                <form method="post" action="/intakes/{{ intake.id }}/push-to-mo" style="display:inline">
-                  <button type="submit" class="btn btn-queue">Push to Decision Queue</button>
-                </form>
-              {% endif %}
+              <a class="btn btn-primary" href="/mo-queue">Proceed →</a>
             {% endif %}
           </div>
           {% if mo_passcode_enabled %}
