@@ -28,6 +28,7 @@ from . import db
 from . import document_extractor
 from . import project_search
 from . import proposal_generator
+from . import staffing
 from .decision import compute_decision, complexity_estimate
 from .fee_estimator import cognasync_estimate_from_answers, check_fee_review_required
 from .weu import ROLE_BUCKETS as _WEU_ROLE_BUCKETS
@@ -230,7 +231,7 @@ _ROLE_REDIRECT: dict[str, str] = {
 
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.environ.get("SESSION_SECRET_KEY", "avs-dev-fallback-key"),
+    secret_key=os.environ.get("SESSION_SECRET_KEY", ""),
     session_cookie="avs_session",
     https_only=False,
     max_age=28800,  # 8 hours
@@ -297,6 +298,16 @@ def _enforce_own_entries(request: Request, engineer_initials: str) -> None:
             raise HTTPException(status_code=403, detail="You can only log time for yourself.")
 
 
+def _api_require(request: Request, *roles: str) -> dict:
+    """Auth + role gate for JSON API routes. Raises HTTPException instead of redirecting."""
+    user = _session_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if roles and user.get("role") not in roles:
+        raise HTTPException(status_code=403, detail="Insufficient permissions.")
+    return user
+
+
 def _check_page_access(request: Request, path: str) -> Optional[RedirectResponse]:
     """Generic per-page guard based on _ROLE_ALLOWED table."""
     if redir := _require_auth(request):
@@ -312,6 +323,10 @@ def _check_page_access(request: Request, path: str) -> Optional[RedirectResponse
 
 @app.on_event("startup")
 def _startup() -> None:
+    _required = ["SESSION_SECRET_KEY", "AVS_LOGIN_PASSWORD", "SUPABASE_URL", "SUPABASE_SERVICE_KEY"]
+    missing = [v for v in _required if not os.environ.get(v)]
+    if missing:
+        raise RuntimeError(f"Required environment variables not set: {', '.join(missing)}")
     db.init_db()
 
 
@@ -334,7 +349,9 @@ async def api_login(request: Request) -> JSONResponse:
     body = await request.json()
     email = (body.get("email") or "").strip().lower()
     password = (body.get("password") or "").strip()
-    expected_password = os.environ.get("AVS_LOGIN_PASSWORD", "avs2026!")
+    expected_password = os.environ.get("AVS_LOGIN_PASSWORD") or ""
+    if not expected_password:
+        raise HTTPException(status_code=503, detail="Server misconfiguration.")
     user_info = _USER_DIRECTORY.get(email)
     if not user_info:
         raise HTTPException(status_code=401, detail="Access Denied: Email not registered in the system.")
@@ -488,6 +505,7 @@ def api_list_templates() -> list[dict[str, Any]]:
 
 @app.post("/api/templates")
 async def api_create_template(request: Request) -> dict[str, Any]:
+    _api_require(request, "admin")
     body = await request.json()
     name = (body.get("name") or "").strip()
     if not name:
@@ -501,13 +519,15 @@ async def api_create_template(request: Request) -> dict[str, Any]:
 
 
 @app.delete("/api/templates/{template_id}")
-def api_delete_template(template_id: int) -> dict[str, Any]:
+def api_delete_template(request: Request, template_id: int) -> dict[str, Any]:
+    _api_require(request, "admin")
     db.delete_template(template_id)
     return {"deleted": template_id}
 
 
 @app.delete("/api/intakes/{intake_id}")
-def api_delete_intake(intake_id: int) -> dict[str, Any]:
+def api_delete_intake(request: Request, intake_id: int) -> dict[str, Any]:
+    _api_require(request, "admin")
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -534,6 +554,7 @@ async def api_update_assigned_engineers(request: Request, intake_id: int) -> dic
 
 @app.post("/intakes")
 async def intake_create(request: Request) -> RedirectResponse:
+    _api_require(request)
     form = await request.form()
     project_name = _as_str(form.get("project_name"))
     if not project_name:
@@ -755,7 +776,8 @@ async def intake_update(request: Request, intake_id: int) -> RedirectResponse:
 
 
 @app.post("/intakes/{intake_id}/push-to-mo")
-def push_to_mo_queue(intake_id: int) -> RedirectResponse:
+def push_to_mo_queue(request: Request, intake_id: int) -> RedirectResponse:
+    _api_require(request)
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -1011,6 +1033,7 @@ def mo_queue(request: Request) -> HTMLResponse:
 
 @app.post("/api/intakes/{intake_id}/mo-review")
 async def api_mo_review_json(request: Request, intake_id: int) -> dict:
+    _api_require(request, "admin")
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -1164,9 +1187,7 @@ async def proposal_checklist_update(request: Request, intake_id: int) -> Redirec
 
 @app.post("/api/intakes/{intake_id}/mark-proposal-sent")
 async def api_mark_proposal_sent(request: Request, intake_id: int) -> dict[str, Any]:
-    user = _session_user(request)
-    if not user:
-        raise HTTPException(status_code=401)
+    _api_require(request, "admin")
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -1176,9 +1197,7 @@ async def api_mark_proposal_sent(request: Request, intake_id: int) -> dict[str, 
 
 @app.post("/api/intakes/{intake_id}/mark-won")
 async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, Any]:
-    user = _session_user(request)
-    if not user:
-        raise HTTPException(status_code=401)
+    _api_require(request, "admin")
     body = await request.json()
     win_prob = int(body.get("win_probability") or 100)
     intake = db.get_intake(intake_id)
@@ -1283,9 +1302,7 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
 
 @app.post("/api/intakes/{intake_id}/mark-lost")
 async def api_mark_project_lost(request: Request, intake_id: int) -> dict[str, Any]:
-    user = _session_user(request)
-    if not user:
-        raise HTTPException(status_code=401)
+    _api_require(request, "admin")
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -1881,6 +1898,7 @@ def api_calendar_check_conflict(date: str, phase: str) -> dict:
 
 @app.post("/api/calendar/events")
 async def api_calendar_events_create(request: Request) -> dict:
+    _api_require(request)
     from datetime import date as _date, timedelta
     body = await request.json()
     _validate_calendar_payload(body)
@@ -1917,6 +1935,7 @@ async def api_calendar_events_create(request: Request) -> dict:
 
 @app.put("/api/calendar/events/{event_id}")
 async def api_calendar_events_update(request: Request, event_id: str) -> dict:
+    _api_require(request)
     existing = db.get_calendar_event(event_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -1944,7 +1963,8 @@ async def api_calendar_events_update(request: Request, event_id: str) -> dict:
 
 
 @app.delete("/api/calendar/events/{event_id}")
-def api_calendar_events_delete(event_id: str) -> dict:
+def api_calendar_events_delete(request: Request, event_id: str) -> dict:
+    _api_require(request)
     existing = db.get_calendar_event(event_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -2280,18 +2300,38 @@ def capacity_page(request: Request) -> HTMLResponse:
     )
 
 
-@app.get("/api/capacity")
-def api_capacity(week_start: Optional[str] = None) -> dict:
-    from datetime import date, timedelta
-    if week_start:
+def _snap_to_monday(d_str: Optional[str]) -> tuple[date, date, str]:
+    """
+    Snap a week_start string to the Monday of that week. Returns
+    (monday, sunday, monday_iso). Falls back to the current week on parse error.
+    """
+    if d_str:
         try:
-            ws = date.fromisoformat(week_start)
+            ws = date.fromisoformat(d_str[:10])
         except ValueError:
             ws = date.today()
     else:
         ws = date.today()
-    ws = ws - timedelta(days=ws.weekday())   # snap to Monday
-    we = ws + timedelta(days=6)              # through Sunday
+    ws = ws - timedelta(days=ws.weekday())
+    we = ws + timedelta(days=6)
+    return ws, we, ws.isoformat()
+
+
+def _build_week_load_grid(
+    ws: date,
+    we: date,
+    *,
+    include_pipeline: bool = True,
+    include_existing_applied: bool = True,
+) -> tuple[dict[str, dict[str, float]], list[dict[str, Any]], list[dict[str, Any]], list[staffing.AppliedMitigation]]:
+    """
+    Build the §10 load grid for the week [ws, we].
+
+    Returns ``(load_grid, active_events, pipeline_events, applied)``.
+    The grid already has applied mitigations folded in if
+    ``include_existing_applied`` is True.
+    """
+    week_iso = ws.isoformat()
 
     events = db.list_calendar_events(
         start=ws.isoformat() + "T00:00:00Z",
@@ -2301,10 +2341,306 @@ def api_capacity(week_start: Optional[str] = None) -> dict:
     covered_pns = {e.get("project_number") for e in event_dicts if e.get("project_number")}
     intake_events = db.get_active_intake_pseudo_events(covered_pns)
 
+    staffing_events: list[dict[str, Any]] = []
+    for ev in event_dicts + intake_events:
+        e = dict(ev)
+        e.setdefault("status", "ACTIVE_PROJECT")
+        staffing_events.append(e)
+
+    pipeline_events: list[dict[str, Any]] = []
+    if include_pipeline:
+        pipeline_events = _build_pipeline_pseudo_events(ws, we)
+        staffing_events.extend(pipeline_events)
+
+    load_grid = staffing.build_load_grid(staffing_events)
+
+    applied: list[staffing.AppliedMitigation] = []
+    if include_existing_applied:
+        applied_rows = db.list_applied_mitigations(week=week_iso, include_reverted=False)
+        applied = [_applied_from_row(r) for r in applied_rows]
+        load_grid = staffing.apply_deltas_to_grid(load_grid, applied)
+
+    return load_grid, event_dicts + intake_events, pipeline_events, applied
+
+
+@app.get("/api/capacity")
+def api_capacity(week_start: Optional[str] = None, include_pipeline: bool = True) -> dict:
+    """
+    Capacity snapshot for the week beginning ``week_start`` (snapped to Monday).
+
+    The response combines the legacy WEU pool view (engineering/drafting cards)
+    with the Section 10 staffing-engine output: per-person collisions, the
+    matching mitigation suggestions, and an optional pipeline overlay where
+    PROPOSAL_OUT projects contribute at 50% weight (§10.5 Commitment Lock).
+    """
+    ws, we, week_iso = _snap_to_monday(week_start)
+
+    # Existing pool snapshot (unchanged) — feeds the existing UI cards.
+    events = db.list_calendar_events(
+        start=ws.isoformat() + "T00:00:00Z",
+        end=we.isoformat()   + "T23:59:59Z",
+    )
+    event_dicts = [e.to_dict() for e in events]
+    covered_pns = {e.get("project_number") for e in event_dicts if e.get("project_number")}
+    intake_events = db.get_active_intake_pseudo_events(covered_pns)
+
     snapshot = weu_engine.get_capacity_snapshot(event_dicts + intake_events)
-    snapshot["week_start"] = ws.isoformat()
+    snapshot["week_start"] = week_iso
     snapshot["week_end"]   = we.isoformat()
+
+    # ── §10 Staffing engine overlay ──────────────────────────────────────
+    load_grid, _all_events, pipeline_events, applied = _build_week_load_grid(
+        ws, we, include_pipeline=include_pipeline, include_existing_applied=True
+    )
+
+    collisions = staffing.detect_collisions(load_grid)
+    mitigations = staffing.suggest_mitigations(collisions, load_grid)
+
+    # Filter to this week's collisions/mitigations so the UI doesn't show stale alerts.
+    week_collisions  = [c for c in collisions  if c.week == week_iso]
+    week_mitigations = [m for m in mitigations if m.week == week_iso]
+
+    # Per-person summary keyed by initials for fast UI lookup.
+    person_summary: dict[str, dict[str, Any]] = {}
+    for initials, weekly in load_grid.items():
+        hours = float(weekly.get(week_iso, 0.0))
+        cap = float(staffing.ROSTER.get(initials, {}).get("weekly_cap_hours") or 0)
+        person_summary[initials] = {
+            "projected_hours": round(hours, 1),
+            "cap_hours": cap,
+            "utilization_pct": round((hours / cap * 100.0) if cap else 0.0, 1),
+        }
+
+    snapshot["staffing"] = {
+        "week": week_iso,
+        "include_pipeline": include_pipeline,
+        "pipeline_events_count": len(pipeline_events),
+        "collisions":  [c.to_dict() for c in week_collisions],
+        "mitigations": [m.to_dict() for m in week_mitigations],
+        "applied":     [a.to_dict() for a in applied],
+        "person_summary": person_summary,
+        "all_collisions_horizon":  len(collisions),    # across all weeks for stats
+        "all_mitigations_horizon": len(mitigations),
+    }
     return snapshot
+
+
+def _applied_from_row(r: dict[str, Any]) -> staffing.AppliedMitigation:
+    """Convert a DB row into a staffing.AppliedMitigation dataclass."""
+    week_val = r.get("week") or ""
+    if isinstance(week_val, str):
+        week_iso = week_val[:10]
+    else:
+        week_iso = str(week_val)[:10]
+    return staffing.AppliedMitigation(
+        id=r.get("id"),
+        pattern=str(r.get("pattern") or ""),
+        week=week_iso,
+        from_person=str(r.get("from_person") or ""),
+        to_person=str(r.get("to_person") or ""),
+        hours_delta=float(r.get("hours_delta") or 0.0),
+        rationale=str(r.get("rationale") or ""),
+        applied_by=str(r.get("applied_by") or ""),
+        applied_at=str(r.get("applied_at") or ""),
+        reverted_at=r.get("reverted_at"),
+    )
+
+
+@app.post("/api/staffing/apply-mitigation")
+async def api_apply_mitigation(request: Request) -> JSONResponse:
+    """
+    Apply a mitigation suggestion. Body:
+        {
+          "pattern": "shift_pm_admin",
+          "week":    "2026-07-27",
+          "from_person": "RO",
+          "to_person":   "JW",
+          "hours_delta": 6.0,
+          "rationale":   "Ryan saturated; Jacob has slack.",
+          "acknowledge_warnings": false   // optional
+        }
+
+    Pre-flight safety check via ``staffing.preview_mitigation_safety``:
+      * If the shift would push the receiver over their weekly cap, or
+        push Mo above his 8-hr ceiling, or exceed the sender's available
+        hours, the route returns **422** with the warnings.
+      * To proceed anyway, the caller must re-submit with
+        ``acknowledge_warnings: true``. In that case the warnings are
+        appended to the persisted rationale for the audit trail.
+    """
+    _api_require(request, "admin")
+    body = await request.json()
+    required = ("pattern", "week", "from_person", "to_person", "hours_delta")
+    missing = [k for k in required if k not in body]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing fields: {missing}")
+
+    from_person = str(body["from_person"]).upper()
+    to_person   = str(body["to_person"]).upper()
+    if from_person not in staffing.ROSTER or to_person not in staffing.ROSTER:
+        raise HTTPException(status_code=400, detail="Unknown roster initials.")
+    if from_person == to_person:
+        raise HTTPException(status_code=400, detail="from_person and to_person must differ.")
+    try:
+        hours = float(body["hours_delta"])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="hours_delta must be numeric.")
+    if hours <= 0:
+        raise HTTPException(status_code=400, detail="hours_delta must be > 0.")
+
+    week_iso = str(body["week"])[:10]
+    try:
+        ws = date.fromisoformat(week_iso)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Bad week '{body['week']}'. Expected YYYY-MM-DD.")
+    we = ws + timedelta(days=6)
+
+    # Build the current load grid (with already-applied mitigations folded in)
+    # so the safety check reflects the receiver's CURRENT projected hours.
+    load_grid, _events, _pipeline, _applied = _build_week_load_grid(
+        ws, we, include_pipeline=True, include_existing_applied=True,
+    )
+    preview = staffing.preview_mitigation_safety(
+        load_grid, from_person, to_person, week_iso, hours,
+    )
+    acknowledge = bool(body.get("acknowledge_warnings"))
+
+    if not preview["safe"] and not acknowledge:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "safe": False,
+                "warnings": preview["warnings"],
+                "detail": (
+                    "Mitigation would create a new bottleneck or breach a hard ceiling. "
+                    "Re-submit with `acknowledge_warnings: true` to proceed anyway."
+                ),
+            },
+        )
+
+    # Persist. If the user acknowledged warnings, append them to rationale
+    # for audit purposes so it's clear the shift was made despite known risks.
+    rationale = str(body.get("rationale") or "")
+    if not preview["safe"] and acknowledge:
+        rationale = (rationale + " " if rationale else "") + "[ack: " + "; ".join(preview["warnings"]) + "]"
+
+    user = ""
+    try:
+        user = request.session.get("user_email") or ""
+    except Exception:
+        user = ""
+
+    row = db.record_applied_mitigation(
+        pattern=str(body["pattern"]),
+        week=week_iso,
+        from_person=from_person,
+        to_person=to_person,
+        hours_delta=hours,
+        rationale=rationale,
+        applied_by=user,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Could not persist mitigation. Ensure the `staffing_mitigations` "
+                "table exists in Supabase (see db.py docstring for schema)."
+            ),
+        )
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "safe": preview["safe"],
+            "warnings": preview["warnings"],
+            "acknowledged": acknowledge and not preview["safe"],
+            "applied": _applied_from_row(row).to_dict(),
+        },
+    )
+
+
+@app.post("/api/staffing/mitigations/{mitigation_id}/revert")
+async def api_revert_mitigation(mitigation_id: int) -> dict[str, Any]:
+    """Soft-revert an applied mitigation."""
+    existing = db.get_applied_mitigation(mitigation_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Mitigation not found.")
+    if existing.get("reverted_at"):
+        return {"success": True, "already_reverted": True}
+    ok = db.revert_applied_mitigation(mitigation_id)
+    if not ok:
+        raise HTTPException(status_code=503, detail="Revert failed.")
+    return {"success": True}
+
+
+def _build_pipeline_pseudo_events(ws: date, we: date) -> list[dict[str, Any]]:
+    """
+    Synthesize PROPOSAL_OUT events from outstanding bids so the staffing
+    engine can register them at 50% weight (§10.5).
+
+    Each bid is converted to a single event spanning
+    [inquiry_date or today] → [ifp_due_date or today+60d], with weu_hours
+    derived from the approved fee (fee ÷ $200/hr efficiency ratio midpoint).
+    The team is the default §10.2 template for the derived complexity tier.
+    """
+    try:
+        bids = db.get_active_bids() or []
+    except Exception:
+        return []
+    if not bids:
+        return []
+
+    today = date.today()
+    out: list[dict[str, Any]] = []
+    for bid in bids:
+        approved_fee = float(bid.get("approved_fee") or 0.0)
+        if approved_fee <= 0:
+            continue
+
+        # Window for the bid — clamp to a plausible default if missing
+        start_str = bid.get("inquiry_date") or today.isoformat()
+        end_str   = bid.get("ifp_due_date") or (today + timedelta(days=60)).isoformat()
+        try:
+            bid_start = date.fromisoformat(start_str[:10])
+            bid_end   = date.fromisoformat(end_str[:10])
+        except ValueError:
+            continue
+        if bid_end < bid_start:
+            continue
+        # If the bid window doesn't touch this week at all, skip it
+        if bid_end < ws or bid_start > we:
+            continue
+
+        # Tier from project signals
+        intake_hint = {
+            "project_type": bid.get("project_type") or "",
+            "sq_ft":        bid.get("approx_sf") or 0,
+            "state":        bid.get("location") or "",
+        }
+        tier = staffing.derive_complexity_tier(intake_hint)
+        team = staffing.assign_tier_template(tier, project_type=intake_hint["project_type"])
+
+        # WEU hours from fee at $200/hr efficiency ratio midpoint
+        weu_hours = approved_fee / 200.0
+
+        out.append({
+            "id":          f"bid-{bid.get('intake_id')}",
+            "intake_id":   bid.get("intake_id"),
+            "phase":       "DD",                                 # representative midpoint
+            "tier":        tier,
+            "team":        team.all_members,
+            "weu_hours":   round(weu_hours, 1),
+            "start_date":  bid_start.isoformat() + "T00:00:00Z",
+            "end_date":    bid_end.isoformat()   + "T23:59:59Z",
+            "client":      bid.get("client_name") or "",
+            "location":    bid.get("location") or "",
+            "project_number": "",
+            "project_type":   bid.get("project_type") or "",
+            "status":      "PROPOSAL_OUT",                       # → 50% weight
+            "is_legacy":   False,
+        })
+    return out
 
 
 # ── Settings ─────────────────────────────────────────────────────────────────
@@ -2328,6 +2664,7 @@ def settings_page(request: Request) -> HTMLResponse:
 
 @app.post("/api/settings/project-number-seed")
 async def api_set_project_number_seed(request: Request) -> dict[str, Any]:
+    _api_require(request, "admin")
     body = await request.json()
     try:
         seed = int(body.get("seed", 0))
@@ -2353,6 +2690,7 @@ def api_get_phase_budgets(intake_id: int) -> list[dict[str, Any]]:
 async def api_update_phase_budget(
     request: Request, intake_id: int, phase_code: str
 ) -> dict[str, Any]:
+    _api_require(request, "admin")
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -2673,6 +3011,7 @@ async def api_submit_period(request: Request) -> dict[str, Any]:
 
 @app.post("/api/timesheet/review/{submission_id}")
 async def api_review_submission(request: Request, submission_id: int) -> dict[str, Any]:
+    _api_require(request, "admin", "office_manager")
     body = await request.json()
     action = (body.get("action") or "").strip().lower()
     notes = _as_str(str(body.get("notes") or ""))
@@ -2686,19 +3025,9 @@ async def api_review_submission(request: Request, submission_id: int) -> dict[st
 
 
 @app.get("/api/timesheet/review-queue")
-def api_review_queue() -> list[dict[str, Any]]:
+def api_review_queue(request: Request) -> list[dict[str, Any]]:
+    _api_require(request, "admin", "office_manager")
     return db.get_review_queue()
-
-
-@app.get("/api/timesheet/all-submissions")
-def api_all_submissions() -> dict[str, Any]:
-    """Debug: return every submission row regardless of status."""
-    try:
-        resp = db._client().table("timesheet_submissions").select("*").order("created_at", desc=True).limit(50).execute()
-        rows = resp.data or []
-        return {"count": len(rows), "rows": rows, "table_exists": True}
-    except Exception as exc:
-        return {"count": 0, "rows": [], "table_exists": False, "error": str(exc)}
 
 
 @app.get("/my-launch", response_class=HTMLResponse)
@@ -3044,7 +3373,8 @@ def payroll_export_page(request: Request) -> HTMLResponse:
 
 
 @app.get("/api/payroll-export")
-def api_payroll_export(start: Optional[str] = None, end: Optional[str] = None) -> dict[str, Any]:
+def api_payroll_export(request: Request, start: Optional[str] = None, end: Optional[str] = None) -> dict[str, Any]:
+    _api_require(request, "admin", "office_manager", "billing")
     if not start or not end:
         s, e = _current_pay_period()
         start = start or s
@@ -3062,7 +3392,8 @@ def api_payroll_export(start: Optional[str] = None, end: Optional[str] = None) -
 
 
 @app.get("/api/payroll-export/csv")
-def api_payroll_export_csv(start: Optional[str] = None, end: Optional[str] = None) -> StreamingResponse:
+def api_payroll_export_csv(request: Request, start: Optional[str] = None, end: Optional[str] = None) -> StreamingResponse:
+    _api_require(request, "admin", "office_manager", "billing")
     if not start or not end:
         s, e = _current_pay_period()
         start = start or s
@@ -3127,15 +3458,16 @@ def api_pipeline() -> dict[str, Any]:
 
 @app.post("/api/projects/{intake_id}/advance-production-phase")
 async def api_advance_production_phase(request: Request, intake_id: int) -> dict[str, Any]:
+    user = _api_require(request, "admin")
     body = await request.json()
     to_phase = str(body.get("to_phase") or "").strip()
-    completed_by = str(body.get("completed_by") or "").strip()
     note = str(body.get("note") or "").strip()
     if not to_phase:
         raise HTTPException(status_code=400, detail="to_phase required")
     if not note:
         raise HTTPException(status_code=400, detail="note required")
-    return db.advance_production_phase(intake_id, to_phase, completed_by or "SYSTEM", note)
+    completed_by = user.get("initials") or user.get("name") or "SYSTEM"
+    return db.advance_production_phase(intake_id, to_phase, completed_by, note)
 
 
 @app.post("/api/projects/{intake_id}/billing-phases/{billing_phase_code}/mark-invoiced")
@@ -3205,11 +3537,12 @@ async def api_burn_vs_bill(request: Request) -> list[dict[str, Any]]:
 
 @app.post("/api/projects/{intake_id}/billing-phases/{billing_phase_code}/approve-invoice")
 async def api_approve_invoice(request: Request, intake_id: int, billing_phase_code: str) -> dict[str, Any]:
+    user = _api_require(request, "admin", "office_manager")
     body = await request.json()
     return db.approve_invoice(
         intake_id,
         billing_phase_code,
-        approved_by=str(body.get("approved_by") or "MO"),
+        approved_by=user.get("initials") or user.get("name") or "SYSTEM",
         fee_override=float(body["fee_override"]) if body.get("fee_override") is not None else None,
         note=str(body.get("note") or "") or None,
     )
@@ -3217,6 +3550,7 @@ async def api_approve_invoice(request: Request, intake_id: int, billing_phase_co
 
 @app.post("/api/projects/{intake_id}/billing-phases/{billing_phase_code}/decline-invoice")
 async def api_decline_invoice(request: Request, intake_id: int, billing_phase_code: str) -> dict[str, Any]:
+    user = _api_require(request, "admin", "office_manager")
     body = await request.json()
     reason = str(body.get("reason") or "").strip()
     if not reason:
@@ -3224,7 +3558,7 @@ async def api_decline_invoice(request: Request, intake_id: int, billing_phase_co
     return db.decline_invoice(
         intake_id,
         billing_phase_code,
-        declined_by=str(body.get("declined_by") or "MO"),
+        declined_by=user.get("initials") or user.get("name") or "SYSTEM",
         reason=reason,
     )
 
@@ -3264,6 +3598,7 @@ def api_billing_phase_definitions() -> list[dict[str, Any]]:
 
 @app.post("/api/billing-phase-definitions")
 async def api_update_billing_phase_definitions(request: Request) -> dict[str, Any]:
+    _api_require(request, "admin")
     body = await request.json()
     updates = body.get("phases", [])
     total = sum(float(u.get("default_pct", 0)) for u in updates)
