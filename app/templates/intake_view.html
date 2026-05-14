@@ -35,7 +35,7 @@
       </div>
     </div>
     {% endif %}
-    <a class="btn" href="/intakes/{{ intake.id }}/edit" style="font-size:12px;padding:5px 12px">Edit</a>
+    <a class="btn btn-primary" href="/intakes/{{ intake.id }}/edit" style="font-size:13px;font-weight:700;padding:8px 16px">Project Details</a>
     {% if not intake.mo_decision %}<a class="btn btn-primary" href="/mo-queue" style="font-size:12px;padding:5px 12px">Proceed →</a>{% endif %}
   </div>
 </div>
@@ -262,7 +262,7 @@
           <div>{{ intake.recommendation_reason or "—" }}</div>
           <div class="hr"></div>
           <div class="actions">
-            <a class="btn" href="/intakes/{{ intake.id }}/edit">Edit</a>
+            <a class="btn btn-primary" href="/intakes/{{ intake.id }}/edit" style="font-size:13px;font-weight:700;padding:8px 16px">Project Details</a>
             {% if not intake.mo_decision %}
               <a class="btn btn-primary" href="/mo-queue">Proceed →</a>
             {% endif %}
