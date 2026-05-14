@@ -540,8 +540,8 @@ PHASE_COLORS = {
     "90%": "#4f46e5",   # indigo-600
     "DD":  "#34d399",   # emerald-400
     "CA":  "#fb923c",   # orange-400
-    "CD":  "#be123c",   # rose-700  (darkened to distinguish from CA orange)
-    "IFP": "#dc2626",   # red-600   (swapped to clear red)
+    "CD":  "#f59e0b",   # amber-400 (clearly distinct from IFP red)
+    "IFP": "#dc2626",   # red-600   (milestone red)
     "REV": "#a855f7",   # purple-500
     "SD":  "#06b6d4",   # cyan-500
 }
@@ -3877,7 +3877,8 @@ def get_stale_projects(days: int = 14) -> list[dict[str, Any]]:
         _client()
         .table("intakes")
         .select("id,project_number,project_name,client_name,current_phase")
-        .eq("status", "active")
+        .eq("pipeline_active", 1)
+        .eq("status", "ACTIVE_PROJECT")
         .execute()
     )
     intakes = intakes_resp.data or []
@@ -4283,7 +4284,8 @@ def get_burn_vs_bill() -> list[dict[str, Any]]:
         _client()
         .table("intakes")
         .select("id,project_number,project_name,client_name")
-        .eq("status", "active")
+        .eq("pipeline_active", 1)
+        .eq("status", "ACTIVE_PROJECT")
         .execute()
     )
     intakes = intakes_resp.data or []
