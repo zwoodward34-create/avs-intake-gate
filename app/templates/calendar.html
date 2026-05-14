@@ -626,6 +626,39 @@
   </div>
 </div>
 
+<!-- ── Filter Panel ─────────────────────────────────────────── -->
+<div style="margin-bottom:12px;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+  <div id="cal-filter-bar" onclick="calFilterToggle()" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;user-select:none;transition:background .12s">
+    <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">Filters</span>
+    <span id="cal-filter-badge" style="display:none;font-size:10px;font-weight:800;background:var(--accent);color:#fff;padding:1px 8px;border-radius:10px">Active</span>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <button class="btn" style="font-size:10px;padding:2px 8px;height:auto;line-height:1.6" onclick="event.stopPropagation();calFilterAll()">All</button>
+      <button class="btn" style="font-size:10px;padding:2px 8px;height:auto;line-height:1.6" onclick="event.stopPropagation();calFilterNone()">None</button>
+      <span id="cal-filter-caret" style="color:var(--muted);font-size:11px;transition:transform .15s;display:inline-block">▼</span>
+    </div>
+  </div>
+  <div id="cal-filter-body" style="display:none;padding:14px 16px;border-top:1px solid var(--border)">
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:1;min-width:220px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">Projects</span>
+          <button class="btn" style="font-size:10px;padding:1px 7px;height:auto;line-height:1.6" onclick="calFilterAllProjects()">All</button>
+          <button class="btn" style="font-size:10px;padding:1px 7px;height:auto;line-height:1.6" onclick="calFilterNoneProjects()">None</button>
+        </div>
+        <div id="filter-projects" style="display:flex;flex-direction:column;gap:5px;max-height:190px;overflow-y:auto;padding-right:4px"></div>
+      </div>
+      <div style="flex:0 0 auto">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">Phases</span>
+          <button class="btn" style="font-size:10px;padding:1px 7px;height:auto;line-height:1.6" onclick="calFilterAllPhases()">All</button>
+          <button class="btn" style="font-size:10px;padding:1px 7px;height:auto;line-height:1.6" onclick="calFilterNonePhases()">None</button>
+        </div>
+        <div id="filter-phases" style="display:flex;flex-direction:column;gap:5px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Gantt view ──────────────────────────────────────────────── -->
 <div id="gantt-panel">
   <div class="gantt-outer">
@@ -902,6 +935,7 @@
   }
 
   function renderGantt(phaseEvents, oooEvents) {
+    phaseEvents = filteredEvents(phaseEvents);
     const inner = document.getElementById('gantt-inner');
     inner.innerHTML = '';
 
@@ -1233,6 +1267,7 @@
      MONTH GRID RENDERER (phase-based coloring)
   ════════════════════════════════════════════════════════════ */
   function renderGrid(phaseEvents, oooEvents) {
+    phaseEvents = filteredEvents(phaseEvents);
     const today = new Date().toISOString().slice(0,10);
     document.getElementById('month-label').textContent =
       `${MONTH_NAMES[viewMonth-1]} ${viewYear}`;
@@ -1321,9 +1356,7 @@
           (isFirst ? '' : ' bar-cont-l') +
           (isLast  ? '' : ' bar-cont-r');
         bar.style.background = color;
-        bar.textContent = isFirst
-          ? `${ev.phase_code} · ${ev.project_number}`
-          : '';
+        bar.textContent = ev.project_number || ev.phase_code;
         bar.title = `${ev.project_name || ev.project_number} | ${PHASE_LABELS[ev.phase_code] || ev.phase_label}\n${fmtDate(ev.start_date)} → ${fmtDate(ev.end_date)}\nTeam: ${(ev.team||[]).join(', ')}`;
         bar.addEventListener('click', e => { e.stopPropagation(); openPhaseEventDetail(ev, color); });
         cell.appendChild(bar);
@@ -1354,6 +1387,107 @@
   }
 
   /* ════════════════════════════════════════════════════════════
+     FILTER STATE & HELPERS
+  ════════════════════════════════════════════════════════════ */
+  const _hiddenProjects = new Set();
+  const _hiddenPhases   = new Set();
+  let _cachedPhaseEvents = [];
+  let _cachedOooEvents   = [];
+  let _filterPhasesBuilt = false;
+  let _filterOpen        = false;
+
+  function calFilterToggle() {
+    _filterOpen = !_filterOpen;
+    document.getElementById('cal-filter-body').style.display = _filterOpen ? '' : 'none';
+    document.getElementById('cal-filter-caret').style.transform = _filterOpen ? 'rotate(180deg)' : '';
+  }
+  function _updateFilterBadge() {
+    const active = _hiddenProjects.size > 0 || _hiddenPhases.size > 0;
+    document.getElementById('cal-filter-badge').style.display = active ? '' : 'none';
+  }
+  function _applyRender() {
+    if (viewMode === 'gantt') renderGantt(_cachedPhaseEvents, _cachedOooEvents);
+    else renderGrid(_cachedPhaseEvents, _cachedOooEvents);
+  }
+  function filteredEvents(events) {
+    return events.filter(ev =>
+      !_hiddenProjects.has(ev.project_number) &&
+      !_hiddenPhases.has(ev.phase_code)
+    );
+  }
+
+  function calFilterAll()          { _hiddenProjects.clear(); _hiddenPhases.clear();
+    document.querySelectorAll('#filter-projects input,#filter-phases input').forEach(c=>c.checked=true);
+    _updateFilterBadge(); _applyRender(); }
+  function calFilterNone()         { _cachedPhaseEvents.forEach(ev=>_hiddenProjects.add(ev.project_number));
+    Object.keys(PHASE_LABELS).forEach(p=>_hiddenPhases.add(p));
+    document.querySelectorAll('#filter-projects input,#filter-phases input').forEach(c=>c.checked=false);
+    _updateFilterBadge(); _applyRender(); }
+  function calFilterAllProjects()  { _hiddenProjects.clear();
+    document.querySelectorAll('#filter-projects input').forEach(c=>c.checked=true);
+    _updateFilterBadge(); _applyRender(); }
+  function calFilterNoneProjects() { _cachedPhaseEvents.forEach(ev=>_hiddenProjects.add(ev.project_number));
+    document.querySelectorAll('#filter-projects input').forEach(c=>c.checked=false);
+    _updateFilterBadge(); _applyRender(); }
+  function calFilterAllPhases()    { _hiddenPhases.clear();
+    document.querySelectorAll('#filter-phases input').forEach(c=>c.checked=true);
+    _updateFilterBadge(); _applyRender(); }
+  function calFilterNonePhases()   { Object.keys(PHASE_LABELS).forEach(p=>_hiddenPhases.add(p));
+    document.querySelectorAll('#filter-phases input').forEach(c=>c.checked=false);
+    _updateFilterBadge(); _applyRender(); }
+
+  function _buildFilterPanel(phaseEvents) {
+    // Projects — rebuild each time (project list may change per month)
+    const projMap = new Map();
+    phaseEvents.forEach(ev => {
+      const pn = ev.project_number || '—';
+      if (!projMap.has(pn)) projMap.set(pn, ev.project_name || '');
+    });
+    const projCont = document.getElementById('filter-projects');
+    projCont.innerHTML = '';
+    [...projMap.entries()].sort((a,b) => a[0].localeCompare(b[0])).forEach(([pn, name]) => {
+      const lbl = document.createElement('label');
+      lbl.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !_hiddenProjects.has(pn);
+      cb.addEventListener('change', () => {
+        if (cb.checked) _hiddenProjects.delete(pn); else _hiddenProjects.add(pn);
+        _updateFilterBadge(); _applyRender();
+      });
+      lbl.appendChild(cb);
+      const txt = `${pn}${name ? '  —  ' + name.slice(0,22) : ''}`;
+      lbl.appendChild(document.createTextNode(txt));
+      projCont.appendChild(lbl);
+    });
+
+    // Phases — built once since they never change
+    if (!_filterPhasesBuilt) {
+      const phCont = document.getElementById('filter-phases');
+      phCont.innerHTML = '';
+      Object.entries(PHASE_LABELS).forEach(([code, label]) => {
+        const color = phaseColor(code);
+        const lbl = document.createElement('label');
+        lbl.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = !_hiddenPhases.has(code);
+        cb.addEventListener('change', () => {
+          if (cb.checked) _hiddenPhases.delete(code); else _hiddenPhases.add(code);
+          _updateFilterBadge(); _applyRender();
+        });
+        const sw = document.createElement('span');
+        sw.style.cssText = `width:14px;height:9px;border-radius:2px;background:${color};flex-shrink:0;display:inline-block`;
+        lbl.appendChild(cb);
+        lbl.appendChild(sw);
+        lbl.appendChild(document.createTextNode(label));
+        phCont.appendChild(lbl);
+      });
+      _filterPhasesBuilt = true;
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════
      FETCH + DISPATCH
   ════════════════════════════════════════════════════════════ */
   async function loadCalendar() {
@@ -1376,13 +1510,15 @@
         .then(r => r.json()).catch(() => []),
     ]);
 
-    const phaseEvents = phaseResp.events || [];
-    const oooEvents   = (Array.isArray(oooResp) ? oooResp : []).filter(e => e.is_ooo);
+    _cachedPhaseEvents = phaseResp.events || [];
+    _cachedOooEvents   = (Array.isArray(oooResp) ? oooResp : []).filter(e => e.is_ooo);
+
+    _buildFilterPanel(_cachedPhaseEvents);
 
     if (viewMode === 'gantt') {
-      renderGantt(phaseEvents, oooEvents);
+      renderGantt(_cachedPhaseEvents, _cachedOooEvents);
     } else {
-      renderGrid(phaseEvents, oooEvents);
+      renderGrid(_cachedPhaseEvents, _cachedOooEvents);
     }
   }
 
