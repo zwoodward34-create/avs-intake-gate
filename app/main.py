@@ -290,6 +290,29 @@ def _require_role(request: Request, *allowed: str) -> Optional[RedirectResponse]
 
 _EMPLOYEE_ROLES = {"employee", "engineer", "drafter"}
 
+def _assigned_engineer_initials(intake: Any) -> set[str]:
+    raw = getattr(intake, "assigned_engineers", None)
+    if not raw:
+        return set()
+    try:
+        assigned = _json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return set()
+    if not isinstance(assigned, list):
+        return set()
+    return {str(initials).strip().upper() for initials in assigned if str(initials).strip()}
+
+
+def _user_can_view_intake(user: dict[str, Any], intake: Any) -> bool:
+    role = user.get("role", "")
+    if role == "admin":
+        return True
+    if role in _EMPLOYEE_ROLES:
+        initials = str(user.get("initials") or "").strip().upper()
+        return bool(initials and initials in _assigned_engineer_initials(intake))
+    return False
+
+
 def _enforce_own_entries(request: Request, engineer_initials: str) -> None:
     """Raise 403 if a non-admin user tries to touch another engineer's entries."""
     user = _session_user(request) or {}
@@ -597,10 +620,14 @@ async def intake_create(request: Request) -> RedirectResponse:
 
 @app.get("/intakes/{intake_id}", response_class=HTMLResponse)
 def intake_view(request: Request, intake_id: int) -> HTMLResponse:
-    if redir := _check_page_access(request, "/intakes/{intake_id}"): return redir
+    if redir := _require_auth(request):
+        return redir
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
+    user = _session_user(request) or {}
+    if not _user_can_view_intake(user, intake):
+        raise HTTPException(status_code=403, detail="You can only view intakes for projects assigned to you.")
 
     decision = compute_decision(intake.answers)
     # Inject complexity so fee_estimator doesn't need to import decision.py

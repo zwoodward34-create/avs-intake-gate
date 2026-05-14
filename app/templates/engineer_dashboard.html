@@ -28,6 +28,9 @@
 .ed-grid-label { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:10px }
 .ed-grid       { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px }
 .ed-card       { background:var(--card-bg); border:1px solid var(--border); border-radius:12px; padding:18px 20px; display:flex; flex-direction:column; gap:12px; position:relative }
+.ed-card-link  { cursor:pointer; transition:border-color .15s ease, transform .15s ease, background .15s ease }
+.ed-card-link:hover { border-color:rgba(99,102,241,.42); background:rgba(99,102,241,.045); transform:translateY(-1px) }
+.ed-card-link:focus-visible { outline:2px solid var(--accent); outline-offset:3px }
 .ed-card-top   { display:flex; align-items:flex-start; justify-content:space-between; gap:8px }
 .ed-card-pn    { font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); font-family:var(--mono) }
 .ed-card-name  { font-size:15px; font-weight:700; color:var(--text); margin-top:2px; line-height:1.3 }
@@ -158,7 +161,7 @@
         {% set alloc = cpd.bucket_total or 0 %}
         {% set pulse = proj.burn_pulse or 'good' %}
 
-        <div class="ed-card">
+        <div class="ed-card ed-card-link" data-href="/intakes/{{ proj.intake_id }}" role="link" tabindex="0" aria-label="Open intake for {{ proj.project_name or proj.project_number }}">
           <div class="ed-card-top">
             <div style="min-width:0">
               <div class="ed-card-pn">{{ proj.project_number }}</div>
@@ -412,6 +415,22 @@
   const today        = new Date().toISOString().slice(0, 10);
 
   document.getElementById('lt-date').value = today;
+
+  // ── Project cards navigate to full intake page ────────────────────────────
+  document.querySelectorAll('.ed-card-link').forEach(card => {
+    function openCard(e) {
+      if (e.target.closest('button, a, input, select, textarea, label')) return;
+      const href = card.dataset.href;
+      if (href) window.location.href = href;
+    }
+    card.addEventListener('click', openCard);
+    card.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      const href = card.dataset.href;
+      if (href) window.location.href = href;
+    });
+  });
 
   // ── Log Time modal ─────────────────────────────────────────────────────────
   window.openLogModal = function(intakeId, pn, phase) {
