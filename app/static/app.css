@@ -83,26 +83,24 @@ a:hover { text-decoration: underline; }
 }
 
 .sidebar-logo {
-  padding: 22px 20px 18px;
+  padding: 14px 16px 12px;
   border-bottom: 1px solid var(--sidebar-border);
 }
 
-.sidebar-logo-mark {
-  font-size: 21px;
-  font-weight: 700;
-  color: var(--sidebar-text);
-  letter-spacing: -0.4px;
-  line-height: 1;
+.sidebar-logo-img-link {
+  display: block;
   text-decoration: none;
 }
-.sidebar-logo-mark:hover { text-decoration: none; }
 
-.sidebar-logo-sub {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--sidebar-muted);
-  letter-spacing: 0.03em;
-  margin-top: 4px;
+.sidebar-logo-img {
+  display: block;
+  width: 100%;
+  max-width: 176px;
+  height: auto;
+  background: #fff;
+  border-radius: 7px;
+  padding: 6px 10px;
+  box-sizing: border-box;
 }
 
 .sidebar-nav {

@@ -985,6 +985,23 @@ function updateInvoiceStatus(invoiceId, newStatus) {
   .catch(function(e) { alert('Error: ' + e.message); });
 }
 
+// ── Logo preload for PDF ───────────────────────────────────────────────────
+var _pdfLogoDataUrl = null;
+(function() {
+  var img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = function() {
+    try {
+      var canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      _pdfLogoDataUrl = canvas.toDataURL('image/png');
+    } catch(e) {}
+  };
+  img.src = '/static/avs_logo.png';
+})();
+
 // ── jsPDF invoice PDF ──────────────────────────────────────────────────────
 function generatePDF(data) {
   if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
@@ -998,27 +1015,42 @@ function generatePDF(data) {
   var pageW  = doc.internal.pageSize.getWidth();
   var y = margin;
 
-  // Header bar
-  doc.setFillColor(15, 23, 42);
-  doc.rect(0, 0, pageW, 72, 'F');
-  doc.setTextColor(255,255,255);
+  // Header — white background with logo left, INVOICE label right
+  var hdrH = 90;
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, pageW, hdrH, 'F');
+
+  // Logo image (if preloaded)
+  var logoW = 180, logoH = 90;
+  if (_pdfLogoDataUrl) {
+    doc.addImage(_pdfLogoDataUrl, 'PNG', margin - 10, 4, logoW, logoH);
+  } else {
+    // Fallback text header
+    doc.setTextColor(30,41,59);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(15);
+    doc.text('A.V. Schwan & Associates', margin, 36);
+    doc.setFontSize(9);
+    doc.setFont('helvetica','normal');
+    doc.setTextColor(100,116,139);
+    doc.text('Structural Engineering  |  Scottsdale, AZ', margin, 50);
+  }
+
+  // INVOICE label + number (right side)
+  doc.setTextColor(15,23,42);
   doc.setFont('helvetica','bold');
-  doc.setFontSize(18);
-  doc.text('A.V. Schwan & Associates', margin, 34);
-  doc.setFontSize(9);
-  doc.setFont('helvetica','normal');
-  doc.setTextColor(160,180,210);
-  doc.text('Structural Engineering  |  Phoenix, AZ', margin, 50);
-  doc.setTextColor(99,179,237);
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(11);
+  doc.setFontSize(22);
   doc.text('INVOICE', pageW - margin, 38, {align:'right'});
-  doc.setTextColor(200,220,255);
-  doc.setFontSize(9);
+  doc.setFontSize(10);
   doc.setFont('helvetica','normal');
+  doc.setTextColor(100,116,139);
   doc.text(data.invoice_number, pageW - margin, 54, {align:'right'});
 
-  y = 96;
+  // Accent rule below header
+  doc.setFillColor(180, 90, 30);
+  doc.rect(0, hdrH, pageW, 3, 'F');
+
+  y = hdrH + 22;
 
   // Client / project block
   doc.setTextColor(30,41,59);
@@ -1123,10 +1155,14 @@ function generatePDF(data) {
   doc.setTextColor(30,41,59);
   doc.text('$' + Number(data.balance_to_finish).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}), pageW - margin, y, {align:'right'});
 
-  // Footer
+  // Footer rule + text
+  var pageH = doc.internal.pageSize.getHeight();
+  doc.setFillColor(226,232,240);
+  doc.rect(margin, pageH - 42, pageW - margin * 2, 1, 'F');
   doc.setFontSize(8);
   doc.setTextColor(160,170,185);
-  doc.text('A.V. Schwan & Associates  ·  avschwan.com  ·  Generated ' + new Date().toLocaleDateString(), pageW / 2, doc.internal.pageSize.getHeight() - 28, {align:'center'});
+  doc.text('A.V. Schwan & Associates  ·  6000 East Thomas Rd, Suite 1, Scottsdale, AZ 85251  ·  (602) 265-4331  ·  www.AVSchwan.com', pageW / 2, pageH - 28, {align:'center'});
+  doc.text('Generated ' + new Date().toLocaleDateString(), pageW / 2, pageH - 16, {align:'center'});
 
   doc.save(data.invoice_number + '.pdf');
 }
