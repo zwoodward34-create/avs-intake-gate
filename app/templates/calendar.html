@@ -622,6 +622,11 @@
       <button class="view-toggle-btn active" id="view-gantt-btn" data-view="gantt">Timeline</button>
       <button class="view-toggle-btn" id="view-month-btn" data-view="month">Month</button>
     </div>
+    <!-- Zoom toggle — only visible in Timeline mode -->
+    <div class="view-toggle" id="zoom-toggle" style="display:flex">
+      <button class="view-toggle-btn active" id="zoom-month-btn" onclick="setGanttZoom(false)">Default</button>
+      <button class="view-toggle-btn" id="zoom-day-btn" onclick="setGanttZoom(true)">Zoom In</button>
+    </div>
     <button class="btn" id="add-ooo-btn">+ OOO</button>
   </div>
 </div>
@@ -926,12 +931,23 @@
   /* ════════════════════════════════════════════════════════════
      GANTT RENDERER
   ════════════════════════════════════════════════════════════ */
-  const PX_PER_DAY = 14;   // pixels per calendar day
-  const ROW_H      = 54;   // px height of each project row
+  const PX_PER_DAY      = 14;   // default: pixels per calendar day
+  const PX_PER_DAY_ZOOM = 44;   // zoomed: one readable column per day
+  const ROW_H      = 54;
   const OOO_ROW_H  = 40;
 
-  function ganttDateOffset(iso, viewStart) {
-    return daysBetween(viewStart, iso) * PX_PER_DAY;
+  let ganttZoomed = false;
+
+  function setGanttZoom(on) {
+    ganttZoomed = on;
+    document.getElementById('zoom-day-btn').classList.toggle('active', on);
+    document.getElementById('zoom-month-btn').classList.toggle('active', !on);
+    if (viewMode === 'gantt') renderGantt(_cachedPhaseEvents, _cachedOooEvents);
+  }
+  window.setGanttZoom = setGanttZoom;
+
+  function ganttDateOffset(iso, viewStart, pxDay) {
+    return daysBetween(viewStart, iso) * pxDay;
   }
 
   function renderGantt(phaseEvents, oooEvents) {
@@ -939,35 +955,42 @@
     const inner = document.getElementById('gantt-inner');
     inner.innerHTML = '';
 
-    /* Compute window: prev month start → next month end */
-    const prevM  = viewMonth > 1  ? viewMonth - 1 : 12;
-    const prevY  = viewMonth > 1  ? viewYear  : viewYear - 1;
-    const nextM  = viewMonth < 12 ? viewMonth + 1 : 1;
-    const nextY  = viewMonth < 12 ? viewYear  : viewYear + 1;
+    const pxDay = ganttZoomed ? PX_PER_DAY_ZOOM : PX_PER_DAY;
 
-    const viewStart = isoStr(prevY, prevM, 1);
-    const viewEnd   = isoStr(nextY, nextM, daysInMonth(nextY, nextM));
+    /* Compute window */
+    let viewStart, viewEnd;
+    if (ganttZoomed) {
+      // Day View: current month only
+      viewStart = isoStr(viewYear, viewMonth, 1);
+      viewEnd   = isoStr(viewYear, viewMonth, daysInMonth(viewYear, viewMonth));
+    } else {
+      // Normal: prev month start → next month end
+      const prevM = viewMonth > 1  ? viewMonth - 1 : 12;
+      const prevY = viewMonth > 1  ? viewYear  : viewYear - 1;
+      const nextM = viewMonth < 12 ? viewMonth + 1 : 1;
+      const nextY = viewMonth < 12 ? viewYear  : viewYear + 1;
+      viewStart = isoStr(prevY, prevM, 1);
+      viewEnd   = isoStr(nextY, nextM, daysInMonth(nextY, nextM));
+    }
     const totalDays = daysBetween(viewStart, viewEnd) + 1;
-    const timelineW = totalDays * PX_PER_DAY;
+    const timelineW = totalDays * pxDay;
 
     const today = new Date().toISOString().slice(0,10);
     const todayPx = daysBetween(viewStart, today);
     const todayVisible = today >= viewStart && today <= viewEnd;
 
-    /* Repeating week grid background */
-    const weekW = 7 * PX_PER_DAY;
-    // We need to find the offset of the first Sunday
-    const viewStartDow = new Date(viewStart + 'T12:00:00').getDay(); // 0=Sun
-    const firstGridOffset = ((7 - viewStartDow) % 7) * PX_PER_DAY;
-    const weekGridBg = `repeating-linear-gradient(
-      to right,
-      transparent 0,
-      transparent ${weekW - 1}px,
-      var(--border) ${weekW - 1}px,
-      var(--border) ${weekW}px
-    )`;
-    // Offset the repeating gradient to align with actual Sundays
-    const weekGridStyle = `background-image:${weekGridBg};background-position:${firstGridOffset}px 0;background-size:${weekW}px 100%;`;
+    /* Grid background style */
+    let trackGridStyle;
+    if (ganttZoomed) {
+      // Day grid: 1px divider every pxDay pixels, weekend columns shaded
+      trackGridStyle = `background-image:repeating-linear-gradient(to right,transparent 0,transparent ${pxDay-1}px,var(--border) ${pxDay-1}px,var(--border) ${pxDay}px);background-size:${pxDay}px 100%;`;
+    } else {
+      const weekW          = 7 * pxDay;
+      const viewStartDow   = new Date(viewStart + 'T12:00:00').getDay();
+      const firstGridOffset = ((7 - viewStartDow) % 7) * pxDay;
+      const weekGridBg = `repeating-linear-gradient(to right,transparent 0,transparent ${weekW-1}px,var(--border) ${weekW-1}px,var(--border) ${weekW}px)`;
+      trackGridStyle = `background-image:${weekGridBg};background-position:${firstGridOffset}px 0;background-size:${weekW}px 100%;`;
+    }
 
     /* Group phase events by project_number */
     const projectMap = {};
@@ -985,58 +1008,35 @@
     }
 
     /* ── Month header bands ───────────────────────────────── */
-    // Build list of months in the window with their start offset + width
     const monthBands = [];
     let cursor = viewStart;
     while (cursor <= viewEnd) {
       const y = parseInt(cursor.slice(0,4));
       const m = parseInt(cursor.slice(5,7));
-      const monthStart = isoStr(y, m, 1);
       const monthEnd   = isoStr(y, m, daysInMonth(y, m));
       const clampStart = cursor > viewStart ? cursor : viewStart;
       const clampEnd   = monthEnd < viewEnd ? monthEnd : viewEnd;
-      const startPx = daysBetween(viewStart, clampStart) * PX_PER_DAY;
-      const endPx   = (daysBetween(viewStart, clampEnd) + 1) * PX_PER_DAY;
+      const startPx = daysBetween(viewStart, clampStart) * pxDay;
+      const endPx   = (daysBetween(viewStart, clampEnd) + 1) * pxDay;
       monthBands.push({
         label: `${MONTH_NAMES[m-1]} ${y}`,
         startPx,
         widthPx: endPx - startPx,
         isCurrent: y === viewYear && m === viewMonth,
       });
-      // advance to next month
       if (m < 12) cursor = isoStr(y, m+1, 1);
-      else        cursor = isoStr(y+1, 1,  1);
-    }
-
-    /* ── Week labels ──────────────────────────────────────── */
-    const weekLabels = [];
-    // find first Sunday >= viewStart
-    let wCursor = viewStart;
-    const dow = new Date(viewStart + 'T12:00:00').getDay();
-    if (dow !== 0) wCursor = addDays(viewStart, 7 - dow);
-    while (wCursor <= viewEnd) {
-      const px = daysBetween(viewStart, wCursor) * PX_PER_DAY;
-      const d = new Date(wCursor + 'T12:00:00');
-      weekLabels.push({
-        label: `${MONTH_NAMES[d.getMonth()].slice(0,3)} ${d.getDate()}`,
-        startPx: px,
-        widthPx: weekW,
-        isCurrentWeek: Math.abs(daysBetween(wCursor, today)) < 7 && today >= wCursor,
-      });
-      wCursor = addDays(wCursor, 7);
+      else        cursor = isoStr(y+1, 1, 1);
     }
 
     /* ── Build header rows ────────────────────────────────── */
-    // Month header
+    // Row 1: Month bands
     const monthHdr = document.createElement('div');
     monthHdr.className = 'gantt-header-row';
     monthHdr.style.height = '26px';
-
     const monthHdrLabel = document.createElement('div');
     monthHdrLabel.className = 'gantt-col-label gantt-label-header';
     monthHdrLabel.textContent = 'Project';
     monthHdr.appendChild(monthHdrLabel);
-
     const monthHdrTrack = document.createElement('div');
     monthHdrTrack.className = 'gantt-header-months';
     monthHdrTrack.style.cssText = `position:relative;flex:1;height:26px;min-width:${timelineW}px;`;
@@ -1044,46 +1044,82 @@
       const el = document.createElement('div');
       el.className = 'gantt-header-month-label';
       el.style.cssText = `left:${band.startPx}px;width:${band.widthPx}px;` +
-        (band.isCurrent ? 'color:var(--accent);' : '');
+        (band.isCurrent ? 'color:var(--accent);font-weight:800;' : '');
       el.textContent = band.label;
       monthHdrTrack.appendChild(el);
     });
     monthHdr.appendChild(monthHdrTrack);
     inner.appendChild(monthHdr);
 
-    // Week sub-header
-    const weekHdr = document.createElement('div');
-    weekHdr.className = 'gantt-header-weeks-row';
-    weekHdr.style.height = '22px';
+    // Row 2: Week labels (normal) OR Day labels (zoomed)
+    const subHdr = document.createElement('div');
+    subHdr.className = ganttZoomed ? 'gantt-header-weeks-row' : 'gantt-header-weeks-row';
+    subHdr.style.height = ganttZoomed ? '34px' : '22px';
+    const subHdrLabel = document.createElement('div');
+    subHdrLabel.className = 'gantt-col-label';
+    subHdrLabel.style.height = ganttZoomed ? '34px' : '22px';
+    subHdr.appendChild(subHdrLabel);
+    const subHdrTrack = document.createElement('div');
+    subHdrTrack.style.cssText = `position:relative;flex:1;height:${ganttZoomed ? 34 : 22}px;min-width:${timelineW}px;${trackGridStyle}`;
 
-    const weekHdrLabel = document.createElement('div');
-    weekHdrLabel.className = 'gantt-col-label';
-    weekHdrLabel.style.height = '22px';
-    weekHdr.appendChild(weekHdrLabel);
+    if (ganttZoomed) {
+      // Individual day columns
+      const DOW_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      let dCursor = viewStart;
+      while (dCursor <= viewEnd) {
+        const d   = new Date(dCursor + 'T12:00:00');
+        const dow = d.getDay();
+        const isWeekend = dow === 0 || dow === 6;
+        const isToday   = dCursor === today;
+        const px = daysBetween(viewStart, dCursor) * pxDay;
 
-    const weekHdrTrack = document.createElement('div');
-    weekHdrTrack.className = 'gantt-header-weeks';
-    weekHdrTrack.style.cssText = `position:relative;flex:1;height:22px;min-width:${timelineW}px;${weekGridStyle}`;
-    weekLabels.forEach(wk => {
-      const el = document.createElement('div');
-      el.className = 'gantt-week-label' + (wk.isCurrentWeek ? ' gantt-today-week-label' : '');
-      el.style.cssText = `left:${wk.startPx}px;width:${wk.widthPx}px;`;
-      el.textContent = wk.label;
-      weekHdrTrack.appendChild(el);
-    });
-    weekHdr.appendChild(weekHdrTrack);
-    inner.appendChild(weekHdr);
+        const col = document.createElement('div');
+        col.style.cssText = `position:absolute;left:${px}px;width:${pxDay}px;height:34px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;border-right:1px solid var(--border);` +
+          (isWeekend ? 'background:rgba(255,255,255,.03);' : '') +
+          (isToday   ? 'background:rgba(30,58,95,.18);' : '');
+        const dayName = document.createElement('div');
+        dayName.style.cssText = `font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:${isToday ? 'var(--accent)' : isWeekend ? 'var(--subtle)' : 'var(--muted)'};line-height:1.2`;
+        dayName.textContent = DOW_ABBR[dow];
+        const dayNum = document.createElement('div');
+        dayNum.style.cssText = `font-size:12px;font-weight:${isToday ? 800 : 600};color:${isToday ? 'var(--accent)' : isWeekend ? 'var(--muted)' : 'var(--text)'};line-height:1.2`;
+        dayNum.textContent = d.getDate();
+        col.appendChild(dayName);
+        col.appendChild(dayNum);
+        subHdrTrack.appendChild(col);
+        dCursor = addDays(dCursor, 1);
+      }
+    } else {
+      // Week labels (existing logic)
+      const weekW = 7 * pxDay;
+      let wCursor = viewStart;
+      const dow = new Date(viewStart + 'T12:00:00').getDay();
+      if (dow !== 0) wCursor = addDays(viewStart, 7 - dow);
+      while (wCursor <= viewEnd) {
+        const px = daysBetween(viewStart, wCursor) * pxDay;
+        const d  = new Date(wCursor + 'T12:00:00');
+        const isCurWk = Math.abs(daysBetween(wCursor, today)) < 7 && today >= wCursor;
+        const el = document.createElement('div');
+        el.className = 'gantt-week-label' + (isCurWk ? ' gantt-today-week-label' : '');
+        el.style.cssText = `left:${px}px;width:${weekW}px;`;
+        el.textContent = `${MONTH_NAMES[d.getMonth()].slice(0,3)} ${d.getDate()}`;
+        subHdrTrack.appendChild(el);
+        wCursor = addDays(wCursor, 7);
+      }
+    }
+
+    subHdr.appendChild(subHdrTrack);
+    inner.appendChild(subHdr);
 
     /* ── Helper: make a track div ─────────────────────────── */
     function makeTrack(rowH) {
       const track = document.createElement('div');
       track.className = 'gantt-track';
-      track.style.cssText = `flex:1;min-height:${rowH}px;position:relative;min-width:${timelineW}px;${weekGridStyle}`;
+      track.style.cssText = `flex:1;min-height:${rowH}px;position:relative;min-width:${timelineW}px;${trackGridStyle}`;
       // Today line
       if (todayVisible) {
         const tl = document.createElement('div');
         tl.className = 'gantt-today-line';
-        tl.style.left = (todayPx * PX_PER_DAY) + 'px';
+        tl.style.left = (todayPx * pxDay) + 'px';
         track.appendChild(tl);
       }
       return track;
@@ -1121,7 +1157,7 @@
 
         if (ev.phase_code === 'IFP') {
           // Render as milestone vertical flag
-          const left = ganttDateOffset(s, viewStart);
+          const left = ganttDateOffset(s, viewStart, pxDay);
           const ms = document.createElement('div');
           ms.className = 'gantt-milestone';
           ms.style.cssText = `left:${left}px;background:${color};`;
@@ -1134,8 +1170,8 @@
           track.appendChild(ms);
         } else {
           // Normal phase bar
-          const left  = ganttDateOffset(s, viewStart);
-          const width = Math.max((daysBetween(s, e) + 1) * PX_PER_DAY, 6);
+          const left  = ganttDateOffset(s, viewStart, pxDay);
+          const width = Math.max((daysBetween(s, e) + 1) * pxDay, 6);
 
           const bar = document.createElement('div');
           bar.className = 'gantt-bar';
@@ -1239,8 +1275,8 @@
         evts.forEach(ev => {
           const s = (ev.start_date||'').slice(0,10);
           const e = (ev.end_date||'').slice(0,10);
-          const left  = ganttDateOffset(s, viewStart);
-          const width = Math.max((daysBetween(s, e) + 1) * PX_PER_DAY, 6);
+          const left  = ganttDateOffset(s, viewStart, pxDay);
+          const width = Math.max((daysBetween(s, e) + 1) * pxDay, 6);
           const bar = document.createElement('div');
           bar.className = 'gantt-ooo-bar';
           bar.style.cssText = `left:${left}px;width:${width}px;`;
@@ -1258,7 +1294,7 @@
     if (todayVisible) {
       const scrollEl = document.getElementById('gantt-scroll');
       const labelW = 185;
-      const targetScroll = Math.max(0, todayPx * PX_PER_DAY - labelW - 80);
+      const targetScroll = Math.max(0, todayPx * pxDay - labelW - 80);
       setTimeout(() => { scrollEl.scrollLeft = targetScroll; }, 50);
     }
   }
@@ -1537,6 +1573,7 @@
     viewMode = 'gantt';
     document.getElementById('view-gantt-btn').classList.add('active');
     document.getElementById('view-month-btn').classList.remove('active');
+    document.getElementById('zoom-toggle').style.display = 'flex';
     document.getElementById('gantt-panel').style.display = '';
     document.getElementById('month-panel').style.display = 'none';
     loadCalendar();
@@ -1545,6 +1582,7 @@
     viewMode = 'month';
     document.getElementById('view-month-btn').classList.add('active');
     document.getElementById('view-gantt-btn').classList.remove('active');
+    document.getElementById('zoom-toggle').style.display = 'none';
     document.getElementById('month-panel').style.display = '';
     document.getElementById('gantt-panel').style.display = 'none';
     loadCalendar();
