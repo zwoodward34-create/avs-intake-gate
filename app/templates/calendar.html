@@ -1703,7 +1703,14 @@
     renderOOOTeamTrigger();
     oooModal.classList.add('open');
   }
-  window.openOOOEdit = openOOOEdit;
+  window.openOOOEdit         = openOOOEdit;
+  window.calFilterToggle     = calFilterToggle;
+  window.calFilterAll        = calFilterAll;
+  window.calFilterNone       = calFilterNone;
+  window.calFilterAllProjects  = calFilterAllProjects;
+  window.calFilterNoneProjects = calFilterNoneProjects;
+  window.calFilterAllPhases    = calFilterAllPhases;
+  window.calFilterNonePhases   = calFilterNonePhases;
 
   function closeOOOModal() { oooModal.classList.remove('open'); }
   document.getElementById('ooo-modal-close').addEventListener('click', closeOOOModal);
