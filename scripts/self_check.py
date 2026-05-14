@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -73,10 +74,26 @@ def _check_complexity() -> None:
     assert complexity_estimate({"scope_risk_type": "adaptive_reuse"}) == "high", "adaptive reuse → high"
 
 
+def _check_staffing() -> None:
+    """Run the Section 10 staffing-engine regression suite."""
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "test_staffing.py")],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        print(result.stdout)
+        print(result.stderr)
+        raise AssertionError("Staffing engine regression suite failed (see output above).")
+    # Print only the final pass line so self_check stays compact
+    last = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    print(f"  staffing → {last}")
+
+
 def main() -> None:
     _check_fast_track()
     _check_fee_range()
     _check_complexity()
+    _check_staffing()
 
     answers = {
         "project_type": "new_construction",

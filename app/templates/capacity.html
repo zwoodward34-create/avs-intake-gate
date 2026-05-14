@@ -306,6 +306,190 @@
   text-align: center;
 }
 
+/* ── Staffing risk & mitigations panel ───────────────────── */
+.staffing-panel {
+  margin: 6px 0 22px;
+  padding: 16px 18px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.staffing-panel.empty {
+  background: var(--card-bg-deeper);
+  border-style: dashed;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 12px 18px;
+}
+.staffing-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.staffing-panel-title {
+  font-size: 11px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.12em; color: var(--text);
+  display: flex; align-items: center; gap: 8px;
+}
+.staffing-panel-title::before {
+  content: ''; width: 3px; height: 12px; background: var(--accent);
+  border-radius: 2px;
+}
+.pipeline-toggle {
+  font-size: 11px; color: var(--muted); display: flex; align-items: center;
+  gap: 6px; font-family: 'JetBrains Mono', var(--mono), monospace;
+}
+.pipeline-toggle input { accent-color: var(--accent); }
+
+.collision-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px; margin-bottom: 14px;
+}
+.collision-card {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--card-bg-deeper);
+}
+.collision-card.severity-red {
+  border-color: rgba(220,38,38,0.45);
+  background: rgba(220,38,38,0.06);
+}
+.collision-card.severity-yellow {
+  border-color: rgba(217,119,6,0.45);
+  background: rgba(217,119,6,0.05);
+}
+.collision-badge {
+  font-size: 9px; font-weight: 800; padding: 2px 6px;
+  border-radius: 4px; text-transform: uppercase; letter-spacing: 0.08em;
+  flex-shrink: 0; line-height: 1.4;
+}
+.collision-badge.red    { background: #dc2626; color: #fff; }
+.collision-badge.yellow { background: #d97706; color: #fff; }
+.collision-body { flex: 1; }
+.collision-person {
+  font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 2px;
+}
+.collision-detail {
+  font-size: 11px; color: var(--muted); line-height: 1.45;
+}
+.collision-meta {
+  font-family: 'JetBrains Mono', var(--mono), monospace;
+  font-size: 10px; color: var(--muted); margin-top: 4px;
+}
+
+.mitigation-list {
+  margin: 0; padding: 0; list-style: none;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.mitigation-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 12px; border-radius: 6px;
+  background: rgba(16,185,129,0.05);
+  border: 1px solid rgba(16,185,129,0.22);
+}
+.mitigation-rank {
+  font-size: 9px; font-weight: 800;
+  background: rgba(16,185,129,0.18); color: #10b981;
+  padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.mitigation-body { flex: 1; }
+.mitigation-action {
+  font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 2px;
+}
+.mitigation-rationale {
+  font-size: 11px; color: var(--muted); line-height: 1.45;
+}
+.staffing-section-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--muted); margin: 8px 0 8px;
+}
+
+.mitigation-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.mitigation-apply-btn {
+  background: #10b981; color: #fff; border: none; border-radius: 4px;
+  padding: 5px 12px; font-size: 11px; font-weight: 700; cursor: pointer;
+  letter-spacing: 0.04em; transition: background 150ms, transform 100ms;
+}
+.mitigation-apply-btn:hover { background: #0ea271; }
+.mitigation-apply-btn:active { transform: scale(0.97); }
+.mitigation-apply-btn:disabled { background: #6b7280; cursor: not-allowed; }
+.mitigation-advisory {
+  font-size: 10px; color: var(--muted); font-style: italic;
+}
+.mitigation-warning {
+  margin-top: 4px; font-size: 11px; color: #d97706; font-weight: 600;
+}
+
+.applied-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.applied-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: 6px;
+  background: rgba(100,116,139,0.08);
+  border: 1px solid rgba(100,116,139,0.25);
+}
+.applied-icon { font-size: 14px; color: #10b981; flex-shrink: 0; }
+.applied-body { flex: 1; font-size: 12px; color: var(--text); }
+.applied-meta { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', var(--mono), monospace; }
+.applied-undo-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 4px; padding: 4px 10px; font-size: 11px; cursor: pointer;
+  font-weight: 600; transition: color 150ms, border-color 150ms;
+}
+.applied-undo-btn:hover { color: #dc2626; border-color: rgba(220,38,38,0.45); }
+
+#staffing-toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 2000;
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 16px; font-size: 12px; color: var(--text);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  opacity: 0; transform: translateY(8px); pointer-events: none;
+  transition: opacity 200ms, transform 200ms;
+}
+#staffing-toast.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+#staffing-toast.success { border-color: rgba(16,185,129,0.45); }
+#staffing-toast.error   { border-color: rgba(220,38,38,0.45); color: #f87171; }
+
+/* ── Safety confirm modal ────────────────────────────────── */
+#safety-overlay {
+  display: none; position: fixed; inset: 0; z-index: 1500;
+  background: rgba(0,0,0,0.6);
+  align-items: center; justify-content: center;
+}
+#safety-overlay.open { display: flex; }
+.safety-card {
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+  padding: 22px; width: 100%; max-width: 460px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.16);
+}
+.safety-card h3 {
+  margin: 0 0 12px; font-size: 15px; font-weight: 700; color: var(--text);
+  display: flex; align-items: center; gap: 8px;
+}
+.safety-warning-pill {
+  background: rgba(217,119,6,0.18); color: #d97706;
+  font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 4px;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.safety-summary {
+  font-size: 12px; color: var(--muted); margin-bottom: 14px; line-height: 1.5;
+}
+.safety-summary strong { color: var(--text); }
+.safety-warnings { margin: 0 0 18px; padding-left: 18px; }
+.safety-warnings li {
+  font-size: 12px; color: #d97706; line-height: 1.55; margin-bottom: 6px;
+}
+.safety-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.safety-actions .btn-cancel {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  padding: 7px 14px; border-radius: 5px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.safety-actions .btn-confirm {
+  background: #d97706; color: #fff; border: none;
+  padding: 7px 14px; border-radius: 5px; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.safety-actions .btn-confirm:hover { background: #b45309; }
+
 /* ── Legend ──────────────────────────────────────────────── */
 .cap-legend {
   display: flex;
@@ -490,6 +674,39 @@
   Edit those events on the <a href="/calendar">Calendar</a> to set a tier.
 </div>
 
+<div id="staffing-panel" class="staffing-panel empty" style="display:none">
+  <div class="staffing-panel-head">
+    <div class="staffing-panel-title">Risk &amp; Mitigations <span id="staffing-week-tag" style="font-family:'JetBrains Mono',var(--mono),monospace;color:var(--muted);font-weight:600;letter-spacing:.04em"></span></div>
+    <label class="pipeline-toggle">
+      <input type="checkbox" id="pipeline-toggle" checked>
+      Include pipeline (PROPOSAL_OUT @ 50%)
+    </label>
+  </div>
+  <div id="staffing-collisions"></div>
+  <div id="staffing-mitigations"></div>
+  <div id="staffing-applied"></div>
+  <div id="staffing-empty-msg" style="display:none;font-size:12px;color:var(--muted);text-align:center;padding:6px 0">
+    No capacity collisions detected this week. ✓
+  </div>
+</div>
+
+<div id="staffing-toast"></div>
+
+<div id="safety-overlay">
+  <div class="safety-card">
+    <h3>
+      <span class="safety-warning-pill">Safety Check</span>
+      This shift creates risk
+    </h3>
+    <div class="safety-summary" id="safety-summary">—</div>
+    <ul class="safety-warnings" id="safety-warnings"></ul>
+    <div class="safety-actions">
+      <button class="btn-cancel" id="safety-cancel">Cancel</button>
+      <button class="btn-confirm" id="safety-confirm">Apply Anyway</button>
+    </div>
+  </div>
+</div>
+
 <div id="cap-content">
   <div style="padding:40px;text-align:center;color:var(--muted)">Loading capacity data…</div>
 </div>
@@ -576,13 +793,28 @@
 
   async function fetchCapacity() {
     try {
-      const res = await fetch('/api/capacity?week_start=' + currentWeekStart);
+      const pipelineEl = document.getElementById('pipeline-toggle');
+      const includePipeline = pipelineEl ? pipelineEl.checked : true;
+      const url = '/api/capacity?week_start=' + currentWeekStart
+                + '&include_pipeline=' + (includePipeline ? 'true' : 'false');
+      const res = await fetch(url);
       if (!res.ok) return;
       const data = await res.json();
       renderCapacity(data);
     } catch (e) { console.error('Capacity fetch error', e); }
   }
   window.fetchCapacity = fetchCapacity;
+
+  // Pipeline toggle re-fetches capacity when changed
+  document.addEventListener('DOMContentLoaded', () => {
+    const t = document.getElementById('pipeline-toggle');
+    if (t) t.addEventListener('change', fetchCapacity);
+  });
+  // In case DOMContentLoaded already fired by the time this runs
+  setTimeout(() => {
+    const t = document.getElementById('pipeline-toggle');
+    if (t && !t.dataset.bound) { t.dataset.bound = '1'; t.addEventListener('change', fetchCapacity); }
+  }, 0);
 
   function statusColor(status) { return STATUS_COLORS[status] || '#9ca3af'; }
 
@@ -699,6 +931,259 @@
     container.appendChild(grid);
   }
 
+  function renderStaffing(data) {
+    const panel = document.getElementById('staffing-panel');
+    const staffing = data && data.staffing;
+    if (!staffing) {
+      panel.style.display = 'none';
+      return;
+    }
+
+    panel.style.display = '';
+    panel.classList.remove('empty');
+
+    const collisions = staffing.collisions || [];
+    const mitigations = staffing.mitigations || [];
+    const weekTag = document.getElementById('staffing-week-tag');
+    if (weekTag) {
+      weekTag.textContent = `Week of ${staffing.week} · ${staffing.pipeline_events_count || 0} pipeline event(s) included`;
+    }
+
+    // Collisions
+    const colHost = document.getElementById('staffing-collisions');
+    colHost.innerHTML = '';
+    const emptyMsg = document.getElementById('staffing-empty-msg');
+    if (collisions.length === 0) {
+      if (emptyMsg) emptyMsg.style.display = '';
+    } else {
+      if (emptyMsg) emptyMsg.style.display = 'none';
+      const label = document.createElement('div');
+      label.className = 'staffing-section-label';
+      label.textContent = `${collisions.length} collision${collisions.length === 1 ? '' : 's'} this week`;
+      colHost.appendChild(label);
+
+      const grid = document.createElement('div');
+      grid.className = 'collision-grid';
+      collisions.forEach(c => {
+        const sev = (c.severity || '').toLowerCase();
+        const card = document.createElement('div');
+        card.className = `collision-card severity-${sev}`;
+        card.innerHTML = `
+          <span class="collision-badge ${sev}">${c.severity}</span>
+          <div class="collision-body">
+            <div class="collision-person">${c.person_name || c.person} (${c.person})</div>
+            <div class="collision-detail">${c.detail || ''}</div>
+            <div class="collision-meta">${c.projected_hours} / ${c.cap_hours} hrs · ${c.utilization_pct}% · ${c.rule}</div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+      colHost.appendChild(grid);
+    }
+
+    // Mitigations
+    const mitHost = document.getElementById('staffing-mitigations');
+    mitHost.innerHTML = '';
+    if (mitigations.length > 0) {
+      const label = document.createElement('div');
+      label.className = 'staffing-section-label';
+      label.textContent = `${mitigations.length} suggested mitigation${mitigations.length === 1 ? '' : 's'}`;
+      mitHost.appendChild(label);
+
+      const ul = document.createElement('ul');
+      ul.className = 'mitigation-list';
+      mitigations.forEach(m => {
+        const li = document.createElement('li');
+        li.className = 'mitigation-item';
+        const applyBtn = m.applicable
+          ? `<button class="mitigation-apply-btn" data-pattern="${escAttr(m.pattern)}" data-week="${escAttr(m.week)}" data-from="${escAttr(m.from_person||'')}" data-to="${escAttr(m.to_person||'')}" data-hours="${m.hours_delta||0}" data-rationale="${escAttr(m.rationale||'')}">Apply</button>`
+          : `<span class="mitigation-advisory">Advisory · escalate manually</span>`;
+        li.innerHTML = `
+          <span class="mitigation-rank">#${m.rank} ${m.pattern.replace(/_/g, ' ')}</span>
+          <div class="mitigation-body">
+            <div class="mitigation-action">${m.action}</div>
+            <div class="mitigation-rationale">${m.rationale}</div>
+            <div class="mitigation-actions">${applyBtn}</div>
+          </div>
+        `;
+        ul.appendChild(li);
+      });
+      mitHost.appendChild(ul);
+    }
+
+    // Applied (this week)
+    const appliedHost = document.getElementById('staffing-applied');
+    appliedHost.innerHTML = '';
+    const applied = staffing.applied || [];
+    if (applied.length > 0) {
+      const label = document.createElement('div');
+      label.className = 'staffing-section-label';
+      label.textContent = `${applied.length} applied this week`;
+      appliedHost.appendChild(label);
+
+      const ul = document.createElement('ul');
+      ul.className = 'applied-list';
+      applied.forEach(a => {
+        const li = document.createElement('li');
+        li.className = 'applied-item';
+        li.innerHTML = `
+          <span class="applied-icon">✓</span>
+          <div class="applied-body">
+            <div>Moved <strong>${a.hours_delta}</strong> hrs from <strong>${a.from_person_name}</strong> → <strong>${a.to_person_name}</strong></div>
+            <div class="applied-meta">${a.pattern.replace(/_/g, ' ')} · ${a.week}${a.applied_by ? ' · by ' + a.applied_by : ''}</div>
+          </div>
+          <button class="applied-undo-btn" data-id="${a.id}">Undo</button>
+        `;
+        ul.appendChild(li);
+      });
+      appliedHost.appendChild(ul);
+    }
+  }
+
+  function escAttr(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  }
+
+  function showToast(msg, kind) {
+    const t = document.getElementById('staffing-toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.className = 'visible ' + (kind || 'success');
+    setTimeout(() => { t.className = ''; }, 3200);
+  }
+
+  async function postApply(payload) {
+    const res = await fetch('/api/staffing/apply-mitigation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json().catch(() => ({}));
+    return { status: res.status, body };
+  }
+
+  function showSafetyModal({ payload, warnings, onCancel, onConfirm }) {
+    const overlay = document.getElementById('safety-overlay');
+    const summary = document.getElementById('safety-summary');
+    const list    = document.getElementById('safety-warnings');
+    const cancel  = document.getElementById('safety-cancel');
+    const confirm = document.getElementById('safety-confirm');
+
+    summary.innerHTML =
+      `Moving <strong>${payload.hours_delta} hrs</strong> from <strong>${payload.from_person}</strong> → <strong>${payload.to_person}</strong> in the week of <strong>${payload.week}</strong> would create the following issue(s):`;
+    list.innerHTML = '';
+    (warnings || []).forEach(w => {
+      const li = document.createElement('li');
+      li.textContent = w;
+      list.appendChild(li);
+    });
+
+    const close = () => {
+      overlay.classList.remove('open');
+      cancel.removeEventListener('click', cancelHandler);
+      confirm.removeEventListener('click', confirmHandler);
+      overlay.removeEventListener('click', overlayHandler);
+    };
+    const cancelHandler = () => { close(); onCancel && onCancel(); };
+    const confirmHandler = () => { close(); onConfirm && onConfirm(); };
+    const overlayHandler = (e) => { if (e.target === overlay) cancelHandler(); };
+
+    cancel.addEventListener('click', cancelHandler);
+    confirm.addEventListener('click', confirmHandler);
+    overlay.addEventListener('click', overlayHandler);
+    overlay.classList.add('open');
+  }
+
+  async function applyMitigation(btn) {
+    const payload = {
+      pattern:     btn.dataset.pattern,
+      week:        btn.dataset.week,
+      from_person: btn.dataset.from,
+      to_person:   btn.dataset.to,
+      hours_delta: parseFloat(btn.dataset.hours || '0'),
+      rationale:   btn.dataset.rationale || '',
+    };
+    if (!payload.from_person || !payload.to_person || !(payload.hours_delta > 0)) {
+      showToast('Mitigation is missing required fields.', 'error');
+      return;
+    }
+
+    const setBtn = (text, disabled) => { btn.textContent = text; btn.disabled = !!disabled; };
+    setBtn('Applying…', true);
+
+    try {
+      const { status, body } = await postApply(payload);
+
+      // Safe path
+      if (status === 200 && body.success) {
+        const ackNote = body.acknowledged ? ' (overrides accepted)' : '';
+        showToast(`Applied: moved ${payload.hours_delta} hrs ${payload.from_person} → ${payload.to_person}${ackNote}`, 'success');
+        fetchCapacity();
+        return;
+      }
+
+      // Safety block — show confirm modal
+      if (status === 422 && Array.isArray(body.warnings)) {
+        setBtn('Apply', false);
+        showSafetyModal({
+          payload,
+          warnings: body.warnings,
+          onCancel: () => { showToast('Apply cancelled.', 'error'); },
+          onConfirm: async () => {
+            setBtn('Applying…', true);
+            const retry = await postApply({ ...payload, acknowledge_warnings: true });
+            if (retry.status === 200 && retry.body.success) {
+              showToast(`Applied with overrides: ${payload.from_person} → ${payload.to_person}`, 'success');
+              fetchCapacity();
+            } else {
+              showToast((retry.body && retry.body.detail) || 'Apply failed after acknowledgement.', 'error');
+              setBtn('Apply', false);
+            }
+          },
+        });
+        return;
+      }
+
+      // Other failures
+      showToast((body && body.detail) || 'Apply failed.', 'error');
+      setBtn('Apply', false);
+    } catch (e) {
+      showToast('Network error — try again.', 'error');
+      setBtn('Apply', false);
+    }
+  }
+
+  async function undoMitigation(btn) {
+    const id = btn.dataset.id;
+    if (!id) return;
+    btn.disabled = true;
+    btn.textContent = 'Undoing…';
+    try {
+      const res = await fetch(`/api/staffing/mitigations/${id}/revert`, { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(body.detail || 'Undo failed.', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Undo';
+        return;
+      }
+      showToast('Mitigation reverted.', 'success');
+      fetchCapacity();
+    } catch (e) {
+      showToast('Network error — try again.', 'error');
+      btn.disabled = false;
+      btn.textContent = 'Undo';
+    }
+  }
+
+  // Event delegation for Apply / Undo buttons in the staffing panel.
+  document.getElementById('staffing-panel').addEventListener('click', e => {
+    const apply = e.target.closest('.mitigation-apply-btn');
+    if (apply) { applyMitigation(apply); return; }
+    const undo = e.target.closest('.applied-undo-btn');
+    if (undo) { undoMitigation(undo); return; }
+  });
+
   function renderCapacity(data) {
     const banner = document.getElementById('no-tier-banner');
     banner.classList.toggle('visible', data.summary.events_without_tier > 0);
@@ -709,6 +1194,8 @@
       document.getElementById('week-label').textContent =
         fmtDate(data.week_start) + ' – ' + fmtDate(sun);
     }
+
+    renderStaffing(data);
 
     const content = document.getElementById('cap-content');
     content.innerHTML = '';

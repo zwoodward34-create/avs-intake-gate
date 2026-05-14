@@ -40,7 +40,17 @@
       "Bash(lsof -i :8000 -sTCP:LISTEN)",
       "Bash(awk 'NR>1 {print $2}')",
       "Bash(.venv/bin/uvicorn app.main:app *)",
-      "Bash(grep -n \"def dashboard\\\\|@app.get.*dashboard\\\\|@app.get.*/$\" /Users/woodwardfamily/Documents/Claude/avs-intake-gate/app/main.py)"
+      "Bash(grep -n \"def dashboard\\\\|@app.get.*dashboard\\\\|@app.get.*/$\" /Users/woodwardfamily/Documents/Claude/avs-intake-gate/app/main.py)",
+      "Bash(xargs -I{} basename {})",
+      "Bash(openssl rand *)",
+      "Bash(awk 'NR>=340 && NR<=355 {print NR\": \"$0}' /Users/woodwardfamily/Documents/Claude/avs-intake-gate/app/main.py)",
+      "Bash(awk 'NR>=536 && NR<=548 {print NR\": \"$0}' /Users/woodwardfamily/Documents/Claude/avs-intake-gate/app/main.py)",
+      "Bash(awk 'NR>=732 && NR<=745 {print NR\": \"$0}' /Users/woodwardfamily/Documents/Claude/avs-intake-gate/app/main.py)",
+      "Bash(awk 'NR>=848 && NR<=860 {print NR\": \"$0}' /Users/woodwardfamily/Documents/Claude/avs-intake-gate/app/main.py)",
+      "Bash(awk 'NR>=1073 && NR<=1085 {print NR\": \"$0}' /Users/woodwardfamily/Documents/Claude/avs-intake-gate/app/main.py)",
+      "Bash(grep -E '\\\\.\\(py|html|js\\)$')",
+      "Bash(xxd)",
+      "Bash(xargs ls)"
     ]
   }
 }

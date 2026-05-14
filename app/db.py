@@ -4333,3 +4333,110 @@ def get_burn_vs_bill() -> list[dict[str, Any]]:
         })
     result.sort(key=lambda x: (x["ratio"] or 0), reverse=True)
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# §10.6 Staffing mitigations — persistence layer
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Required Supabase table (run once in SQL editor):
+#
+#   CREATE TABLE staffing_mitigations (
+#     id           BIGSERIAL PRIMARY KEY,
+#     pattern      TEXT    NOT NULL,
+#     week         DATE    NOT NULL,           -- ISO Monday
+#     from_person  TEXT    NOT NULL,
+#     to_person    TEXT    NOT NULL,
+#     hours_delta  NUMERIC NOT NULL,
+#     rationale    TEXT,
+#     applied_by   TEXT,
+#     applied_at   TIMESTAMPTZ DEFAULT NOW(),
+#     reverted_at  TIMESTAMPTZ
+#   );
+#   CREATE INDEX idx_staffing_mitigations_active
+#     ON staffing_mitigations (week) WHERE reverted_at IS NULL;
+#
+# Until that runs, the functions below will return [] / 0 / silently fail,
+# matching the graceful-degrade pattern used by get_active_bids().
+
+def record_applied_mitigation(
+    *,
+    pattern: str,
+    week: str,
+    from_person: str,
+    to_person: str,
+    hours_delta: float,
+    rationale: str,
+    applied_by: str = "",
+) -> Optional[dict[str, Any]]:
+    """Insert a mitigation row. Returns the inserted row dict, or None on failure."""
+    try:
+        resp = (
+            _client()
+            .table("staffing_mitigations")
+            .insert({
+                "pattern":     pattern,
+                "week":        week,
+                "from_person": from_person,
+                "to_person":   to_person,
+                "hours_delta": float(hours_delta),
+                "rationale":   rationale,
+                "applied_by":  applied_by,
+                "applied_at":  _utc_now_iso(),
+            })
+            .execute()
+        )
+        rows = resp.data or []
+        return rows[0] if rows else None
+    except Exception:
+        return None
+
+
+def list_applied_mitigations(
+    *,
+    week: Optional[str] = None,
+    include_reverted: bool = False,
+) -> list[dict[str, Any]]:
+    """List applied mitigations, optionally filtered to a specific week."""
+    try:
+        q = _client().table("staffing_mitigations").select("*")
+        if week:
+            q = q.eq("week", week)
+        if not include_reverted:
+            q = q.is_("reverted_at", "null")
+        resp = q.order("applied_at", desc=True).execute()
+        return resp.data or []
+    except Exception:
+        return []
+
+
+def revert_applied_mitigation(mitigation_id: int) -> bool:
+    """Soft-revert a mitigation. Returns True on success."""
+    try:
+        (
+            _client()
+            .table("staffing_mitigations")
+            .update({"reverted_at": _utc_now_iso()})
+            .eq("id", mitigation_id)
+            .is_("reverted_at", "null")
+            .execute()
+        )
+        return True
+    except Exception:
+        return False
+
+
+def get_applied_mitigation(mitigation_id: int) -> Optional[dict[str, Any]]:
+    try:
+        resp = (
+            _client()
+            .table("staffing_mitigations")
+            .select("*")
+            .eq("id", mitigation_id)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        return rows[0] if rows else None
+    except Exception:
+        return None
