@@ -1500,8 +1500,25 @@ async def api_draft_follow_up(request: Request, intake_id: int) -> dict[str, Any
 @app.get("/reports", response_class=HTMLResponse)
 def reports(request: Request) -> HTMLResponse:
     if redir := _check_page_access(request, "/reports"): return redir
+    import json as _json
     all_intakes = db.list_intakes()
     now = datetime.now()
+
+    # ── Helper: get fee estimate for an intake ───────────────────────────────
+    def _get_fee(r) -> Optional[float]:
+        if r.mo_fee_decision == "OVERRIDE" and r.mo_fee_override:
+            try:
+                return float(r.mo_fee_override)
+            except (ValueError, TypeError):
+                pass
+        est = cognasync_estimate_from_answers(r.project_name, r.answers)
+        fee_range = (est or {}).get("suggested_fee_range")
+        if fee_range:
+            low  = fee_range.get("low") or 0
+            high = fee_range.get("high") or 0
+            if low and high:
+                return (low + high) / 2
+        return None
 
     # 1. Total intakes
     total_intakes = len(all_intakes)
@@ -1641,72 +1658,130 @@ def reports(request: Request) -> HTMLResponse:
         })
     architect_table.sort(key=lambda x: x["total"], reverse=True)
 
+    # ── New KPIs ─────────────────────────────────────────────────────────────
+    _raw_status = Counter(r.status for r in all_intakes)
+    won_count          = _raw_status.get("ACTIVE_PROJECT", 0)
+    proposals_out      = _raw_status.get("PROPOSAL_OUT", 0)
+    pending_review     = _raw_status.get("PENDING_MO_REVIEW", 0)
+
+    # Win rate = won / (won + declined + proposal_out that have been decided)
+    proposals_sent     = sum(1 for r in all_intakes if r.proposal_sent_date)
+    win_rate           = f"{round(won_count / proposals_sent * 100)}%" if proposals_sent else "—"
+
+    # Active project fees
+    active_fee_total   = sum(_get_fee(r) or 0 for r in all_intakes if r.status == "ACTIVE_PROJECT")
+    active_fee_fmt     = f"${active_fee_total:,.0f}" if active_fee_total else "—"
+
+    # Pipeline funnel stages (sequential conversion)
+    funnel_stages  = ["Intakes", "Mo Reviewed", "Approved", "Proposal Sent", "Won"]
+    funnel_values  = [
+        total_intakes,
+        sum(1 for r in all_intakes if r.mo_reviewed_at),
+        sum(1 for r in all_intakes if r.status in {"PROCEED_TO_PROPOSAL", "PROCEED_WITH_CONDITIONS",
+                                                    "PROPOSAL_OUT", "ACTIVE_PROJECT"}),
+        proposals_sent,
+        won_count,
+    ]
+
     # ── Chart data ──────────────────────────────────────────────────────────
     # Status donut
     _STATUS_LABELS = {
-        "PROCEED_TO_PROPOSAL":     "Proceed",
-        "PENDING_MO_REVIEW":       "Decision Queue",
-        "NEEDS_INFO":              "Needs Info",
-        "PROCEED_WITH_CONDITIONS": "With Conditions",
-        "DECLINED":                "Declined",
+        "ACTIVE_PROJECT":           "Active",
+        "PROPOSAL_OUT":             "Proposal Out",
+        "PROCEED_TO_PROPOSAL":      "Approved",
+        "PROCEED_WITH_CONDITIONS":  "With Conditions",
+        "PENDING_MO_REVIEW":        "Decision Queue",
+        "NEEDS_INFO":               "Needs Info",
+        "DECLINED":                 "Declined",
     }
-    _raw_status = Counter(r.status for r in all_intakes)
     status_chart_labels = list(_STATUS_LABELS.values())
     status_chart_values = [_raw_status.get(k, 0) for k in _STATUS_LABELS]
 
-    # Monthly intake trend
+    # Monthly intake count trend
     _monthly_raw: dict[str, int] = defaultdict(int)
+    _monthly_fee_raw: dict[str, float] = defaultdict(float)
     for _r in all_intakes:
         _src = (_r.inquiry_date or _r.created_at or "")[:7]
         if len(_src) == 7:
             _monthly_raw[_src] += 1
-    _sorted_months = sorted(_monthly_raw)
-    monthly_labels = _sorted_months
-    monthly_values = [_monthly_raw[m] for m in _sorted_months]
+    # Monthly won fee (by proposal_sent_date month for won projects)
+    for _r in all_intakes:
+        if _r.status == "ACTIVE_PROJECT":
+            _src = (_r.proposal_sent_date or _r.created_at or "")[:7]
+            if len(_src) == 7:
+                _fee = _get_fee(_r)
+                if _fee:
+                    _monthly_fee_raw[_src] += _fee
+    _sorted_months  = sorted(set(list(_monthly_raw) + list(_monthly_fee_raw)))
+    monthly_labels  = _sorted_months
+    monthly_values  = [_monthly_raw.get(m, 0) for m in _sorted_months]
+    monthly_fee_vals= [round(_monthly_fee_raw.get(m, 0)) for m in _sorted_months]
 
     # Red flag frequency (top 10, longest-title truncated to 32 chars)
     rf_labels   = [r["title"][:32] for r in red_flag_table[:10]]
     rf_values   = [r["count"]      for r in red_flag_table[:10]]
     rf_sevs     = [r["top_severity"] for r in red_flag_table[:10]]
 
-    # Project type stacked bar
+    # Project type stacked bar (win/pending/decline)
     pt_labels  = [r["type"]    for r in project_type_table]
     pt_proceed = [r["proceed"] for r in project_type_table]
     pt_decline = [r["decline"] for r in project_type_table]
     pt_pending = [r["total"] - r["proceed"] - r["decline"] for r in project_type_table]
 
-    # Severity breakdown donut
-    _sev_raw: Counter = Counter()
-    for _r in all_intakes:
-        for _flag in _r.red_flags:
-            _sev_raw[_flag.get("severity", "low")] += 1
-    severity_labels = ["Critical", "High", "Medium", "Low"]
-    severity_values = [_sev_raw.get(s, 0) for s in ("critical", "high", "medium", "low")]
+    # Win rate by project type bar
+    pt_winrate = []
+    for r in project_type_table:
+        decided = r["proceed"] + r["decline"]
+        pt_winrate.append(round(r["proceed"] / decided * 100) if decided else 0)
 
-    # Approved fee pipeline
+    # ── Active projects table ──────────────────────────────────────────────
+    active_rows: list[dict[str, Any]] = []
+    for _r in all_intakes:
+        if _r.status != "ACTIVE_PROJECT":
+            continue
+        fee = _get_fee(_r)
+        active_rows.append({
+            "id":           _r.id,
+            "project_name": _r.project_name,
+            "project_number": _r.project_number or "—",
+            "client_name":  _r.client_name or "—",
+            "fee_amount":   fee,
+            "ifp_due_date": _r.ifp_due_date or "—",
+        })
+    active_rows.sort(key=lambda x: x["ifp_due_date"])
+
+    # ── Proposals out table ────────────────────────────────────────────────
+    proposal_rows: list[dict[str, Any]] = []
+    for _r in all_intakes:
+        if _r.status != "PROPOSAL_OUT":
+            continue
+        fee = _get_fee(_r)
+        sent_date = _r.proposal_sent_date or ""
+        days_out: Optional[int] = None
+        if sent_date:
+            try:
+                days_out = (now - datetime.strptime(sent_date[:10], "%Y-%m-%d")).days
+            except Exception:
+                pass
+        proposal_rows.append({
+            "id":              _r.id,
+            "project_name":    _r.project_name,
+            "client_name":     _r.client_name or "—",
+            "fee_amount":      fee,
+            "days_out":        days_out,
+            "win_probability": _r.win_probability,
+        })
+    proposal_rows.sort(key=lambda x: x["days_out"] or 0, reverse=True)
+
+    # ── Approved fee pipeline (not yet won) ───────────────────────────────
     _approved_statuses = {"PROCEED_TO_PROPOSAL", "PROCEED_WITH_CONDITIONS"}
     approved_rows: list[dict[str, Any]] = []
     approved_fee_total = 0.0
     for _r in all_intakes:
         if _r.status not in _approved_statuses:
             continue
-        fee_amount: Optional[float] = None
-        fee_source = "—"
-        if _r.mo_fee_decision == "OVERRIDE" and _r.mo_fee_override:
-            try:
-                fee_amount = float(_r.mo_fee_override)
-                fee_source = "Mo override"
-            except (ValueError, TypeError):
-                pass
-        elif _r.mo_fee_decision in {"ACCEPTED", None}:
-            est = cognasync_estimate_from_answers(_r.project_name, _r.answers)
-            fee_range = (est or {}).get("suggested_fee_range")
-            if fee_range:
-                low  = fee_range.get("low") or 0
-                high = fee_range.get("high") or 0
-                if low and high:
-                    fee_amount = (low + high) / 2
-                    fee_source = "Estimate midpoint" if _r.mo_fee_decision == "ACCEPTED" else "Auto estimate"
+        fee_amount = _get_fee(_r)
+        fee_source = "Mo override" if _r.mo_fee_decision == "OVERRIDE" else "Estimate midpoint"
         if fee_amount is not None:
             approved_fee_total += fee_amount
         approved_rows.append({
@@ -1720,41 +1795,48 @@ def reports(request: Request) -> HTMLResponse:
         })
     approved_fee_total_fmt = f"${approved_fee_total:,.0f}" if approved_fee_total else "—"
 
-    import json as _json
     return templates.TemplateResponse(
         "reports.html",
         {
-            "request": request,
-            "now_local": _now_local_iso(),
-            # KPI cards
-            "total_intakes": total_intakes,
-            "this_month_count": this_month_count,
-            "conversion_rate": conversion_rate,
-            "decline_rate": decline_rate,
-            "avg_days": avg_days,
-            "avg_mo_to_proposal": avg_mo_to_proposal,
-            "most_common_red_flag": most_common_red_flag,
-            # Approved fee pipeline
-            "approved_fee_total": approved_fee_total_fmt,
-            "approved_rows": approved_rows,
-            # Tables (kept for aria / fallback)
-            "red_flag_table": red_flag_table,
-            "project_type_table": project_type_table,
-            "architect_table": architect_table,
-            # Chart JSON blobs
-            "j_status_labels":  _json.dumps(status_chart_labels),
-            "j_status_values":  _json.dumps(status_chart_values),
-            "j_monthly_labels": _json.dumps(monthly_labels),
-            "j_monthly_values": _json.dumps(monthly_values),
-            "j_rf_labels":      _json.dumps(rf_labels),
-            "j_rf_values":      _json.dumps(rf_values),
-            "j_rf_sevs":        _json.dumps(rf_sevs),
-            "j_pt_labels":      _json.dumps(pt_labels),
-            "j_pt_proceed":     _json.dumps(pt_proceed),
-            "j_pt_decline":     _json.dumps(pt_decline),
-            "j_pt_pending":     _json.dumps(pt_pending),
-            "j_sev_labels":     _json.dumps(severity_labels),
-            "j_sev_values":     _json.dumps(severity_values),
+            "request":    request,
+            "now_local":  _now_local_iso(),
+            # ── KPI row 1: volume ──────────────────────────────────────────
+            "total_intakes":       total_intakes,
+            "this_month_count":    this_month_count,
+            "won_count":           won_count,
+            "proposals_out":       proposals_out,
+            "pending_review":      pending_review,
+            # ── KPI row 2: performance ─────────────────────────────────────
+            "win_rate":            win_rate,
+            "conversion_rate":     conversion_rate,
+            "decline_rate":        decline_rate,
+            "avg_days":            avg_days,
+            "avg_mo_to_proposal":  avg_mo_to_proposal,
+            "active_fee_fmt":      active_fee_fmt,
+            "approved_fee_total":  approved_fee_total_fmt,
+            # ── Tables ────────────────────────────────────────────────────
+            "active_rows":         active_rows,
+            "proposal_rows":       proposal_rows,
+            "approved_rows":       approved_rows,
+            "red_flag_table":      red_flag_table,
+            "project_type_table":  project_type_table,
+            "architect_table":     architect_table,
+            # ── Chart JSON ────────────────────────────────────────────────
+            "j_funnel_stages":    _json.dumps(funnel_stages),
+            "j_funnel_values":    _json.dumps(funnel_values),
+            "j_status_labels":    _json.dumps(status_chart_labels),
+            "j_status_values":    _json.dumps(status_chart_values),
+            "j_monthly_labels":   _json.dumps(monthly_labels),
+            "j_monthly_values":   _json.dumps(monthly_values),
+            "j_monthly_fee":      _json.dumps(monthly_fee_vals),
+            "j_rf_labels":        _json.dumps(rf_labels),
+            "j_rf_values":        _json.dumps(rf_values),
+            "j_rf_sevs":          _json.dumps(rf_sevs),
+            "j_pt_labels":        _json.dumps(pt_labels),
+            "j_pt_proceed":       _json.dumps(pt_proceed),
+            "j_pt_decline":       _json.dumps(pt_decline),
+            "j_pt_pending":       _json.dumps(pt_pending),
+            "j_pt_winrate":       _json.dumps(pt_winrate),
         },
     )
 
@@ -1869,15 +1951,45 @@ async def api_nl_search_projects(request: Request) -> dict[str, Any]:
     scored.sort(key=lambda x: x[0], reverse=True)
     matches = [row for _, row in scored[:500]]
 
+    # ── Annotate rows with intake_id when project_number matches an intake ──
+    id_col = data["col_map"].get("id")   # e.g. "Project Number" column name
+    intake_lookup: dict[str, int] = {}   # project_number (upper) -> intake id
+    if id_col:
+        candidate_pnums = {
+            str(row.get(id_col) or "").strip().upper()
+            for row in matches
+            if str(row.get(id_col) or "").strip()
+        }
+        if candidate_pnums:
+            try:
+                resp = (
+                    db._client()
+                    .table("intakes")
+                    .select("id,project_number")
+                    .in_("project_number", list(candidate_pnums))
+                    .execute()
+                )
+                for rec in (resp.data or []):
+                    pn = str(rec.get("project_number") or "").strip().upper()
+                    if pn:
+                        intake_lookup[pn] = rec["id"]
+            except Exception:
+                pass
+
+    annotated = []
+    for row in matches:
+        pn = str(row.get(id_col) or "").strip().upper() if id_col else ""
+        annotated.append({**row, "_intake_id": intake_lookup.get(pn)})
+
     return {
         "ok": True,
         "headers": data["headers"],
         "col_map": data["col_map"],
         "type_options": data["type_options"],
         "total": data["total"],
-        "returned": len(matches),
-        "truncated": len(matches) >= 500,
-        "rows": matches,
+        "returned": len(annotated),
+        "truncated": len(annotated) >= 500,
+        "rows": annotated,
     }
 
 
