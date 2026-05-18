@@ -219,6 +219,26 @@
   .pct-good { color:var(--good) } .pct-warn { color:var(--warn) } .pct-bad { color:var(--bad) }
   .won-cap-loading { font-size:12px; color:var(--muted); padding:12px 0 }
   .won-modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:20px }
+  /* Phase selection grid */
+  .won-phases-grid { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px }
+  .won-phase-chip  {
+    display:flex; align-items:center; gap:5px;
+    padding:5px 10px; border-radius:20px; border:1px solid var(--border);
+    background:var(--card-bg-deeper); cursor:pointer; transition:all .12s;
+    font-size:12px; font-weight:700; user-select:none;
+  }
+  .won-phase-chip.active  { border-color:var(--accent); background:rgba(99,179,237,.15); color:var(--accent) }
+  .won-phase-chip .ph-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0 }
+  /* Per-phase due date rows */
+  .won-phase-dates { display:flex; flex-direction:column; gap:6px; margin-top:10px }
+  .won-phase-date-row { display:grid; grid-template-columns:auto 1fr; align-items:center; gap:10px }
+  .won-phase-date-label { font-size:11px; font-weight:700; font-family:var(--mono); min-width:40px }
+  /* CAD/Revit + overview */
+  .won-select { width:100%; background:var(--card-bg-deeper); border:1px solid var(--border); color:var(--text); border-radius:var(--radius-sm); padding:8px 10px; font-size:13px; box-sizing:border-box }
+  .won-select:focus { outline:none; border-color:var(--accent) }
+  .won-textarea { width:100%; background:var(--card-bg-deeper); border:1px solid var(--border); color:var(--text); border-radius:var(--radius-sm); padding:8px 10px; font-size:12px; box-sizing:border-box; resize:vertical; font-family:var(--font) }
+  .won-textarea:focus { outline:none; border-color:var(--accent) }
+  .won-section { margin-bottom:16px }
 
   /* ── Follow-up modal ── */
   .followup-modal-overlay {
@@ -268,21 +288,54 @@
     <div class="won-modal-title" id="won-title">Mark as Won</div>
     <div class="won-modal-sub" id="won-sub">Assign engineers and set project dates to commit resources.</div>
 
-    <div class="won-date-row">
+    {# Dates #}
+    <div class="won-section won-date-row">
       <div>
         <label class="won-field-label">Start Date</label>
-        <input type="date" class="won-date-input" id="won-start">
+        <input type="date" class="won-date-input" id="won-start" onchange="renderPhaseDueDates()">
       </div>
       <div>
         <label class="won-field-label">IFP Due Date</label>
-        <input type="date" class="won-date-input" id="won-ifp">
+        <input type="date" class="won-date-input" id="won-ifp" onchange="renderPhaseDueDates()">
       </div>
     </div>
 
-    <div class="won-cap-section">
+    {# Phase Selection #}
+    <div class="won-section">
+      <label class="won-field-label">Phases This Project Will Include</label>
+      <div class="won-phases-grid" id="won-phases-grid">
+        {# chips rendered by JS #}
+      </div>
+    </div>
+
+    {# Per-phase due dates — only visible when phases are selected #}
+    <div class="won-section" id="won-phase-dates-section" style="display:none">
+      <label class="won-field-label">Per-Phase Due Dates <span style="font-weight:400;text-transform:none;letter-spacing:0;opacity:.7">(optional — leave blank to distribute proportionally)</span></label>
+      <div class="won-phase-dates" id="won-phase-dates-list"></div>
+    </div>
+
+    {# Engineers #}
+    <div class="won-cap-section won-section">
       <label class="won-field-label">Assign Engineers</label>
       <button class="btn" id="won-load-cap-btn" onclick="loadWonCapacity()" style="font-size:11px;padding:5px 12px;margin-bottom:10px;width:100%">Load Capacity</button>
       <div id="won-cap-list"></div>
+    </div>
+
+    {# CAD / Revit #}
+    <div class="won-section">
+      <label class="won-field-label">Software</label>
+      <select class="won-select" id="won-cad-revit">
+        <option value="">— Select —</option>
+        <option value="Revit">Revit</option>
+        <option value="CAD">CAD (AutoCAD)</option>
+      </select>
+    </div>
+
+    {# Project Overview #}
+    <div class="won-section">
+      <label class="won-field-label">Project Overview <span style="font-weight:400;text-transform:none;letter-spacing:0;opacity:.7">(brief plain-English summary)</span></label>
+      <textarea class="won-textarea" id="won-overview" rows="2"
+        placeholder="e.g. Removing front facade and extending out a front patio"></textarea>
     </div>
 
     <div id="won-error" style="display:none;font-size:12px;font-weight:700;color:var(--bad);margin-bottom:10px"></div>
@@ -553,14 +606,19 @@
          onclick="navToIntake(event, ${p.intake_id})">
       <div class="pl-card-hdr">
         <span class="pl-pn">#${p.project_number || '—'}</span>
-        <div style="display:flex;gap:5px;align-items:center">
+        <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
           ${co         ? '<span class="pl-badge badge-co">⚠ CO</span>' : ''}
           ${invPending ? '<span class="pl-badge badge-inv">● Invoice</span>' : ''}
+          ${p.phase_jump ? '<span class="pl-badge" style="background:rgba(251,146,60,.15);color:#fb923c;border-color:rgba(251,146,60,.3)" title="Non-standard phase sequence">⚡ Phase Skip</span>' : ''}
           <span class="pl-phase-badge">${phaseDot(p.current_production_phase)}${p.current_production_phase}</span>
         </div>
       </div>
       <div class="pl-name">${esc(p.project_name)}</div>
-      <div class="pl-client">${esc(p.client)}</div>
+      <div class="pl-client" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span>${esc(p.client)}</span>
+        ${p.cad_or_revit ? `<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:rgba(255,255,255,.08);color:var(--muted);border:1px solid var(--border)">${esc(p.cad_or_revit)}</span>` : ''}
+      </div>
+      ${p.project_overview ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4;font-style:italic">${esc(p.project_overview)}</div>` : ''}
 
       <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">Overall</div>
       <div class="pl-hours-row">
@@ -666,22 +724,73 @@
   renderBoard(PIPELINE_DATA);
 
   // ── Won Modal ────────────────────────────────────────────────────────────────
-  let _wonIntakeId = null;
+  let _wonIntakeId   = null;
+  const ALL_PHASES   = ['SD','50%','75%','90%','IFP','CA','REV'];
+  const PHASE_LABELS = {'SD':'SD','50%':'50%','75%':'75%','90%':'90%','IFP':'IFP','CA':'CA','REV':'REV'};
+  let _wonSelPhases  = ['SD','50%','75%','90%','IFP','CA','REV'];  // default = all
+
+  function renderPhaseChips() {
+    const grid = document.getElementById('won-phases-grid');
+    if (!grid) return;
+    grid.innerHTML = ALL_PHASES.map(ph => {
+      const color = PHASE_COLORS[ph] || '#9ca3af';
+      const active = _wonSelPhases.includes(ph) ? 'active' : '';
+      return `<div class="won-phase-chip ${active}" data-phase="${ph}" onclick="toggleWonPhase('${ph}')">
+        <span class="ph-dot" style="background:${color}"></span>${ph}
+      </div>`;
+    }).join('');
+    renderPhaseDueDates();
+  }
+
+  window.toggleWonPhase = function(ph) {
+    const idx = _wonSelPhases.indexOf(ph);
+    if (ph === 'IFP') return; // IFP always required
+    if (idx >= 0) {
+      _wonSelPhases = _wonSelPhases.filter(p => p !== ph);
+    } else {
+      // insert in canonical order
+      _wonSelPhases = ALL_PHASES.filter(p => _wonSelPhases.includes(p) || p === ph);
+    }
+    renderPhaseChips();
+  };
+
+  window.renderPhaseDueDates = function() {
+    const section = document.getElementById('won-phase-dates-section');
+    const list    = document.getElementById('won-phase-dates-list');
+    if (!section || !list) return;
+    const phases = _wonSelPhases.filter(p => p !== 'IFP'); // IFP date = IFP input
+    if (!phases.length) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    list.innerHTML = phases.map(ph => {
+      const color = PHASE_COLORS[ph] || '#9ca3af';
+      const existing = list.querySelector(`input[data-phase="${ph}"]`);
+      const val = existing ? existing.value : '';
+      return `<div class="won-phase-date-row">
+        <span class="won-phase-date-label" style="color:${color}">${ph}</span>
+        <input type="date" class="won-date-input" data-phase="${ph}" value="${val}"
+          placeholder="optional" style="font-size:12px;padding:5px 8px">
+      </div>`;
+    }).join('');
+  };
 
   window.openWonModal = function(intakeId, projectName, fee, startDate, ifpDate) {
-    _wonIntakeId = intakeId;
+    _wonIntakeId  = intakeId;
+    _wonSelPhases = [...ALL_PHASES]; // default all selected
     document.getElementById('won-title').textContent = 'Mark as Won — ' + projectName.substring(0, 40);
     document.getElementById('won-sub').textContent =
       (fee > 0 ? 'Approved fee: $' + Number(fee).toLocaleString(undefined,{maximumFractionDigits:0}) + '. ' : '') +
       'Assign engineers and set project dates.';
     document.getElementById('won-start').value = startDate || '';
     document.getElementById('won-ifp').value   = ifpDate   || '';
+    document.getElementById('won-cad-revit').value = '';
+    document.getElementById('won-overview').value  = '';
     document.getElementById('won-error').style.display = 'none';
     const btn = document.getElementById('won-confirm-btn');
     if (btn) { btn.disabled = false; btn.textContent = 'Confirm Win'; }
     const loadBtn = document.getElementById('won-load-cap-btn');
     if (loadBtn) { loadBtn.disabled = false; loadBtn.textContent = 'Load Capacity'; }
     document.getElementById('won-cap-list').innerHTML = '';
+    renderPhaseChips();
     document.getElementById('won-overlay').classList.add('open');
   };
 
@@ -739,29 +848,45 @@
 
   window.submitWon = async function() {
     if (!_wonIntakeId) return;
-    const startVal = document.getElementById('won-start').value;
-    const ifpVal   = document.getElementById('won-ifp').value;
+    const startVal  = document.getElementById('won-start').value;
+    const ifpVal    = document.getElementById('won-ifp').value;
     const engineers = Array.from(document.querySelectorAll('#won-cap-list .won-cap-cb:checked')).map(cb => cb.value);
-    const errEl = document.getElementById('won-error');
+    const cadRevit  = document.getElementById('won-cad-revit').value;
+    const overview  = (document.getElementById('won-overview').value || '').trim();
+    const errEl     = document.getElementById('won-error');
 
     if (!startVal) { errEl.textContent = 'Start date is required.'; errEl.style.display = 'block'; return; }
     if (!ifpVal)   { errEl.textContent = 'IFP due date is required.'; errEl.style.display = 'block'; return; }
     if (!engineers.length) { errEl.textContent = 'Select at least one engineer.'; errEl.style.display = 'block'; return; }
     errEl.style.display = 'none';
 
+    // Collect per-phase due dates (skip IFP — that's the ifpVal input)
+    const phaseDueDates = {};
+    document.querySelectorAll('#won-phase-dates-list input[data-phase]').forEach(inp => {
+      if (inp.value) phaseDueDates[inp.dataset.phase] = inp.value;
+    });
+    // IFP due date always equals the IFP input
+    phaseDueDates['IFP'] = ifpVal;
+
     const btn = document.getElementById('won-confirm-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Committing…'; }
 
     try {
+      const payload = {
+        win_probability:     100,
+        assigned_engineers:  engineers,
+        proposed_start_date: startVal,
+        proposed_end_date:   ifpVal,
+        selected_phases:     _wonSelPhases,
+        phase_due_dates:     phaseDueDates,
+      };
+      if (cadRevit) payload.cad_or_revit = cadRevit;
+      if (overview) payload.project_overview = overview;
+
       const resp = await fetch('/api/intakes/' + _wonIntakeId + '/mark-won', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          win_probability:    100,
-          assigned_engineers: engineers,
-          proposed_start_date: startVal,
-          proposed_end_date:   ifpVal,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || 'Failed');

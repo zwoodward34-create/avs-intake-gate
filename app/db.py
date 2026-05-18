@@ -57,6 +57,11 @@ class IntakeRow:
     proposal_sent_date: Optional[str] = None
     follow_up_count: int = 0
     win_probability: int = 50
+    # Wave 1 fields
+    selected_phases: Optional[str] = None   # JSON array of phase codes, e.g. '["SD","90%","IFP","CA"]'
+    phase_due_dates: Optional[str] = None   # JSON object mapping phase_code -> ISO date
+    cad_or_revit: Optional[str] = None      # "CAD" | "Revit"
+    project_overview: Optional[str] = None  # free-text human summary
 
     @property
     def red_flags(self) -> list[dict[str, Any]]:
@@ -73,6 +78,32 @@ class IntakeRow:
     @property
     def proposal_checklist(self) -> dict[str, bool]:
         return json.loads(self.proposal_checklist_json or "{}")
+
+    @property
+    def selected_phases_list(self) -> list[str]:
+        """Parsed selected_phases; falls back to full PHASE_ORDER if not set."""
+        raw = self.selected_phases
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, str):
+            try:
+                return json.loads(raw)
+            except Exception:
+                pass
+        return []  # empty = use defaults
+
+    @property
+    def phase_due_dates_dict(self) -> dict[str, str]:
+        """Parsed phase_due_dates mapping phase_code -> ISO date string."""
+        raw = self.phase_due_dates
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str):
+            try:
+                return json.loads(raw)
+            except Exception:
+                pass
+        return {}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "IntakeRow":
@@ -112,6 +143,10 @@ class IntakeRow:
             proposal_sent_date=d.get("proposal_sent_date"),
             follow_up_count=int(d.get("follow_up_count") or 0),
             win_probability=int(d.get("win_probability") or 50),
+            selected_phases=d.get("selected_phases"),
+            phase_due_dates=d.get("phase_due_dates"),
+            cad_or_revit=d.get("cad_or_revit"),
+            project_overview=d.get("project_overview"),
         )
 
 
@@ -880,6 +915,28 @@ def set_intake_project_number(intake_id: int, project_number: str) -> None:
         .eq("id", intake_id)
         .execute()
     )
+
+
+def update_project_details(
+    intake_id: int,
+    *,
+    cad_or_revit: Optional[str] = None,
+    project_overview: Optional[str] = None,
+    selected_phases: Optional[list[str]] = None,
+    phase_due_dates: Optional[dict[str, str]] = None,
+) -> None:
+    """Save Wave 1 project detail fields to the intakes row."""
+    payload: dict = {"updated_at": _utc_now_iso()}
+    if cad_or_revit is not None:
+        payload["cad_or_revit"] = cad_or_revit
+    if project_overview is not None:
+        payload["project_overview"] = project_overview
+    if selected_phases is not None:
+        payload["selected_phases"] = json.dumps(selected_phases, ensure_ascii=False)
+    if phase_due_dates is not None:
+        payload["phase_due_dates"] = json.dumps(phase_due_dates, ensure_ascii=False)
+    if len(payload) > 1:
+        _client().table("intakes").update(payload).eq("id", intake_id).execute()
 
 
 # ── Phase Budgets ────────────────────────────────────────────────────────────
@@ -2271,7 +2328,8 @@ def get_pipeline_data() -> dict[str, Any]:
         .select(
             "id,project_number,project_name,client_name,location_region,"
             "current_production_phase,current_billing_phase,pipeline_active,"
-            "change_order_pending,change_order_note,mo_fee_override"
+            "change_order_pending,change_order_note,mo_fee_override,"
+            "cad_or_revit,project_overview,selected_phases"
         )
         .eq("pipeline_active", 1)
         .neq("status", "PROPOSAL_OUT")   # proposals belong in the Proposal Submitted column only
@@ -2407,6 +2465,18 @@ def get_pipeline_data() -> dict[str, Any]:
         phase_budgeted = round(sum(budget_by_phase.get((iid, pc), 0.0) for pc in budget_codes), 1)
         phase_actual   = round(sum(actual_by_phase.get((iid, pc), 0.0) for pc in actual_codes), 1)
 
+        # Detect phase_jump from selected_phases (skipped intermediary phases)
+        _sel_raw = intake.get("selected_phases")
+        _sel_list: list[str] = []
+        if isinstance(_sel_raw, list):
+            _sel_list = _sel_raw
+        elif isinstance(_sel_raw, str):
+            try:
+                _sel_list = json.loads(_sel_raw)
+            except Exception:
+                pass
+        _phase_jump = _is_phase_jump(_sel_list) if _sel_list else False
+
         project = {
             "intake_id":              iid,
             "project_number":         pn,
@@ -2425,6 +2495,10 @@ def get_pipeline_data() -> dict[str, Any]:
             "invoice_status":         invoice_status,
             "can_advance":            invoice_status not in ("complete_pending_approval", "invoice_approved"),
             "approved_fee":           float(intake.get("mo_fee_override") or 0),
+            # Wave 1 fields
+            "cad_or_revit":           intake.get("cad_or_revit") or "",
+            "project_overview":       intake.get("project_overview") or "",
+            "phase_jump":             _phase_jump,
         }
         columns[billing_col]["projects"].append(project)
 
@@ -2617,6 +2691,25 @@ def infer_tier_from_intake(intake: "IntakeRow") -> int:
     return tier
 
 
+def _is_phase_jump(selected: list[str]) -> bool:
+    """
+    Returns True when the selected phase list skips one or more standard
+    intermediate phases — e.g. going straight from SD to 90% bypassing 50%/75%,
+    or jumping from 0 to 90%. This triggers the phase_jump flag on all events
+    for the project, which surfaces a warning on the calendar.
+    """
+    full_pre_ifp = ["SD", "50%", "75%", "90%", "IFP"]
+    selected_pre = [p for p in full_pre_ifp if p in selected]
+    if len(selected_pre) < 2:
+        return False
+    for i in range(len(selected_pre) - 1):
+        a_idx = full_pre_ifp.index(selected_pre[i])
+        b_idx = full_pre_ifp.index(selected_pre[i + 1])
+        if b_idx - a_idx > 1:
+            return True
+    return False
+
+
 def generate_phase_calendar_events(
     intake_id: int,
     project_number: str,
@@ -2626,12 +2719,23 @@ def generate_phase_calendar_events(
     weu_hours: float = 40.0,
     replace_existing: bool = True,
     tier: Optional[int] = None,
+    selected_phases: Optional[list[str]] = None,
+    phase_due_dates: Optional[dict[str, str]] = None,
 ) -> list[dict]:
     """
     Generate one calendar_events row per phase for a project.
-    IFP phase ends exactly on ifp_date. Pre-IFP phases are distributed
-    backward from ifp_date; CA and REV are distributed forward from it.
-    Returns the list of generated event dicts.
+
+    selected_phases — if provided, only generate events for those phases
+                      (in canonical order). When None, all DEFAULT_PHASE_SPLITS
+                      phases are used (original behaviour).
+
+    phase_due_dates — optional dict mapping phase_code -> ISO date string.
+                      When a phase has an entry here its end_date is pinned to
+                      that date instead of being proportionally distributed.
+                      Phases without an entry are distributed proportionally
+                      within the remaining time window.
+
+    IFP phase end is always pinned to ifp_date regardless of phase_due_dates.
     """
     start = date.fromisoformat(start_date)
     ifp   = date.fromisoformat(ifp_date)
@@ -2639,37 +2743,69 @@ def generate_phase_calendar_events(
     if total_days <= 0:
         raise ValueError(f"start_date {start_date} must be before ifp_date {ifp_date}")
 
-    pre_ifp  = ["SD", "50%", "75%", "90%", "IFP"]
-    post_ifp = ["CA", "REV"]
+    # Canonically ordered lists
+    all_pre_ifp  = ["SD", "50%", "75%", "90%", "IFP"]
+    all_post_ifp = ["CA", "REV"]
 
-    pre_total  = sum(DEFAULT_PHASE_SPLITS[p] for p in pre_ifp)
-    post_total = sum(DEFAULT_PHASE_SPLITS[p] for p in post_ifp)
-    post_days  = int(total_days * (post_total / pre_total))
+    if selected_phases:
+        # Preserve canonical order, only keep requested phases
+        active_pre  = [p for p in all_pre_ifp  if p in selected_phases]
+        active_post = [p for p in all_post_ifp if p in selected_phases]
+        # Always ensure IFP is present if anything pre-IFP was selected
+        if active_pre and "IFP" not in active_pre:
+            active_pre.append("IFP")
+    else:
+        active_pre  = all_pre_ifp
+        active_post = all_post_ifp
+
+    phase_jump_flag = _is_phase_jump(active_pre + active_post)
+    phase_due = phase_due_dates or {}
+
+    # Weights for proportional distribution among phases without explicit dates
+    pre_splits  = {p: DEFAULT_PHASE_SPLITS.get(p, 0.10) for p in active_pre}
+    post_splits = {p: DEFAULT_PHASE_SPLITS.get(p, 0.05) for p in active_post}
+
+    pre_total   = sum(pre_splits.values())
+    post_total  = sum(post_splits.values()) or 1
+    post_days   = int(total_days * (post_total / max(pre_total, 0.01)))
 
     now = _utc_now_iso()
     events: list[dict] = []
-    cursor = start
 
-    for i, phase in enumerate(pre_ifp):
-        split = DEFAULT_PHASE_SPLITS[phase] / pre_total
-        if i == len(pre_ifp) - 1:
-            phase_start, phase_end = cursor, ifp
+    # ── Pre-IFP phases ────────────────────────────────────────────────────────
+    cursor = start
+    for i, phase in enumerate(active_pre):
+        if i == len(active_pre) - 1:
+            # Last pre-IFP phase always ends on IFP date
+            phase_start = cursor
+            phase_end   = ifp
+        elif phase in phase_due and phase_due[phase]:
+            # Explicit due date supplied
+            phase_start = cursor
+            phase_end   = date.fromisoformat(phase_due[phase])
+            if phase_end <= phase_start:
+                phase_end = phase_start
         else:
-            phase_days  = int(total_days * split)
+            # Proportional distribution
+            remaining_pre = [p for p in active_pre[i:] if p not in phase_due or not phase_due[p]]
+            remaining_weight = sum(pre_splits.get(p, 0.10) for p in remaining_pre) or pre_splits.get(phase, 0.10)
+            phase_days  = int(total_days * (pre_splits.get(phase, 0.10) / max(pre_total, 0.01)))
             phase_start = cursor
             phase_end   = cursor + timedelta(days=max(phase_days - 1, 0))
 
+        weu_split = pre_splits.get(phase, 0.10) / max(pre_total, 0.01)
         events.append({
             "intake_id":      intake_id,
             "project_number": project_number,
             "phase_code":     phase,
-            "phase_label":    PHASE_LABELS[phase],
+            "phase_label":    PHASE_LABELS.get(phase, phase),
             "phase":          phase,
             "start_date":     phase_start.isoformat() + "T00:00:00Z",
             "end_date":       phase_end.isoformat()   + "T23:59:59Z",
-            "weu_hours":      round(weu_hours * DEFAULT_PHASE_SPLITS[phase], 1),
+            "weu_hours":      round(weu_hours * weu_split, 1),
             "tier":           tier,
             "team":           team,
+            "phase_jump":     phase_jump_flag,
             "is_legacy":      False,
             "is_ooo":         False,
             "client":         "",
@@ -2679,27 +2815,36 @@ def generate_phase_calendar_events(
             "updated_at":     now,
         })
 
-        if i < len(pre_ifp) - 1:
+        if i < len(active_pre) - 1:
             cursor = phase_end + timedelta(days=1)
 
+    # ── Post-IFP phases ───────────────────────────────────────────────────────
     cursor = ifp + timedelta(days=1)
-    for phase in post_ifp:
-        split      = DEFAULT_PHASE_SPLITS[phase] / post_total
-        phase_days = int(post_days * split)
-        phase_start = cursor
-        phase_end   = cursor + timedelta(days=max(phase_days - 1, 0))
+    for phase in active_post:
+        if phase in phase_due and phase_due[phase]:
+            phase_start = cursor
+            phase_end   = date.fromisoformat(phase_due[phase])
+            if phase_end <= phase_start:
+                phase_end = phase_start
+        else:
+            split       = post_splits.get(phase, 0.05) / max(post_total, 0.01)
+            phase_days  = int(post_days * split)
+            phase_start = cursor
+            phase_end   = cursor + timedelta(days=max(phase_days - 1, 0))
 
+        weu_split = post_splits.get(phase, 0.05) / max(post_total, 0.01)
         events.append({
             "intake_id":      intake_id,
             "project_number": project_number,
             "phase_code":     phase,
-            "phase_label":    PHASE_LABELS[phase],
+            "phase_label":    PHASE_LABELS.get(phase, phase),
             "phase":          phase,
             "start_date":     phase_start.isoformat() + "T00:00:00Z",
             "end_date":       phase_end.isoformat()   + "T23:59:59Z",
-            "weu_hours":      round(weu_hours * DEFAULT_PHASE_SPLITS[phase], 1),
+            "weu_hours":      round(weu_hours * weu_split, 1),
             "tier":           tier,
             "team":           team,
+            "phase_jump":     phase_jump_flag,
             "is_legacy":      False,
             "is_ooo":         False,
             "client":         "",
@@ -2747,7 +2892,7 @@ def list_phase_calendar_events(
     resp = (
         _client()
         .table("calendar_events")
-        .select("id,intake_id,project_number,phase_code,phase_label,start_date,end_date,weu_hours,team")
+        .select("id,intake_id,project_number,phase_code,phase_label,start_date,end_date,weu_hours,team,phase_jump")
         .eq("is_legacy", False)
         .eq("is_ooo", False)
         .gte("end_date",   prev_start.isoformat())
@@ -2773,6 +2918,7 @@ def list_phase_calendar_events(
             "end_date":       (r.get("end_date")   or "")[:10],
             "weu_hours":      r.get("weu_hours") or 0.0,
             "team":           team,
+            "phase_jump":     bool(r.get("phase_jump")),
         })
     return rows
 

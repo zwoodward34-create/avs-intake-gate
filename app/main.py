@@ -1231,20 +1231,33 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
 
-    # Engineers and dates may come from the Won modal; fall back to whatever Mo saved earlier
-    body_engineers = body.get("assigned_engineers")
-    body_start     = body.get("proposed_start_date") or None
-    body_end       = body.get("proposed_end_date") or None
+    # Engineers, dates, and Wave 1 phase config may come from the Won modal
+    body_engineers     = body.get("assigned_engineers")
+    body_start         = body.get("proposed_start_date") or None
+    body_end           = body.get("proposed_end_date") or None
+    body_sel_phases    = body.get("selected_phases") or None      # list[str] | None
+    body_phase_dates   = body.get("phase_due_dates") or None      # dict[str, str] | None
+    body_cad_revit     = body.get("cad_or_revit") or None
+    body_overview      = body.get("project_overview") or None
 
-    # Persist engineers + dates back to intake if supplied from Won modal
-    if body_engineers is not None or body_start or body_end:
-        update_payload: dict = {"updated_at": db._utc_now_iso()}
-        if body_engineers is not None:
-            update_payload["assigned_engineers"] = _json.dumps(body_engineers)
-        if body_start:
-            update_payload["proposed_start_date"] = body_start
-        if body_end:
-            update_payload["proposed_end_date"] = body_end
+    # Persist engineers + dates + Wave 1 fields back to intake if supplied
+    update_payload: dict = {}
+    if body_engineers is not None:
+        update_payload["assigned_engineers"] = _json.dumps(body_engineers)
+    if body_start:
+        update_payload["proposed_start_date"] = body_start
+    if body_end:
+        update_payload["proposed_end_date"] = body_end
+    if body_sel_phases is not None:
+        update_payload["selected_phases"] = _json.dumps(body_sel_phases)
+    if body_phase_dates is not None:
+        update_payload["phase_due_dates"] = _json.dumps(body_phase_dates)
+    if body_cad_revit:
+        update_payload["cad_or_revit"] = body_cad_revit
+    if body_overview:
+        update_payload["project_overview"] = body_overview
+    if update_payload:
+        update_payload["updated_at"] = db._utc_now_iso()
         db._client().table("intakes").update(update_payload).eq("id", intake_id).execute()
         intake = db.get_intake(intake_id)  # re-fetch with updated values
 
@@ -1279,6 +1292,8 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
     if _start and _ifp:
         _fresh = db.get_intake(intake_id)
         _tier  = db.infer_tier_from_intake(_fresh) if _fresh else 3
+        _sel   = _fresh.selected_phases_list if _fresh else None
+        _dates = _fresh.phase_due_dates_dict if _fresh else None
         try:
             db.generate_phase_calendar_events(
                 intake_id=intake_id,
@@ -1289,6 +1304,8 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
                 weu_hours=40.0,
                 replace_existing=True,
                 tier=_tier,
+                selected_phases=_sel or None,
+                phase_due_dates=_dates or None,
             )
         except Exception:
             pass
@@ -1325,6 +1342,60 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
         "intake_id": intake_id,
         "project_number": project_number,
     }
+
+
+@app.patch("/api/intakes/{intake_id}/project-details")
+async def api_update_project_details(request: Request, intake_id: int) -> dict[str, Any]:
+    """
+    Wave 1: save project detail fields (overview, CAD/Revit, phase selection,
+    per-phase due dates) without touching the rest of the intake record.
+    Available to admin and office_manager roles.
+    """
+    _api_require(request, "office_manager")
+    intake = db.get_intake(intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Not found.")
+    body = await request.json()
+
+    cad_or_revit    = body.get("cad_or_revit")           # "CAD" | "Revit" | None
+    project_overview= body.get("project_overview")        # str | None
+    selected_phases = body.get("selected_phases")         # list[str] | None
+    phase_due_dates = body.get("phase_due_dates")         # dict[str,str] | None
+
+    db.update_project_details(
+        intake_id,
+        cad_or_revit=cad_or_revit,
+        project_overview=project_overview,
+        selected_phases=selected_phases,
+        phase_due_dates=phase_due_dates,
+    )
+
+    # If the project is already ACTIVE and has calendar events, regenerate them
+    # with the new phase config so the calendar stays in sync.
+    if intake.status == "ACTIVE_PROJECT" and intake.proposed_start_date and intake.ifp_due_date:
+        fresh = db.get_intake(intake_id)
+        if fresh:
+            _team  = _json.loads(fresh.assigned_engineers or "[]")
+            _tier  = db.infer_tier_from_intake(fresh)
+            _sel   = fresh.selected_phases_list or None
+            _dates = fresh.phase_due_dates_dict or None
+            try:
+                db.generate_phase_calendar_events(
+                    intake_id=intake_id,
+                    project_number=fresh.project_number or "",
+                    start_date=fresh.proposed_start_date,
+                    ifp_date=fresh.ifp_due_date,
+                    team=_team,
+                    weu_hours=40.0,
+                    replace_existing=True,
+                    tier=_tier,
+                    selected_phases=_sel,
+                    phase_due_dates=_dates,
+                )
+            except Exception:
+                pass
+
+    return {"ok": True, "intake_id": intake_id}
 
 
 @app.post("/api/intakes/{intake_id}/mark-lost")
@@ -2005,22 +2076,25 @@ def api_phase_events(year: Optional[int] = None, month: Optional[int] = None) ->
     y = year  or today.year
     m = month or today.month
     events = db.list_phase_calendar_events(y, m)
-    # Attach project_name from intakes
+    # Attach project_name, cad_or_revit, project_overview from intakes
     intake_ids = list({e["intake_id"] for e in events if e.get("intake_id")})
-    names: dict[int, str] = {}
+    intake_meta: dict[int, dict] = {}
     if intake_ids:
         resp = (
             db._client()
             .table("intakes")
-            .select("id,project_name,project_number")
+            .select("id,project_name,project_number,cad_or_revit,project_overview")
             .in_("id", intake_ids)
             .execute()
         )
         for row in (resp.data or []):
-            names[row["id"]] = row.get("project_name") or row.get("project_number") or ""
+            intake_meta[row["id"]] = row
     for e in events:
         iid = e.get("intake_id")
-        e["project_name"] = names.get(iid, e["project_number"]) if iid else e["project_number"]
+        meta = intake_meta.get(iid) if iid else None
+        e["project_name"]    = (meta or {}).get("project_name") or e["project_number"]
+        e["cad_or_revit"]    = (meta or {}).get("cad_or_revit") or ""
+        e["project_overview"]= (meta or {}).get("project_overview") or ""
     return {"events": events, "year": y, "month": m}
 
 

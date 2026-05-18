@@ -996,7 +996,18 @@
     const projectMap = {};
     phaseEvents.forEach(ev => {
       const pn = ev.project_number || '—';
-      if (!projectMap[pn]) projectMap[pn] = { project_number: pn, project_name: ev.project_name || pn, phases: [] };
+      if (!projectMap[pn]) {
+        projectMap[pn] = {
+          project_number:  pn,
+          project_name:    ev.project_name    || pn,
+          cad_or_revit:    ev.cad_or_revit    || '',
+          project_overview:ev.project_overview|| '',
+          phase_jump:      false,
+          phases: [],
+        };
+      }
+      // phase_jump is true for the project if ANY event on it has it set
+      if (ev.phase_jump) projectMap[pn].phase_jump = true;
       projectMap[pn].phases.push(ev);
     });
     const projects = Object.values(projectMap);
@@ -1137,13 +1148,40 @@
       lbl.style.minHeight = ROW_H + 'px';
       const numEl = document.createElement('div');
       numEl.className = 'gantt-project-num';
-      numEl.textContent = proj.project_number;
+      // Row header: project number + optional badges
+      const numRow = document.createElement('div');
+      numRow.style.cssText = 'display:flex;align-items:center;gap:5px;flex-wrap:wrap;';
+      const numTxt = document.createElement('span');
+      numTxt.textContent = proj.project_number;
+      numRow.appendChild(numTxt);
+      if (proj.phase_jump) {
+        const jb = document.createElement('span');
+        jb.textContent = '⚡';
+        jb.title = 'Non-standard phase sequence';
+        jb.style.cssText = 'font-size:10px;color:#fb923c;flex-shrink:0;';
+        numRow.appendChild(jb);
+      }
+      if (proj.cad_or_revit) {
+        const cb = document.createElement('span');
+        cb.textContent = proj.cad_or_revit;
+        cb.style.cssText = 'font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;background:rgba(255,255,255,.08);color:var(--muted);border:1px solid var(--border);white-space:nowrap;';
+        numRow.appendChild(cb);
+      }
+      numEl.appendChild(numRow);
       lbl.appendChild(numEl);
       if (proj.project_name && proj.project_name !== proj.project_number) {
         const nameEl = document.createElement('div');
         nameEl.className = 'gantt-project-name';
         nameEl.textContent = proj.project_name;
         lbl.appendChild(nameEl);
+      }
+      // Project overview (if set, show as a muted tooltip-style subtitle)
+      if (proj.project_overview) {
+        const ovEl = document.createElement('div');
+        ovEl.style.cssText = 'font-size:9px;color:var(--muted);line-height:1.3;margin-top:1px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;';
+        ovEl.title = proj.project_overview;
+        ovEl.textContent = proj.project_overview;
+        lbl.appendChild(ovEl);
       }
       row.appendChild(lbl);
 
@@ -1213,7 +1251,17 @@
             bar.appendChild(chips);
           }
 
-          bar.title = `${proj.project_number} — ${PHASE_LABELS[ev.phase_code] || ev.phase_code}\n${fmtDate(s)} → ${fmtDate(e)}${ev.weu_hours ? '\n' + ev.weu_hours + ' WEU hrs' : ''}\nTeam: ${(ev.team||[]).join(', ')||'—'}`;
+          // Phase-jump badge — shown when standard intermediate phases are skipped
+          if (ev.phase_jump) {
+            const jumpBadge = document.createElement('span');
+            jumpBadge.textContent = '⚡';
+            jumpBadge.title = 'Non-standard phase sequence — one or more standard phases skipped';
+            jumpBadge.style.cssText = 'font-size:10px;flex-shrink:0;margin-left:2px;opacity:.85;';
+            bar.appendChild(jumpBadge);
+            bar.style.outline = '1px solid rgba(251,146,60,.55)';
+          }
+
+          bar.title = `${proj.project_number} — ${PHASE_LABELS[ev.phase_code] || ev.phase_code}\n${fmtDate(s)} → ${fmtDate(e)}${ev.weu_hours ? '\n' + ev.weu_hours + ' WEU hrs' : ''}${ev.phase_jump ? '\n⚡ Non-standard phase sequence' : ''}\nTeam: ${(ev.team||[]).join(', ')||'—'}`;
           bar.addEventListener('click', evt => { evt.stopPropagation(); openPhaseEventDetail(ev, color); });
           track.appendChild(bar);
         }
