@@ -426,6 +426,27 @@ def _fetch_supabase_historical() -> list[dict]:
         return []
 
 
+# Maps internal intake project_type enum values → Excel/industry standard terms.
+# "new_construction" and "build_to_suit_retrofit" are both forms of BTS in AVS's
+# workflow; repeating programs (Sprouts rollouts) are TI-class work.
+_INTAKE_TYPE_TO_EXCEL: dict[str, str] = {
+    "new_construction":        "BTS",
+    "ground_up":               "BTS",
+    "build_to_suit":           "BTS",
+    "build_to_suit_retrofit":  "BTS",
+    "tenant_improvement":      "TI",
+    "tenant_improvement_ti":   "TI",
+    "repeating_program":       "TI",
+    "addition_expansion":      "Addition",
+}
+
+
+def _normalize_project_type(raw: str) -> str:
+    """Translate intake-form enum → searchable industry term."""
+    key = raw.lower().strip().replace(" ", "_").replace("-", "_")
+    return _INTAKE_TYPE_TO_EXCEL.get(key) or _INTAKE_TYPE_TO_EXCEL.get(raw.strip()) or raw
+
+
 def _supabase_records_to_rows(records: list[dict], col_map: dict) -> list[dict]:
     """Convert Supabase historical_projects rows into the Excel row format used by search."""
     result = []
@@ -433,8 +454,13 @@ def _supabase_records_to_rows(records: list[dict], col_map: dict) -> list[dict]:
         row: dict[str, str] = {}
         for col_key, sb_field in _SB_FIELD_MAP.items():
             header = col_map.get(col_key)
-            if header:
-                row[header] = str(r.get(sb_field) or "").strip()
+            if not header:
+                continue
+            val = str(r.get(sb_field) or "").strip()
+            # Normalize project_type so intake enum values match Excel vocabulary
+            if col_key == "type" and val:
+                val = _normalize_project_type(val)
+            row[header] = val
         result.append(row)
     return result
 
