@@ -1250,9 +1250,9 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
     if body_end:
         update_payload["proposed_end_date"] = body_end
     if body_sel_phases is not None:
-        update_payload["selected_phases"] = _json.dumps(body_sel_phases)
+        update_payload["selected_phases"] = body_sel_phases   # JSONB — pass list directly
     if body_phase_dates is not None:
-        update_payload["phase_due_dates"] = _json.dumps(body_phase_dates)
+        update_payload["phase_due_dates"] = body_phase_dates  # JSONB — pass dict directly
     if body_cad_revit:
         update_payload["cad_or_revit"] = body_cad_revit
     if body_overview:
@@ -1352,7 +1352,7 @@ async def api_update_project_details(request: Request, intake_id: int) -> dict[s
     per-phase due dates) without touching the rest of the intake record.
     Available to admin and office_manager roles.
     """
-    _api_require(request, "office_manager")
+    _api_require(request, "admin", "office_manager")
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -1957,12 +1957,13 @@ def calendar_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         "calendar.html",
         {
-            "request": request,
-            "now_local": _now_local_iso(),
-            "phase_colors": _json.dumps(db.PHASE_COLORS),
-            "valid_phases": db.VALID_PHASES,
-            "team_colors": _json.dumps(db.TEAM_COLORS),
-            "team_members": db.TEAM_MEMBERS,
+            "request":       request,
+            "now_local":     _now_local_iso(),
+            "phase_colors":  _json.dumps(db.PHASE_COLORS),
+            "valid_phases":  db.VALID_PHASES,
+            "team_colors":   _json.dumps(db.TEAM_COLORS),
+            "team_members":  db.TEAM_MEMBERS,
+            "db_team_colors": db.TEAM_COLORS,   # dict for Jinja inline use
         },
     )
 

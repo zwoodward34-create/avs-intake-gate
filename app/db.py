@@ -932,9 +932,9 @@ def update_project_details(
     if project_overview is not None:
         payload["project_overview"] = project_overview
     if selected_phases is not None:
-        payload["selected_phases"] = json.dumps(selected_phases, ensure_ascii=False)
+        payload["selected_phases"] = selected_phases          # JSONB — pass Python list directly
     if phase_due_dates is not None:
-        payload["phase_due_dates"] = json.dumps(phase_due_dates, ensure_ascii=False)
+        payload["phase_due_dates"] = phase_due_dates          # JSONB — pass Python dict directly
     if len(payload) > 1:
         _client().table("intakes").update(payload).eq("id", intake_id).execute()
 

@@ -1394,8 +1394,15 @@ async function markProposalSent(intakeId) {
     }).then(function(r) {
       if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'Save failed'); });
       var st = document.getElementById('pd-save-status');
-      if (st) { st.style.display = 'inline'; setTimeout(function() { st.style.display = 'none'; }, 2500); }
+      if (st) {
+        st.textContent = '✓ Saved — calendar updated';
+        st.style.display = 'inline';
+        setTimeout(function() { st.style.display = 'none'; st.textContent = '✓ Saved'; }, 3500);
+      }
       if (btn) { btn.disabled = false; btn.textContent = 'Save Project Details'; }
+      // Refresh burn/budget panels if present so they reflect any phase changes
+      if (typeof loadBurnData === 'function') { try { loadBurnData(); } catch(e) {} }
+      if (typeof loadPhaseMatrix === 'function') { try { loadPhaseMatrix(); } catch(e) {} }
     }).catch(function(e) {
       alert('Save failed: ' + e.message);
       if (btn) { btn.disabled = false; btn.textContent = 'Save Project Details'; }
