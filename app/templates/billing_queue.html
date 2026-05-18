@@ -19,6 +19,9 @@
     <span class="nav-badge" style="margin-left:5px">{{ pending_submissions|length }}</span>
     {% endif %}
   </button>
+  <button class="myt-tab" id="ph-tab-clients" onclick="phSwitchTab('clients')" style="font-size:13px;padding:8px 16px">
+    Client Profiles
+  </button>
 </div>
 
 {# ── Tab 1: Billing ────────────────────────────────────────────────────────── #}
@@ -91,11 +94,15 @@
       <button onclick="expSelectAll()" id="exp-select-all-btn"
         style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:5px;cursor:pointer;background:rgba(139,92,246,.08);color:#a78bfa;border:1px solid rgba(139,92,246,.3);transition:all .15s"
         onmouseover="this.style.background='rgba(139,92,246,.18)'" onmouseout="this.style.background='rgba(139,92,246,.08)'">
-        Select All for Invoice
+        Select All
+      </button>
+      <button onclick="expBulkReimburse()" id="exp-bulk-reimburse-btn" style="display:none;font-size:11px;font-weight:700;padding:4px 12px;border-radius:5px;cursor:pointer;background:rgba(99,179,237,.10);color:#63b3ed;border:1px solid rgba(99,179,237,.3);transition:all .15s"
+        onmouseover="this.style.background='rgba(99,179,237,.2)'" onmouseout="this.style.background='rgba(99,179,237,.10)'">
+        Mark Selected Reimbursed
       </button>
       <button onclick="expBulkBill()" id="exp-bulk-btn" style="display:none;font-size:11px;font-weight:700;padding:4px 12px;border-radius:5px;cursor:pointer;background:rgba(52,211,153,.10);color:var(--good);border:1px solid rgba(52,211,153,.3);transition:all .15s"
         onmouseover="this.style.background='rgba(52,211,153,.2)'" onmouseout="this.style.background='rgba(52,211,153,.10)'">
-        Mark Selected Billed
+        Mark Selected Client Billed
       </button>
     </div>
   </div>
@@ -105,7 +112,6 @@
         <th style="width:28px"><input type="checkbox" id="exp-check-all" onchange="expToggleAll(this.checked)" style="cursor:pointer" /></th>
         <th>Engineer</th><th>Project</th><th>Category</th><th>Phase</th>
         <th style="text-align:right">Amount</th>
-        <th style="text-align:center">Reimbursable</th>
         <th style="text-align:center">Status</th>
         <th>Description</th>
         <th>Actions</th>
@@ -130,19 +136,16 @@
         <td style="font-family:var(--mono);font-size:11px">{{ exp.phase or '—' }}</td>
         <td style="text-align:right;font-family:var(--mono);font-weight:700;color:var(--good)">${{ "{:,.2f}".format(exp.amount|float) }}</td>
         <td style="text-align:center">
-          {% if exp.is_reimbursable %}
-            <span style="color:var(--good);font-size:13px">✓</span>
+          {% if exp.status == 'approved' %}
+            <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;background:rgba(52,211,153,.10);color:var(--good)">APPROVED</span>
+          {% elif exp.status == 'reimbursed' %}
+            <div style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;background:rgba(99,179,237,.10);color:#63b3ed">REIMBURSED</div>
+            <div style="font-size:9px;color:var(--muted);margin-top:2px">Needs client invoice</div>
+          {% elif exp.status == 'pending' %}
+            <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;background:rgba(251,191,36,.10);color:#fbbf24">PENDING</span>
           {% else %}
-            <span style="color:var(--muted);font-size:13px">—</span>
+            <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;background:rgba(255,255,255,.07);color:var(--muted)">{{ exp.status | upper }}</span>
           {% endif %}
-        </td>
-        <td style="text-align:center">
-          <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;
-            {% if exp.status == 'approved' %}background:rgba(52,211,153,.10);color:var(--good)
-            {% elif exp.status == 'pending' %}background:rgba(251,191,36,.10);color:#fbbf24
-            {% else %}background:rgba(255,255,255,.07);color:var(--muted){% endif %}">
-            {{ exp.status | upper }}
-          </span>
         </td>
         <td style="color:var(--muted);font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
           {{ exp.description or '—' }}
@@ -157,9 +160,14 @@
             onmouseover="this.style.background='rgba(52,211,153,.2)'" onmouseout="this.style.background='rgba(52,211,153,.10)'">Approve</button>
           {% endif %}
           {% if exp.status in ('pending', 'approved') %}
+          <button onclick="expMarkReimbursed('{{ exp.id }}')"
+            style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;cursor:pointer;background:rgba(99,179,237,.10);color:#63b3ed;border:1px solid rgba(99,179,237,.3);transition:all .15s;margin-right:3px"
+            onmouseover="this.style.background='rgba(99,179,237,.2)'" onmouseout="this.style.background='rgba(99,179,237,.10)'">Mark Reimbursed</button>
+          {% endif %}
+          {% if exp.status == 'reimbursed' %}
           <button onclick="expUpdateStatus('{{ exp.id }}', 'billed')"
             style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;cursor:pointer;background:rgba(255,255,255,.05);color:var(--muted);border:1px solid rgba(255,255,255,.12);transition:all .15s"
-            onmouseover="this.style.background='rgba(255,255,255,.1)';this.style.color='var(--text)'" onmouseout="this.style.background='rgba(255,255,255,.05)';this.style.color='var(--muted)'">Billed</button>
+            onmouseover="this.style.background='rgba(255,255,255,.1)';this.style.color='var(--text)'" onmouseout="this.style.background='rgba(255,255,255,.05)';this.style.color='var(--muted)'">Mark Client Billed</button>
           {% endif %}
         </td>
       </tr>
@@ -714,6 +722,68 @@
     <div style="display:flex;justify-content:space-between">
       <span style="color:var(--muted)">Balance to Finish</span>
       <span style="font-family:var(--mono);color:var(--muted)" id="modal-balance">$0</span>
+    </div>
+  </div>
+
+  {# ── Client Requirements ──────────────────────────────────────────────── #}
+  <div id="modal-client-requirements" style="display:none;margin-bottom:18px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px">
+      Client Requirements
+      <span id="modal-req-badge" style="display:none;font-size:9px;font-weight:800;padding:1px 6px;border-radius:3px;background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.3)">PO REQUIRED</span>
+    </div>
+
+    {# PO Number #}
+    <div id="modal-po-row" style="display:none;margin-bottom:10px">
+      <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">PO Number</label>
+      <input type="text" id="modal-po-number"
+        style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card-bg);color:var(--text);font-size:13px;box-sizing:border-box"
+        placeholder="Client purchase order number">
+    </div>
+
+    {# PO Attachment #}
+    <div id="modal-po-attach-row" style="display:none;margin-bottom:10px">
+      <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Attach PO Document <span style="color:#f87171">*</span></label>
+      <div id="modal-po-drop-zone"
+        style="border:2px dashed var(--border);border-radius:var(--radius);padding:14px;text-align:center;cursor:pointer;transition:border-color .15s;font-size:12px;color:var(--muted)"
+        onclick="document.getElementById('modal-po-file').click()"
+        ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
+        ondragleave="this.style.borderColor='var(--border)'"
+        ondrop="handlePODrop(event)">
+        <div id="modal-po-drop-label">📎 Click to attach PO, or drag &amp; drop</div>
+        <div id="modal-po-file-name" style="display:none;font-weight:700;color:var(--accent);margin-top:4px"></div>
+      </div>
+      <input type="file" id="modal-po-file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="handlePOFileSelect(this)">
+      <div id="modal-po-warning" style="display:none;font-size:11px;color:#f87171;font-weight:600;margin-top:4px">⚠ This client requires a PO — please attach one before generating the invoice.</div>
+    </div>
+
+    {# Custom Fields #}
+    <div id="modal-custom-fields-container" style="display:none">
+      <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:6px">Custom Invoice Fields</label>
+      <div id="modal-custom-fields-list" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+
+    {# Invoice Notes #}
+    <div id="modal-notes-row" style="display:none;margin-top:10px">
+      <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Invoice Notes / Reference</label>
+      <textarea id="modal-invoice-notes" rows="2"
+        style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card-bg);color:var(--text);font-size:12px;resize:vertical;box-sizing:border-box"
+        placeholder="Add notes or reference text that will appear on the invoice"></textarea>
+    </div>
+
+    {# Timesheet Hours Toggle #}
+    <div style="margin-top:14px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.03);display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--text)">Pull hours from approved timesheet</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Optional — populates billable hours from the team's approved time entries. Off by default.</div>
+      </div>
+      <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer;flex-shrink:0">
+        <input type="checkbox" id="modal-use-timesheet" style="opacity:0;width:0;height:0;position:absolute">
+        <span id="modal-ts-track"
+          onclick="var c=document.getElementById('modal-use-timesheet');c.checked=!c.checked;this.style.background=c.checked?'var(--accent)':'var(--border)';document.getElementById('modal-ts-knob').style.transform=c.checked?'translateX(18px)':'translateX(2px)'"
+          style="display:inline-block;width:38px;height:22px;background:var(--border);border-radius:11px;transition:background .2s;position:relative;cursor:pointer">
+          <span id="modal-ts-knob" style="position:absolute;top:3px;left:0;transform:translateX(2px);width:16px;height:16px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
+        </span>
+      </label>
     </div>
   </div>
 
@@ -1415,19 +1485,512 @@ function downloadInvoicePDF(invoiceId, invoiceNumber, intakeId, phaseLabel, amou
 </script>
 </div>{# end ph-pane-payroll #}
 
+{# ── Tab 3: Client Profiles ───────────────────────────────────────────────── #}
+<div id="ph-pane-clients" style="display:none">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+  <div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Invoice Configuration</div>
+    <div style="font-size:18px;font-weight:800;margin-top:2px">Client Profiles</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:3px">Store per-client invoicing requirements. These pre-populate the invoice modal automatically.</div>
+  </div>
+  <button onclick="cpOpenNew()"
+    style="padding:8px 18px;border-radius:var(--radius);border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:12px;font-weight:700;cursor:pointer;transition:opacity .15s"
+    onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+    + Add Client Profile
+  </button>
+</div>
+
+<div id="cp-list" style="display:flex;flex-direction:column;gap:10px">
+  <div style="text-align:center;padding:40px;color:var(--muted);font-size:13px">Loading client profiles…</div>
+</div>
+</div>{# end ph-pane-clients #}
+
+{# ── Client Profile Edit Modal ────────────────────────────────────────────── #}
+<div id="cp-modal-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:9000;backdrop-filter:blur(2px)" onclick="cpCloseModal()"></div>
+<div id="cp-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9001;width:min(540px,94vw);background:var(--card-bg);border:1px solid var(--border);border-radius:14px;padding:28px 30px;box-shadow:0 8px 40px rgba(0,0,0,.14);max-height:90vh;overflow-y:auto">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px">
+    <div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:4px">Client Invoice Requirements</div>
+      <div style="font-size:1.1rem;font-weight:800;color:var(--text)" id="cp-modal-title">New Client Profile</div>
+    </div>
+    <button onclick="cpCloseModal()" style="background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:3px 8px;border-radius:6px" onmouseover="this.style.background='var(--card-bg-deeper)'" onmouseout="this.style.background='none'">×</button>
+  </div>
+
+  <div class="field" style="margin-bottom:14px">
+    <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Client Name</label>
+    <input type="text" id="cp-client-name" placeholder="e.g. Sprouts Farmers Market" style="width:100%;box-sizing:border-box">
+    <datalist id="cp-name-list"></datalist>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div>
+      <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">Requires PO on Invoice?</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
+        <input type="checkbox" id="cp-requires-po" style="width:16px;height:16px;cursor:pointer" onchange="cpTogglePO(this.checked)">
+        Yes, PO required for this client
+      </label>
+    </div>
+    <div id="cp-po-number-row" style="display:none">
+      <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Default PO Number</label>
+      <input type="text" id="cp-po-number" placeholder="Standing PO # if applicable" style="width:100%;box-sizing:border-box">
+    </div>
+  </div>
+
+  <div style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Custom Invoice Fields</label>
+      <button onclick="cpAddField()" style="font-size:10px;font-weight:700;padding:2px 10px;border-radius:4px;border:1px solid var(--accent);color:var(--accent);background:none;cursor:pointer" onmouseover="this.style.background='var(--accent-surface)'" onmouseout="this.style.background='none'">+ Add Field</button>
+    </div>
+    <div id="cp-fields-list" style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:11px;color:var(--subtle);padding:8px 0">No custom fields yet. Use these for client-specific data like Cost Center, Contract Reference, etc.</div>
+    </div>
+  </div>
+
+  <div style="margin-bottom:18px">
+    <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Default Invoice Notes / Template Text</label>
+    <textarea id="cp-invoice-notes" rows="3"
+      style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card-bg);color:var(--text);font-size:12px;resize:vertical;box-sizing:border-box"
+      placeholder="Standard notes that should appear on every invoice for this client…"></textarea>
+  </div>
+
+  <div style="display:flex;gap:10px">
+    <button onclick="cpSave()" id="cp-save-btn"
+      style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer;transition:opacity .15s"
+      onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">Save Profile</button>
+    <button onclick="cpCloseModal()" style="padding:10px 18px;border-radius:8px;border:1px solid var(--border);background:var(--card-bg-deeper);color:var(--text);font-size:13px;cursor:pointer">Cancel</button>
+  </div>
+  <div id="cp-modal-status" style="margin-top:10px;font-size:12px;color:var(--muted);text-align:center;min-height:16px"></div>
+</div>
+
 <script>
 (function() {
+  // ── Tab switcher (now includes clients) ──────────────────────────────────
   function phSwitchTab(which) {
-    ['billing','payroll'].forEach(function(t) {
-      document.getElementById('ph-pane-' + t).style.display = t === which ? '' : 'none';
-      document.getElementById('ph-tab-' + t).classList.toggle('active', t === which);
+    ['billing','payroll','clients'].forEach(function(t) {
+      var pane = document.getElementById('ph-pane-' + t);
+      var tab  = document.getElementById('ph-tab-' + t);
+      if (pane) pane.style.display = t === which ? '' : 'none';
+      if (tab)  tab.classList.toggle('active', t === which);
     });
     history.replaceState(null, '', '#' + which);
+    if (which === 'clients') cpLoadProfiles();
   }
   window.phSwitchTab = phSwitchTab;
   var hash = location.hash.slice(1);
   if (hash === 'payroll') phSwitchTab('payroll');
+  else if (hash === 'clients') phSwitchTab('clients');
 })();
+</script>
+
+<script>
+// ── Client Profiles Manager ──────────────────────────────────────────────────
+(function() {
+  var _cpEditing = null; // client_name being edited, or null for new
+
+  function cpLoadProfiles() {
+    var list = document.getElementById('cp-list');
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:13px">Loading…</div>';
+    Promise.all([
+      fetch('/api/client-profiles').then(function(r) { return r.json(); }).catch(function() { return []; }),
+      fetch('/api/client-profiles/client-names').then(function(r) { return r.json(); }).catch(function() { return []; }),
+    ]).then(function(results) {
+      var profiles = results[0];
+      var allNames = results[1];
+      // Populate datalist for new profile name suggestions
+      var dl = document.getElementById('cp-name-list');
+      if (dl) {
+        dl.innerHTML = '';
+        allNames.forEach(function(n) {
+          var opt = document.createElement('option');
+          opt.value = n;
+          dl.appendChild(opt);
+        });
+      }
+      renderProfileList(profiles, allNames);
+    });
+  }
+  window.cpLoadProfiles = cpLoadProfiles;
+
+  function renderProfileList(profiles, allNames) {
+    var list = document.getElementById('cp-list');
+    // Merge: show profiles first, then ungrouped client names
+    var profiledNames = new Set(profiles.map(function(p) { return p.client_name; }));
+    var unprofiledNames = (allNames || []).filter(function(n) { return !profiledNames.has(n); });
+
+    if (profiles.length === 0 && unprofiledNames.length === 0) {
+      list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:13px">No clients yet. Profiles are created automatically from project intakes, or you can add one manually.</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+
+    // Configured profiles
+    if (profiles.length > 0) {
+      var hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;padding-left:2px';
+      hdr.textContent = 'Configured Profiles';
+      list.appendChild(hdr);
+
+      profiles.forEach(function(p) {
+        var card = document.createElement('div');
+        card.className = 'card';
+        card.style.cssText = 'padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap';
+        var fields = Array.isArray(p.custom_invoice_fields) ? p.custom_invoice_fields : [];
+        var tags = '';
+        if (p.requires_po) tags += '<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:3px;background:rgba(239,68,68,.10);color:#f87171;border:1px solid rgba(239,68,68,.25);margin-right:4px">PO REQUIRED</span>';
+        if (p.po_number)   tags += '<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:3px;background:var(--accent-surface);color:var(--accent);margin-right:4px">PO: ' + p.po_number + '</span>';
+        if (fields.length) tags += '<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:3px;background:var(--card-bg-deeper);color:var(--muted)">' + fields.length + ' custom field' + (fields.length > 1 ? 's' : '') + '</span>';
+        card.innerHTML =
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:14px;font-weight:700;color:var(--text)">' + p.client_name + '</div>' +
+            '<div style="margin-top:4px">' + (tags || '<span style="font-size:11px;color:var(--subtle)">No special requirements configured</span>') + '</div>' +
+          '</div>' +
+          '<button onclick="cpOpenEdit(\'' + p.client_name.replace(/'/g, "\\'") + '\')" style="font-size:11px;font-weight:700;padding:5px 14px;border-radius:5px;border:1px solid var(--border);background:var(--card-bg-deeper);color:var(--text);cursor:pointer" onmouseover="this.style.background=\'var(--border)\'" onmouseout="this.style.background=\'var(--card-bg-deeper)\'">Edit</button>';
+        list.appendChild(card);
+      });
+    }
+
+    // Unconfigured client names from intakes
+    if (unprofiledNames.length > 0) {
+      var hdr2 = document.createElement('div');
+      hdr2.style.cssText = 'font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px;padding-left:2px';
+      hdr2.textContent = 'Clients Without Profiles';
+      list.appendChild(hdr2);
+
+      unprofiledNames.forEach(function(name) {
+        var card = document.createElement('div');
+        card.style.cssText = 'padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px dashed var(--border);border-radius:var(--radius);background:var(--card-bg-deeper)';
+        card.innerHTML =
+          '<div style="font-size:13px;font-weight:600;color:var(--muted)">' + name + '</div>' +
+          '<button onclick="cpOpenNew(\'' + name.replace(/'/g, "\\'") + '\')" style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:5px;border:1px solid var(--border);background:var(--card-bg);color:var(--muted);cursor:pointer" onmouseover="this.style.color=\'var(--text)\'" onmouseout="this.style.color=\'var(--muted)\'">+ Configure</button>';
+        list.appendChild(card);
+      });
+    }
+  }
+
+  function cpOpenNew(prefillName) {
+    _cpEditing = null;
+    document.getElementById('cp-modal-title').textContent = 'New Client Profile';
+    document.getElementById('cp-client-name').value   = prefillName || '';
+    document.getElementById('cp-client-name').disabled = !!prefillName;
+    document.getElementById('cp-requires-po').checked = false;
+    document.getElementById('cp-po-number').value     = '';
+    document.getElementById('cp-invoice-notes').value = '';
+    document.getElementById('cp-po-number-row').style.display = 'none';
+    document.getElementById('cp-fields-list').innerHTML = '<div style="font-size:11px;color:var(--subtle);padding:8px 0">No custom fields yet.</div>';
+    document.getElementById('cp-modal-status').textContent = '';
+    document.getElementById('cp-modal-backdrop').style.display = 'block';
+    document.getElementById('cp-modal').style.display = 'block';
+  }
+  window.cpOpenNew = cpOpenNew;
+
+  function cpOpenEdit(clientName) {
+    fetch('/api/client-profiles/' + encodeURIComponent(clientName))
+      .then(function(r) { return r.json(); })
+      .then(function(p) {
+        _cpEditing = clientName;
+        document.getElementById('cp-modal-title').textContent = 'Edit: ' + clientName;
+        document.getElementById('cp-client-name').value    = p.client_name || clientName;
+        document.getElementById('cp-client-name').disabled = true;
+        document.getElementById('cp-requires-po').checked  = !!p.requires_po;
+        document.getElementById('cp-po-number').value      = p.po_number || '';
+        document.getElementById('cp-invoice-notes').value  = p.invoice_notes || '';
+        document.getElementById('cp-po-number-row').style.display = p.requires_po ? '' : 'none';
+        // Render custom fields
+        cpRenderFields(Array.isArray(p.custom_invoice_fields) ? p.custom_invoice_fields : []);
+        document.getElementById('cp-modal-status').textContent = '';
+        document.getElementById('cp-modal-backdrop').style.display = 'block';
+        document.getElementById('cp-modal').style.display = 'block';
+      });
+  }
+  window.cpOpenEdit = cpOpenEdit;
+
+  function cpRenderFields(fields) {
+    var container = document.getElementById('cp-fields-list');
+    container.innerHTML = '';
+    if (!fields.length) {
+      container.innerHTML = '<div style="font-size:11px;color:var(--subtle);padding:8px 0">No custom fields yet.</div>';
+      return;
+    }
+    fields.forEach(function(f, idx) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center';
+      row.innerHTML =
+        '<input type="text" value="' + (f.label || '') + '" placeholder="Field name (e.g. Cost Center)" class="cp-field-label" data-idx="' + idx + '" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--card-bg);color:var(--text)">' +
+        '<input type="text" value="' + (f.value || '') + '" placeholder="Default value (optional)" class="cp-field-value" data-idx="' + idx + '" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--card-bg);color:var(--text)">' +
+        '<button onclick="cpRemoveField(' + idx + ')" style="padding:4px 8px;border-radius:4px;border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.06);color:#f87171;cursor:pointer;font-size:12px;font-weight:700" onmouseover="this.style.background=\'rgba(239,68,68,.15)\'" onmouseout="this.style.background=\'rgba(239,68,68,.06)\'">✕</button>';
+      container.appendChild(row);
+    });
+  }
+
+  function cpReadFields() {
+    var labels = document.querySelectorAll('.cp-field-label');
+    var values = document.querySelectorAll('.cp-field-value');
+    var fields = [];
+    labels.forEach(function(el, i) {
+      var label = el.value.trim();
+      if (label) fields.push({ label: label, value: (values[i] ? values[i].value.trim() : '') });
+    });
+    return fields;
+  }
+
+  window.cpAddField = function() {
+    var existing = cpReadFields();
+    existing.push({ label: '', value: '' });
+    cpRenderFields(existing);
+  };
+
+  window.cpRemoveField = function(idx) {
+    var existing = cpReadFields();
+    existing.splice(idx, 1);
+    cpRenderFields(existing);
+  };
+
+  window.cpTogglePO = function(checked) {
+    document.getElementById('cp-po-number-row').style.display = checked ? '' : 'none';
+  };
+
+  function cpCloseModal() {
+    document.getElementById('cp-modal-backdrop').style.display = 'none';
+    document.getElementById('cp-modal').style.display = 'none';
+    document.getElementById('cp-client-name').disabled = false;
+  }
+  window.cpCloseModal = cpCloseModal;
+
+  window.cpSave = function() {
+    var name = document.getElementById('cp-client-name').value.trim();
+    if (!name) { alert('Client name is required.'); return; }
+    var payload = {
+      requires_po:           document.getElementById('cp-requires-po').checked,
+      po_number:             document.getElementById('cp-po-number').value.trim(),
+      custom_invoice_fields: cpReadFields(),
+      invoice_notes:         document.getElementById('cp-invoice-notes').value.trim(),
+    };
+    var btn = document.getElementById('cp-save-btn');
+    var statusEl = document.getElementById('cp-modal-status');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    fetch('/api/client-profiles/' + encodeURIComponent(name), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    .then(function(r) { if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Save failed'); }); return r.json(); })
+    .then(function() {
+      statusEl.style.color = 'var(--good)';
+      statusEl.textContent = '✓ Saved';
+      setTimeout(function() { cpCloseModal(); cpLoadProfiles(); }, 700);
+    })
+    .catch(function(e) {
+      btn.disabled = false; btn.textContent = 'Save Profile';
+      statusEl.style.color = 'var(--bad)';
+      statusEl.textContent = 'Error: ' + e.message;
+    });
+  };
+})();
+</script>
+
+<script>
+// ── Invoice modal: client requirements section ───────────────────────────────
+(function() {
+  // Extend openInvoiceModal to load + render client requirements
+  var _origOpen = window.openInvoiceModal;
+  window.openInvoiceModal = function(intakeId, phaseCode) {
+    // Reset client requirements section
+    document.getElementById('modal-client-requirements').style.display = 'none';
+    document.getElementById('modal-po-row').style.display         = 'none';
+    document.getElementById('modal-po-attach-row').style.display  = 'none';
+    document.getElementById('modal-po-warning').style.display     = 'none';
+    document.getElementById('modal-req-badge').style.display      = 'none';
+    document.getElementById('modal-custom-fields-container').style.display = 'none';
+    document.getElementById('modal-notes-row').style.display      = 'none';
+    document.getElementById('modal-po-number').value = '';
+    document.getElementById('modal-invoice-notes').value = '';
+    document.getElementById('modal-custom-fields-list').innerHTML = '';
+    _poFileDataUrl = null;
+    _poFileName    = null;
+    document.getElementById('modal-po-drop-label').style.display  = '';
+    document.getElementById('modal-po-file-name').style.display   = 'none';
+    // Reset timesheet toggle
+    var tsChk   = document.getElementById('modal-use-timesheet');
+    var tsTrack = document.getElementById('modal-ts-track');
+    var tsKnob  = document.getElementById('modal-ts-knob');
+    if (tsChk)   { tsChk.checked = false; }
+    if (tsTrack) { tsTrack.style.background = 'var(--border)'; }
+    if (tsKnob)  { tsKnob.style.transform = 'translateX(2px)'; }
+
+    // Call original (loads preview)
+    _origOpen(intakeId, phaseCode);
+
+    // After preview loads, also load client profile
+    // We piggyback on the fetch that's already happening — poll until preview is loaded
+    var tries = 0;
+    var poll  = setInterval(function() {
+      tries++;
+      if (tries > 40) { clearInterval(poll); return; }
+      if (!window._modalPreview) return;
+      clearInterval(poll);
+      var preview = window._modalPreview;
+      var clientProfile = preview.client_profile || {};
+      var requiresPO    = !!clientProfile.requires_po;
+      var defaultPO     = clientProfile.po_number || '';
+      var customFields  = Array.isArray(clientProfile.custom_invoice_fields) ? clientProfile.custom_invoice_fields : [];
+      var notes         = clientProfile.invoice_notes || '';
+
+      var hasRequirements = requiresPO || customFields.length > 0 || notes;
+      if (!hasRequirements) return;
+
+      document.getElementById('modal-client-requirements').style.display = '';
+
+      if (requiresPO) {
+        document.getElementById('modal-req-badge').style.display    = '';
+        document.getElementById('modal-po-row').style.display       = '';
+        document.getElementById('modal-po-attach-row').style.display = '';
+        document.getElementById('modal-po-warning').style.display   = '';
+        if (defaultPO) document.getElementById('modal-po-number').value = defaultPO;
+      }
+
+      if (customFields.length > 0) {
+        document.getElementById('modal-custom-fields-container').style.display = '';
+        var cfList = document.getElementById('modal-custom-fields-list');
+        cfList.innerHTML = '';
+        customFields.forEach(function(f) {
+          var row = document.createElement('div');
+          row.style.cssText = 'display:grid;grid-template-columns:1fr 1.2fr;gap:8px;align-items:center';
+          row.innerHTML =
+            '<div style="font-size:11px;font-weight:600;color:var(--muted)">' + f.label + '</div>' +
+            '<input type="text" class="inv-custom-field" data-label="' + f.label + '" value="' + (f.value || '') + '" placeholder="Enter value" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--card-bg);color:var(--text)">';
+          cfList.appendChild(row);
+        });
+      }
+
+      if (notes) {
+        document.getElementById('modal-notes-row').style.display = '';
+        document.getElementById('modal-invoice-notes').value = notes;
+      }
+    }, 150);
+  };
+
+  // Track PO file
+  var _poFileDataUrl = null;
+  var _poFileName    = null;
+
+  window.handlePOFileSelect = function(input) {
+    var file = input.files[0];
+    if (!file) return;
+    _poFileName = file.name;
+    document.getElementById('modal-po-file-name').textContent = '📎 ' + file.name;
+    document.getElementById('modal-po-file-name').style.display = '';
+    document.getElementById('modal-po-drop-label').style.display = 'none';
+    document.getElementById('modal-po-warning').style.display = 'none';
+    // For demo: store filename as attachment reference
+    _poFileDataUrl = file.name; // In production, upload to storage and get URL
+  };
+
+  window.handlePODrop = function(event) {
+    event.preventDefault();
+    document.getElementById('modal-po-drop-zone').style.borderColor = 'var(--border)';
+    var file = event.dataTransfer.files[0];
+    if (!file) return;
+    document.getElementById('modal-po-file').files = event.dataTransfer.files;
+    window.handlePOFileSelect(document.getElementById('modal-po-file'));
+  };
+
+  // Extend confirmGenerateInvoice to include client requirement fields
+  var _origConfirm = window.confirmGenerateInvoice;
+  window.confirmGenerateInvoice = function() {
+    // Check PO requirement
+    var poAttachRow = document.getElementById('modal-po-attach-row');
+    if (poAttachRow && poAttachRow.style.display !== 'none') {
+      if (!_poFileDataUrl) {
+        document.getElementById('modal-po-warning').style.display = '';
+        document.getElementById('modal-po-warning').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
+    }
+
+    // Collect custom fields
+    var customFields = [];
+    document.querySelectorAll('.inv-custom-field').forEach(function(el) {
+      customFields.push({ label: el.dataset.label, value: el.value.trim() });
+    });
+
+    // Store on window for original confirm to pick up
+    window._invoiceExtraFields = {
+      po_number:            (document.getElementById('modal-po-number').value || '').trim(),
+      po_attachment_url:    _poFileDataUrl || '',
+      custom_fields:        customFields,
+      notes:                (document.getElementById('modal-invoice-notes').value || '').trim(),
+      use_timesheet_hours:  document.getElementById('modal-use-timesheet').checked,
+    };
+
+    _origConfirm();
+  };
+
+  // Patch confirmGenerateInvoice's fetch to include extra fields
+  var _origFetch = window.fetch;
+  // We inject extra fields by wrapping the /api/invoices POST
+  var _patchFetch = function(url, opts) {
+    if (opts && opts.method === 'POST' && typeof url === 'string' && url.endsWith('/api/invoices')) {
+      try {
+        var body = JSON.parse(opts.body || '{}');
+        var extra = window._invoiceExtraFields || {};
+        if (extra.po_number)         body.po_number         = extra.po_number;
+        if (extra.po_attachment_url) body.po_attachment_url = extra.po_attachment_url;
+        if (extra.custom_fields && extra.custom_fields.length) body.custom_fields = extra.custom_fields;
+        if (extra.notes)             body.notes             = extra.notes;
+        body.use_timesheet_hours = !!extra.use_timesheet_hours;
+        opts = Object.assign({}, opts, { body: JSON.stringify(body) });
+      } catch(e) {}
+    }
+    return _origFetch(url, opts);
+  };
+  window.fetch = _patchFetch;
+})();
+</script>
+
+<script>
+// ── Expense: mark reimbursed ─────────────────────────────────────────────────
+window.expMarkReimbursed = function(id) {
+  if (!confirm('Mark this expense as reimbursed to the employee?')) return;
+  fetch('/api/expenses/' + id + '/reimburse', {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: '{}',
+  })
+  .then(function(r) { if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Failed'); }); return r.json(); })
+  .then(function() {
+    var row = document.getElementById('exp-row-' + id);
+    if (row) { row.style.opacity = '0.4'; row.style.pointerEvents = 'none'; }
+    setTimeout(function() { location.reload(); }, 600);
+  })
+  .catch(function(e) { alert('Error: ' + e.message); });
+};
+
+// Bulk reimburse
+window.expBulkReimburse = function() {
+  var ids = [];
+  document.querySelectorAll('.exp-check:checked').forEach(function(cb) { ids.push(cb.dataset.id); });
+  if (!ids.length) return;
+  if (!confirm('Mark ' + ids.length + ' expense(s) as reimbursed to the employee?')) return;
+  var btn = document.getElementById('exp-bulk-reimburse-btn');
+  btn.disabled = true; btn.textContent = 'Processing…';
+  Promise.all(ids.map(function(id) {
+    return fetch('/api/expenses/' + id + '/reimburse', {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: '{}',
+    }).then(function(r) { return r.json(); });
+  }))
+  .then(function() { setTimeout(function() { location.reload(); }, 800); })
+  .catch(function(e) { btn.disabled = false; btn.textContent = 'Mark Selected Reimbursed'; alert('Error: ' + e.message); });
+};
+
+// Extend bulk button visibility to cover both actions
+var _origExpUpdateBulkBtn = window.expUpdateBulkBtn;
+window.expUpdateBulkBtn = function() {
+  if (_origExpUpdateBulkBtn) _origExpUpdateBulkBtn();
+  var checked = document.querySelectorAll('.exp-check:checked').length;
+  var rBtn = document.getElementById('exp-bulk-reimburse-btn');
+  if (rBtn) rBtn.style.display = checked > 0 ? '' : 'none';
+};
 </script>
 
 {% endblock %}

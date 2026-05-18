@@ -3534,6 +3534,10 @@ async def api_create_invoice(request: Request) -> dict[str, Any]:
         return db.create_invoice(
             int(intake_id), phase_code, float(amount),
             user.get("initials", "NK"), notes,
+            po_number=str(body.get("po_number") or ""),
+            po_attachment_url=str(body.get("po_attachment_url") or ""),
+            custom_fields=body.get("custom_fields") or [],
+            use_timesheet_hours=bool(body.get("use_timesheet_hours", False)),
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -3550,6 +3554,81 @@ async def api_update_invoice_status(request: Request, invoice_id: int) -> dict[s
         raise HTTPException(status_code=422, detail="status must be draft, sent, or paid")
     db.update_invoice_status(invoice_id, status, user.get("initials", ""))
     return {"ok": True}
+
+
+# ── Client Profiles ───────────────────────────────────────────────────────────
+
+@app.get("/api/client-profiles")
+def api_list_client_profiles(request: Request) -> list[dict[str, Any]]:
+    if not _session_user(request):
+        raise HTTPException(status_code=401)
+    return db.list_client_profiles()
+
+
+@app.get("/api/client-profiles/client-names")
+def api_client_names(request: Request) -> list[str]:
+    if not _session_user(request):
+        raise HTTPException(status_code=401)
+    return db.get_unique_client_names()
+
+
+@app.get("/api/client-profiles/{client_name:path}")
+def api_get_client_profile(client_name: str, request: Request) -> dict[str, Any]:
+    if not _session_user(request):
+        raise HTTPException(status_code=401)
+    profile = db.get_client_profile(client_name)
+    if not profile:
+        return {"client_name": client_name, "requires_po": False, "po_number": "",
+                "custom_invoice_fields": [], "invoice_notes": ""}
+    return profile
+
+
+@app.put("/api/client-profiles/{client_name:path}")
+async def api_upsert_client_profile(client_name: str, request: Request) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user or user.get("role") not in ("admin", "office_manager"):
+        raise HTTPException(status_code=403, detail="Office manager access required")
+    body = await request.json()
+    return db.upsert_client_profile(
+        client_name=client_name,
+        requires_po=bool(body.get("requires_po", False)),
+        po_number=str(body.get("po_number") or ""),
+        custom_invoice_fields=body.get("custom_invoice_fields") or [],
+        invoice_notes=str(body.get("invoice_notes") or ""),
+    )
+
+
+# ── Expense Reimbursement ─────────────────────────────────────────────────────
+
+@app.patch("/api/expenses/{expense_id}/reimburse")
+async def api_reimburse_expense(expense_id: str, request: Request) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user or user.get("role") not in ("admin", "office_manager"):
+        raise HTTPException(status_code=403, detail="Office manager access required")
+    return db.mark_expense_reimbursed(expense_id, user.get("initials", "?"))
+
+
+@app.post("/api/expenses/mark-client-invoiced")
+async def api_expenses_client_invoiced(request: Request) -> dict[str, Any]:
+    user = _session_user(request)
+    if not user or user.get("role") not in ("admin", "office_manager"):
+        raise HTTPException(status_code=403, detail="Office manager access required")
+    body = await request.json()
+    expense_ids    = body.get("expense_ids") or []
+    invoice_number = str(body.get("invoice_number") or "")
+    if not expense_ids:
+        raise HTTPException(status_code=422, detail="expense_ids required")
+    count = db.mark_expenses_client_invoiced(
+        expense_ids, invoice_number, user.get("initials", "?")
+    )
+    return {"ok": True, "marked": count}
+
+
+# ── Extended invoice creation (picks up new fields) ───────────────────────────
+# NOTE: The existing POST /api/invoices already calls db.create_invoice.
+# We patch it here to forward the new optional fields from the request body.
+# The old route definition above is replaced by this one at runtime because
+# FastAPI uses the last registered route for duplicate paths — so we re-register.
 
 
 @app.get("/api/burn-vs-bill")

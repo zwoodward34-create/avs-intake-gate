@@ -1601,12 +1601,16 @@ def update_expense(expense_id: str, updates: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_pending_reimbursable_expenses() -> list[dict[str, Any]]:
+    """Return reimbursable expenses that still need action:
+    - pending / approved  → need to be reimbursed to the employee
+    - reimbursed          → reimbursed to employee but not yet invoiced to client
+    """
     resp = (
         _client()
         .table("project_expenses")
         .select("*, intakes(project_number, project_name, client_name)")
         .eq("is_reimbursable", True)
-        .in_("status", ["pending", "approved"])
+        .in_("status", ["pending", "approved", "reimbursed"])
         .order("created_at", desc=True)
         .execute()
     )
@@ -1619,6 +1623,99 @@ def get_pending_reimbursable_expenses() -> list[dict[str, Any]]:
         row["client_name"]    = intake.get("client_name") or "—"
         result.append(row)
     return result
+
+
+def mark_expense_reimbursed(expense_id: str, reimbursed_by: str) -> dict[str, Any]:
+    """Mark an expense as reimbursed to the employee."""
+    now = _utc_now_iso()
+    _client().table("project_expenses").update({
+        "status":        "reimbursed",
+        "reimbursed_at": now,
+        "reimbursed_by": reimbursed_by,
+    }).eq("id", expense_id).execute()
+    return {"ok": True, "expense_id": expense_id, "reimbursed_at": now}
+
+
+def mark_expenses_client_invoiced(
+    expense_ids: list[str], invoice_number: str, invoiced_by: str
+) -> int:
+    """Mark a batch of expenses as invoiced to the client."""
+    now = _utc_now_iso()
+    _client().table("project_expenses").update({
+        "status":                "billed",
+        "client_invoiced_at":    now,
+        "client_invoice_number": invoice_number,
+    }).in_("id", expense_ids).execute()
+    return len(expense_ids)
+
+
+# ── Client Profiles ───────────────────────────────────────────────────────────
+
+def get_client_profile(client_name: str) -> Optional[dict[str, Any]]:
+    """Return the stored profile for a client, or None if not yet configured."""
+    try:
+        resp = (
+            _client()
+            .table("client_profiles")
+            .select("*")
+            .eq("client_name", client_name)
+            .maybe_single()
+            .execute()
+        )
+        return resp.data
+    except Exception:
+        return None
+
+
+def upsert_client_profile(
+    client_name: str,
+    requires_po: bool = False,
+    po_number: str = "",
+    custom_invoice_fields: Optional[list] = None,
+    invoice_notes: str = "",
+) -> dict[str, Any]:
+    """Create or update a client's invoice-requirements profile."""
+    now = _utc_now_iso()
+    data = {
+        "client_name":           client_name,
+        "requires_po":           requires_po,
+        "po_number":             po_number or "",
+        "custom_invoice_fields": custom_invoice_fields or [],
+        "invoice_notes":         invoice_notes or "",
+        "updated_at":            now,
+    }
+    resp = (
+        _client()
+        .table("client_profiles")
+        .upsert(data, on_conflict="client_name")
+        .execute()
+    )
+    return (resp.data or [data])[0]
+
+
+def list_client_profiles() -> list[dict[str, Any]]:
+    """Return all client profiles, ordered alphabetically."""
+    try:
+        resp = _client().table("client_profiles").select("*").order("client_name").execute()
+        return resp.data or []
+    except Exception:
+        return []
+
+
+def get_unique_client_names() -> list[str]:
+    """Return sorted list of unique client names from all intakes."""
+    try:
+        resp = (
+            _client()
+            .table("intakes")
+            .select("client_name")
+            .not_.is_("client_name", "null")
+            .execute()
+        )
+        names = sorted({r["client_name"] for r in (resp.data or []) if r.get("client_name")})
+        return names
+    except Exception:
+        return []
 
 
 def submit_period(engineer: str, period_start: str, period_end: str, total_hours: float) -> dict[str, Any]:
@@ -4195,6 +4292,10 @@ def get_invoice_preview(intake_id: int, phase_code: str) -> dict[str, Any]:
         "is_current": p["billing_phase_code"] == phase_code,
     } for p in phases], key=lambda x: order_map.get(x["code"], 99))
 
+    # Attach client profile (invoice requirements)
+    client_name    = intake.get("client_name") or ""
+    client_profile = get_client_profile(client_name) if client_name else None
+
     return {
         "intake": intake,
         "intake_id": intake_id,
@@ -4206,27 +4307,46 @@ def get_invoice_preview(intake_id: int, phase_code: str) -> dict[str, Any]:
         "balance_to_finish": round(max(0.0, total_contract - prev_billed - amount_due), 2),
         "fee_pct": round(fee_pct * 100, 0),
         "phase_rows": phase_rows,
+        "client_profile": client_profile or {},
     }
 
 
 def create_invoice(
-    intake_id: int, phase_code: str, amount: float, created_by: str, notes: str = ""
+    intake_id: int,
+    phase_code: str,
+    amount: float,
+    created_by: str,
+    notes: str = "",
+    po_number: str = "",
+    po_attachment_url: str = "",
+    custom_fields: Optional[list] = None,
+    use_timesheet_hours: bool = False,
 ) -> dict[str, Any]:
     invoice_number = _next_invoice_number()
     now = _utc_now_iso()
+    row: dict[str, Any] = {
+        "invoice_number":     invoice_number,
+        "intake_id":          intake_id,
+        "phase_code":         phase_code,
+        "amount":             round(amount, 2),
+        "status":             "draft",
+        "created_by":         created_by,
+        "notes":              notes,
+        "created_at":         now,
+    }
+    # Optional new fields (safe to omit if columns don't exist yet)
+    if po_number:
+        row["po_number"] = po_number
+    if po_attachment_url:
+        row["po_attachment_url"] = po_attachment_url
+    if custom_fields:
+        row["custom_fields"] = custom_fields
+    if use_timesheet_hours:
+        row["use_timesheet_hours"] = use_timesheet_hours
     resp = (
         _client()
         .table("invoices")
-        .insert({
-            "invoice_number": invoice_number,
-            "intake_id":      intake_id,
-            "phase_code":     phase_code,
-            "amount":         round(amount, 2),
-            "status":         "draft",
-            "created_by":     created_by,
-            "notes":          notes,
-            "created_at":     now,
-        })
+        .insert(row)
         .execute()
     )
     invoice_id = (resp.data or [{}])[0].get("id")
