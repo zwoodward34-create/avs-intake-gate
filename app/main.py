@@ -238,9 +238,16 @@ _ROLE_REDIRECT: dict[str, str] = {
 
 _is_production = os.environ.get("APP_ENV", "development").lower() == "production"
 
+_session_secret = os.environ.get("SESSION_SECRET_KEY") or ""
+if not _session_secret:
+    raise RuntimeError(
+        "SESSION_SECRET_KEY environment variable is not set. "
+        "Generate one with: python3 -c \"import secrets; print(secrets.token_hex(32))\""
+    )
+
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.environ.get("SESSION_SECRET_KEY", ""),
+    secret_key=_session_secret,
     session_cookie="avs_session",
     https_only=_is_production,
     max_age=28800,
@@ -846,15 +853,27 @@ async def intake_upload_post(
     prefill: dict[str, Any] = {}
     source_label = "uploaded document"
 
+    _ALLOWED_UPLOAD_EXT = {".pdf", ".docx", ".txt", ".eml", ".msg"}
+    _MAX_UPLOAD_BYTES   = 10 * 1024 * 1024  # 10 MB
+
     try:
         paste_clean = (paste_text or "").strip()
         if paste_clean:
             text = paste_clean
             source_label = "pasted text"
         elif file and file.filename:
+            # Validate extension before reading bytes
+            ext = Path(file.filename).suffix.lower()
+            if ext not in _ALLOWED_UPLOAD_EXT:
+                raise ValueError(
+                    f"Unsupported file type '{ext}'. "
+                    f"Please upload a PDF, DOCX, TXT, or EML file."
+                )
             raw = await file.read()
             if not raw:
                 raise ValueError("Uploaded file is empty.")
+            if len(raw) > _MAX_UPLOAD_BYTES:
+                raise ValueError("File exceeds the 10 MB size limit.")
             text = document_extractor.extract_text(file.filename, raw)
             if text.startswith("[") and "error" in text.lower():
                 raise ValueError(text)
@@ -3378,12 +3397,25 @@ async def api_create_expense(request: Request) -> dict[str, Any]:
         if receipt_file and hasattr(receipt_file, "filename") and receipt_file.filename:
             try:
                 import mimetypes as _mt
-                contents  = await receipt_file.read()
-                safe_name = receipt_file.filename.replace(" ", "_")
-                path      = f"expenses/{user['initials']}/{_now_local_iso()[:10]}_{safe_name}"
-                ct        = receipt_file.content_type or _mt.guess_type(safe_name)[0] or "application/octet-stream"
+                _ALLOWED_RECEIPT_EXT  = {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic"}
+                _MAX_RECEIPT_BYTES    = 10 * 1024 * 1024  # 10 MB
+                # Sanitize: strip path components, normalize spaces
+                safe_name = os.path.basename(receipt_file.filename).replace(" ", "_")
+                ext = Path(safe_name).suffix.lower()
+                if ext not in _ALLOWED_RECEIPT_EXT:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Receipt must be a PDF, JPG, PNG, or WebP file (got '{ext}')."
+                    )
+                contents = await receipt_file.read()
+                if len(contents) > _MAX_RECEIPT_BYTES:
+                    raise HTTPException(status_code=400, detail="Receipt file exceeds the 10 MB size limit.")
+                path = f"expenses/{user['initials']}/{_now_local_iso()[:10]}_{safe_name}"
+                ct   = receipt_file.content_type or _mt.guess_type(safe_name)[0] or "application/octet-stream"
                 db._client().storage.from_("receipts").upload(path, contents, {"content-type": ct})
                 receipt_url = db._client().storage.from_("receipts").get_public_url(path)
+            except HTTPException:
+                raise
             except Exception:
                 pass
     else:
