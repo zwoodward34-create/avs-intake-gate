@@ -729,6 +729,7 @@ def intake_view(request: Request, intake_id: int) -> HTMLResponse:
             "has_budget":       bool(phase_budgets),
             "budget_fee":       phase_budgets[0]["approved_fee"] if phase_budgets else 0.0,
             "days_since_proposal": days_since_proposal,
+            "phase_colors_json": _json.dumps(db.PHASE_COLORS),
         },
     )
 
