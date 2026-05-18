@@ -9,6 +9,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 import csv
 import io
 import json as _json
@@ -202,6 +206,9 @@ templates.env.globals["burn_nav_badge_count"] = _burn_nav_badge_count
 
 
 app = FastAPI(title="AVS Intake Gate")
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -229,14 +236,15 @@ _ROLE_REDIRECT: dict[str, str] = {
     "drafter":        "/engineer-dashboard",
 }
 
+_is_production = os.environ.get("APP_ENV", "development").lower() == "production"
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SESSION_SECRET_KEY", ""),
     session_cookie="avs_session",
-    https_only=False,
-    max_age=28800,  # 8 hours
+    https_only=_is_production,
+    max_age=28800,
 )
-
 
 def _session_user(request: Request) -> Optional[dict]:
     return request.session.get("user")
@@ -368,6 +376,7 @@ def login_page(request: Request, error: Optional[str] = None) -> HTMLResponse:
 
 
 @app.post("/api/auth/login")
+@limiter.limit("5/minute")
 async def api_login(request: Request) -> JSONResponse:
     body = await request.json()
     email = (body.get("email") or "").strip().lower()
