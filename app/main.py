@@ -62,6 +62,60 @@ def _as_str(value: Any) -> Optional[str]:
     return value_str if value_str else None
 
 
+_PHASE_OFFSETS: dict[str, float] = {
+    # Proportions of total pre-IFP duration at which each milestone is due.
+    # Derived from CLAUDE.md phase allocation: 5% Setup · 20% SD · 30% DD · 35% CD.
+    "SD":  0.22,   # end of SD
+    "50%": 0.40,   # mid-DD (50% CD set)
+    "75%": 0.57,   # end of DD (75% CD set)
+    "90%": 0.73,   # two-thirds through CD (90% CD set)
+    # IFP is always the literal ifp_due_date — no offset needed.
+}
+
+_CA_DAYS: dict[str, int] = {
+    "healthcare": 180,
+    "data_center": 180,
+}
+
+def _compute_suggested_phase_dates(
+    ifp_due_date: Optional[str],
+    inquiry_date: Optional[str],
+    building_type: Optional[str],
+    skipped_phases: Optional[list[str]] = None,
+) -> dict[str, str]:
+    """Return a dict of {phase_code: YYYY-MM-DD} for all active phases."""
+    if not ifp_due_date:
+        return {}
+    try:
+        ifp_d = date.fromisoformat(ifp_due_date)
+        start_d = date.fromisoformat(inquiry_date) if inquiry_date else date.today()
+    except (ValueError, TypeError, AttributeError):
+        return {}
+
+    total = (ifp_d - start_d).days
+    if total <= 7:
+        return {}  # too short to compute meaningful phase dates
+
+    _skipped = set(skipped_phases or [])
+    suggested: dict[str, str] = {}
+
+    for phase, pct in _PHASE_OFFSETS.items():
+        if phase not in _skipped:
+            suggested[phase] = (start_d + timedelta(days=round(total * pct))).isoformat()
+
+    if "IFP" not in _skipped:
+        suggested["IFP"] = ifp_due_date
+
+    if "REV" not in _skipped:
+        suggested["REV"] = (ifp_d + timedelta(days=30)).isoformat()
+
+    ca_duration = _CA_DAYS.get((building_type or "").lower(), 120)
+    if "CA" not in _skipped:
+        suggested["CA"] = (ifp_d + timedelta(days=ca_duration)).isoformat()
+
+    return suggested
+
+
 async def _parse_intake_form(request: Request) -> dict[str, Any]:
     form = await request.form()
 
@@ -127,6 +181,14 @@ async def _parse_intake_form(request: Request) -> dict[str, Any]:
         except Exception:
             pass
     answers["skipped_phases"] = _skipped_phases
+
+    # Compute suggested phase dates from IFP anchor + intake start date
+    answers["suggested_phase_dates"] = _compute_suggested_phase_dates(
+        ifp_due_date=_as_str(form.get("ifp_due_date")),
+        inquiry_date=_as_str(form.get("inquiry_date")),
+        building_type=answers.get("building_type"),
+        skipped_phases=_skipped_phases or None,
+    )
 
     return answers
 

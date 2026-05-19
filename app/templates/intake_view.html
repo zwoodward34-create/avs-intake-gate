@@ -244,9 +244,12 @@
 
       {# Per-phase due dates #}
       <div id="pd-phase-dates-section" style="margin-bottom:14px;display:none">
-        <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);display:block;margin-bottom:6px">
-          Per-Phase Due Dates <span style="font-weight:400;text-transform:none;letter-spacing:0;opacity:.7">(optional)</span>
-        </label>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">
+            Per-Phase Due Dates <span style="font-weight:400;text-transform:none;letter-spacing:0;opacity:.7">(optional)</span>
+          </label>
+          <span id="pd-dates-ai-note" style="display:none;font-size:10px;color:var(--accent);font-style:italic">AI suggested · adjust as needed</span>
+        </div>
         <div id="pd-phase-dates-list" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
 
@@ -1336,7 +1339,15 @@ async function markProposalSent(intakeId) {
       _selPhases = ALL_PHASES.slice();
     }
   }
-  var _phaseDates  = {{ (intake.phase_due_dates or '{}') | safe }};
+  var _phaseDates      = {{ (intake.phase_due_dates or '{}') | safe }};
+  var _suggestedDates  = {{ (intake.answers.get('suggested_phase_dates', {}) | tojson) }};
+
+  // Pre-fill from AI-computed suggestions if user hasn't saved manual dates yet
+  var _datesFromSuggestion = false;
+  if (!Object.keys(_phaseDates).length && Object.keys(_suggestedDates).length) {
+    _phaseDates = Object.assign({}, _suggestedDates);
+    _datesFromSuggestion = true;
+  }
 
   function renderChips() {
     var grid = document.getElementById('pd-phases-grid');
@@ -1385,13 +1396,23 @@ async function markProposalSent(intakeId) {
     var phases = _selPhases.filter(function(p) { return p !== 'IFP'; });
     if (!phases.length) { section.style.display = 'none'; return; }
     section.style.display = '';
+
+    // Show/hide "AI suggested" note
+    var aiNote = document.getElementById('pd-dates-ai-note');
+    if (aiNote) aiNote.style.display = _datesFromSuggestion ? '' : 'none';
+
     list.innerHTML = phases.map(function(ph) {
       var color = PHASE_COLORS_MAP[ph] || '#9ca3af';
       var val   = _phaseDates[ph] || '';
+      var isSuggested = _datesFromSuggestion && val && !Object.keys({{ (intake.phase_due_dates or '{}') | safe }}).length;
+      var borderStyle = isSuggested
+        ? 'border:1px solid rgba(79,142,247,0.45);'
+        : 'border:1px solid var(--border);';
       return '<div style="display:grid;grid-template-columns:44px 1fr;align-items:center;gap:10px">' +
         '<span style="font-size:11px;font-weight:700;font-family:var(--mono);color:' + color + '">' + ph + '</span>' +
         '<input type="date" data-phase="' + ph + '" value="' + val + '" ' +
-        'style="background:var(--card-bg-deeper);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:5px 8px;font-size:12px;box-sizing:border-box;width:100%">' +
+        'style="background:var(--card-bg-deeper);' + borderStyle + 'color:var(--text);border-radius:var(--radius-sm);padding:5px 8px;font-size:12px;box-sizing:border-box;width:100%" ' +
+        'oninput="this.style.border=\'1px solid var(--border)\';_datesFromSuggestion=false;var n=document.getElementById(\'pd-dates-ai-note\');if(n)n.style.display=\'none\'">' +
         '</div>';
     }).join('');
   }
