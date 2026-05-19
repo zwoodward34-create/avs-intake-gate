@@ -119,7 +119,11 @@ def complexity_estimate(answers: dict[str, Any]) -> str:
     schedule         = (answers.get("schedule_realism")          or "").strip()
     arch_status      = (answers.get("architect_status")          or "").strip()
     project_type     = (answers.get("project_type")              or "").strip()
-    primary_material = (answers.get("primary_structural_material") or "").strip()
+    # primary_material may be a list (new multi-checkbox) or a single string (legacy / AI-extracted)
+    _pm_raw = answers.get("primary_material") or answers.get("primary_structural_material") or []
+    if isinstance(_pm_raw, str):
+        _pm_raw = [_pm_raw.strip()] if _pm_raw.strip() else []
+    primary_material = _pm_raw  # now always a list
     has_drawings     = bool(answers.get("doc_existing_struct_drawings"))
 
     # 1. Base tier from building type
@@ -145,7 +149,8 @@ def complexity_estimate(answers: dict[str, Any]) -> str:
         "addition_expansion", "one_off_unique",
     }
     _masonry_existing = (
-        primary_material in {"masonry_cmu", "mixed"} and _existing_building
+        any(m in {"masonry_cmu", "cast_in_place_concrete", "mixed"} for m in primary_material)
+        and _existing_building
     )
     factors = [
         scope_def    in {"undefined", "partial"},

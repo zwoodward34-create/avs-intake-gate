@@ -87,7 +87,7 @@ async def _parse_intake_form(request: Request) -> dict[str, Any]:
         "state": _as_str(form.get("state")),
         "relationship_type": _as_str(form.get("relationship_type")) or "new",
         "inquiry_source": _as_str(form.get("inquiry_source")) or "cold_inquiry",
-        "primary_material": _as_str(form.get("primary_material")) or "steel",
+        "primary_material": getlist("primary_material") or ["structural_steel"],
         "scope_definition": _as_str(form.get("scope_definition")) or "unknown",
         "scope_risk_type": _as_str(form.get("scope_risk_type")) or "standard",
         "specialist_support": _as_str(form.get("specialist_support")) or "unknown",

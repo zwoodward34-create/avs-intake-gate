@@ -48,9 +48,13 @@ def generate_proposal(
     is_bts = project_type in (
         "build_to_suit_retrofit", "tenant_improvement", "addition_expansion"
     )
-    scope_last = "G" if complexity == "low" else "H"
+    scope_last = "H"   # software line always included per AVS standard
     sf_str = f"{int(approx_sf):,} SF" if approx_sf else "TBD"
-    arch_first = (architect_name or "").split()[0] if architect_name else "Sir/Madam"
+    # Greet by last name when we have one; fall back to firm name or generic
+    _name_parts = (architect_name or "").split()
+    arch_salutation = _name_parts[-1] if _name_parts else (
+        (architect_firm or "").split()[0] if architect_firm else "Sir/Madam"
+    )
 
     scope_lower = (scope_description or "").lower()
     if "shell" in scope_lower and ("ti" in scope_lower or "tenant" in scope_lower):
@@ -88,7 +92,7 @@ Subject: {project_name}
 {location}
 
 GREETING:
-{arch_first}:
+{arch_salutation}:
 
 OPENING:
 {'For BTS/TI: Begin "We are pleased to offer the following Structural Engineering Services for the subject project, including [key modifications from scope description]." Match the Kissimmee Sprouts BTS example format.' if is_bts else 'For new construction: Begin "We are pleased to offer the following Structural Engineering Services for the subject project." Add exclusion clause only if scope mentions site walls, trellises, or other common exclusions.'}
@@ -96,8 +100,8 @@ OPENING:
 SCOPE ITEMS (A through {scope_last}, use this exact text):
 A) Preparation of all required Structural drawings and details to be incorporated into the final project set.
 B) Preparation of all required Structural Engineering Calculations reflecting the final design.
-C) Proofreading of all Structural sections of the Specifications (prepared by the architect of record) for conformance with the design.
-D) Complete review of all final Architectural drawings with Structural drawings for Structural correctness.
+C) Proofreading of all Structural sections of the Specifications (prepared by {architect_firm or "the architect of record"}) for conformance with the design.
+D) Complete review of all final Architectural drawings prepared by {architect_firm or "the architect of record"} with Structural drawings for Structural correctness.
 E) Review of shop drawings and material submittals pertinent to the Structural Engineering for conformance with the Structural construction documents.
 F) Responding to city comments as required.
 G) Answering RFI's and issuing field sketches as required.

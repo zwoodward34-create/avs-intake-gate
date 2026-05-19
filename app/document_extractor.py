@@ -103,10 +103,12 @@ quick_flags: Object with boolean values. Mark true ONLY when evidence \
     decision-makers — do NOT flag them as unclear
 
 detailed_screening: Object with the following fields:
-  primary_structural_material: One of exactly:
-    "steel", "concrete_tilt_up", "masonry_cmu", "wood_light_frame", \
-    "cold_formed_steel", "mixed", "unknown"
-    Infer from building description if not stated. Tilt-up = concrete_tilt_up.
+  primary_structural_material: A JSON array of one or more values from exactly:
+    "structural_steel", "concrete_tilt_up", "masonry_cmu", "wood_light_frame", \
+    "mass_timber", "cold_formed_steel", "cast_in_place_concrete", "precast_concrete"
+    Include all systems present. Tilt-up panels = ["concrete_tilt_up"]. \
+    Steel frame + tilt-up = ["structural_steel","concrete_tilt_up"]. \
+    If unknown return ["structural_steel"].
   project_type: One of exactly:
     "new_construction", "tenant_improvement_ti", "build_to_suit_bts", \
     "repeating_program_rollout", "renovation_addition", "ground_up"
@@ -202,7 +204,7 @@ Correct output (abbreviated — your output must always be complete):
   "detailed_screening": {
     "project_type": "repeating_program_rollout",
     "building_type": "retail_commercial",
-    "primary_structural_material": "masonry_cmu",
+    "primary_structural_material": ["masonry_cmu"],
     "architect_status": "known_good_track_record",
     "scope_definition": "defined_inclusions_exclusions_clear",
     "schedule_realism": "compressed"
@@ -297,7 +299,7 @@ Correct output (abbreviated):
   "relationship_type": "warm_unverified",
   "detailed_screening": {
     "building_type": "food_service_qsr",
-    "primary_structural_material": "concrete_tilt_up",
+    "primary_structural_material": ["concrete_tilt_up"],
     "scope_definition": "partially_defined",
     "decision_maker_clarity": "contact_to_project_manager"
   },
@@ -391,7 +393,7 @@ OUTPUT SCHEMA (your response must match this exactly):
     "no_clear_decision_maker": "boolean"
   },
   "detailed_screening": {
-    "primary_structural_material": "string",
+    "primary_structural_material": ["string"],
     "project_type": "string",
     "building_type": "string",
     "architect_status": "string",

@@ -189,15 +189,19 @@
       <h2 style="display:none">Detailed screening</h2>
       <div class="row row-2">
         <div class="field">
-          <label>Primary structural material</label>
-          {% set v = answers.get('primary_material') if answers else 'steel' %}
-          <select name="primary_material">
-            <option value="steel"       {% if v in ['', None, 'steel'] %}selected{% endif %}>Steel</option>
-            <option value="concrete"    {% if v == 'concrete' %}selected{% endif %}>Concrete</option>
-            <option value="timber"      {% if v == 'timber' %}selected{% endif %}>Timber / mass timber</option>
-            <option value="masonry"     {% if v == 'masonry' %}selected{% endif %}>Masonry / CMU</option>
-            <option value="cold-formed" {% if v == 'cold-formed' %}selected{% endif %}>Cold-formed steel</option>
-          </select>
+          <label>Primary structural material <span style="font-size:0.8em;font-weight:400;color:var(--text-muted)">(select all that apply)</span></label>
+          {% set _mraw = answers.get('primary_material') if answers else [] %}
+          {% set mats = _mraw if _mraw is not string else [_mraw] %}
+          <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">
+            <label class="check"><input type="checkbox" name="primary_material" value="concrete_tilt_up"      {% if 'concrete_tilt_up'      in mats %}checked{% endif %} /><span>Concrete Tilt-Up</span></label>
+            <label class="check"><input type="checkbox" name="primary_material" value="structural_steel"      {% if 'structural_steel'      in mats %}checked{% endif %} /><span>Structural Steel</span></label>
+            <label class="check"><input type="checkbox" name="primary_material" value="cold_formed_steel"     {% if 'cold_formed_steel'     in mats %}checked{% endif %} /><span>Cold-Formed Steel (Light Gauge)</span></label>
+            <label class="check"><input type="checkbox" name="primary_material" value="masonry_cmu"           {% if 'masonry_cmu'           in mats %}checked{% endif %} /><span>Masonry / CMU</span></label>
+            <label class="check"><input type="checkbox" name="primary_material" value="cast_in_place_concrete"{% if 'cast_in_place_concrete' in mats %}checked{% endif %} /><span>Cast-in-Place Concrete</span></label>
+            <label class="check"><input type="checkbox" name="primary_material" value="precast_concrete"      {% if 'precast_concrete'      in mats %}checked{% endif %} /><span>Precast Concrete</span></label>
+            <label class="check"><input type="checkbox" name="primary_material" value="wood_light_frame"      {% if 'wood_light_frame'      in mats %}checked{% endif %} /><span>Wood Light Frame</span></label>
+            <label class="check"><input type="checkbox" name="primary_material" value="mass_timber"           {% if 'mass_timber'           in mats %}checked{% endif %} /><span>Mass Timber</span></label>
+          </div>
         </div>
         <div class="field"></div>
       </div>
@@ -423,7 +427,7 @@
     if (!sel || !sel.value) return;
     const answers = JSON.parse(sel.options[sel.selectedIndex].dataset.answers || '{}');
     const FILLABLE = [
-      'city', 'state', 'relationship_type', 'inquiry_source', 'primary_material',
+      'city', 'state', 'relationship_type', 'inquiry_source',
       'project_type', 'building_type', 'architect_status', 'architect_responsiveness',
       'decision_maker_clarity', 'scope_definition', 'scope_risk_type', 'specialist_support',
       'scope_creep_likelihood', 'schedule_realism', 'site_access', 'docs_commitment',
@@ -436,6 +440,14 @@
     ];
     FILLABLE.forEach(k => _setField(k, answers[k]));
     CHECKBOXES.forEach(k => _setField(k, answers[k]));
+    // Restore primary_material multi-checkboxes
+    document.querySelectorAll('input[name="primary_material"]').forEach(cb => cb.checked = false);
+    const _tplMats = answers['primary_material'];
+    const _tplMatList = Array.isArray(_tplMats) ? _tplMats : (_tplMats ? [_tplMats] : []);
+    _tplMatList.forEach(v => {
+      const cb = document.querySelector(`input[name="primary_material"][value="${v}"]`);
+      if (cb) cb.checked = true;
+    });
   }
 
   async function deleteTemplate() {
@@ -583,14 +595,28 @@
       cold_website:        'cold_inquiry',
     })[data.source_of_inquiry]);
 
-    setSelect('primary_material', ({
-      steel:             'steel',
-      concrete_tilt_up:  'concrete',
-      masonry_cmu:       'masonry',
-      wood_light_frame:  'timber',
-      cold_formed_steel: 'cold-formed',
-      mixed:             'steel',
-    })[ds.primary_structural_material]);
+    // Multi-checkbox: uncheck all first, then check extracted values
+    document.querySelectorAll('input[name="primary_material"]').forEach(cb => cb.checked = false);
+    const _matRaw = ds.primary_structural_material;
+    const _matList = Array.isArray(_matRaw) ? _matRaw : (_matRaw ? [_matRaw] : []);
+    // Map legacy/extractor single-value codes to new checkbox values
+    const _matMap = {
+      steel:              'structural_steel',
+      structural_steel:   'structural_steel',
+      concrete_tilt_up:   'concrete_tilt_up',
+      masonry_cmu:        'masonry_cmu',
+      wood_light_frame:   'wood_light_frame',
+      mass_timber:        'mass_timber',
+      cold_formed_steel:  'cold_formed_steel',
+      'cold-formed':      'cold_formed_steel',
+      cast_in_place_concrete: 'cast_in_place_concrete',
+      precast_concrete:   'precast_concrete',
+    };
+    _matList.forEach(m => {
+      const mapped = _matMap[m] || m;
+      const cb = document.querySelector(`input[name="primary_material"][value="${mapped}"]`);
+      if (cb) cb.checked = true;
+    });
 
     setSelect('project_type', ({
       new_construction:         'new_construction',
@@ -779,7 +805,7 @@
     const fd = new FormData(form);
     const answers = {};
     const FILLABLE = [
-      'city', 'state', 'relationship_type', 'inquiry_source', 'primary_material',
+      'city', 'state', 'relationship_type', 'inquiry_source',
       'project_type', 'building_type', 'architect_status', 'architect_responsiveness',
       'decision_maker_clarity', 'scope_definition', 'scope_risk_type', 'specialist_support',
       'scope_creep_likelihood', 'schedule_realism', 'site_access', 'docs_commitment',
@@ -792,6 +818,8 @@
     ];
     FILLABLE.forEach(k => { const v = fd.get(k); if (v) answers[k] = v; });
     CHECKBOXES.forEach(k => { answers[k] = fd.get(k) === 'on'; });
+    const _matVals = fd.getAll('primary_material');
+    if (_matVals.length) answers['primary_material'] = _matVals;
 
     status.textContent = 'Saving...';
     const res = await fetch('/api/templates', {
