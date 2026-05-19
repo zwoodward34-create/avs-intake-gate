@@ -46,55 +46,16 @@
       ["Foundation", colMap.foundation],
     ];
 
-    // Exclude internal annotation keys from display
-    const usedKeys = new Set([...Object.values(colMap).filter(Boolean), "_intake_id"]);
+    const usedKeys = new Set(Object.values(colMap).filter(Boolean));
 
     for (const row of rows) {
-      const intakeId = row["_intake_id"];
-
       const card = document.createElement("div");
       card.className = "pf-card card";
 
-      // If this project has a matching intake record, make the whole card clickable
-      if (intakeId) {
-        card.style.cursor = "pointer";
-        card.style.transition = "box-shadow 0.12s, border-color 0.12s";
-        card.addEventListener("mouseenter", () => {
-          card.style.boxShadow = "0 0 0 2px var(--accent)";
-          card.style.borderColor = "var(--accent)";
-        });
-        card.addEventListener("mouseleave", () => {
-          card.style.boxShadow = "";
-          card.style.borderColor = "";
-        });
-        card.addEventListener("click", () => {
-          window.location.href = "/intakes/" + intakeId;
-        });
-      }
-
-      // Header: title + optional "View Intake →" badge
-      const titleRow = document.createElement("div");
-      titleRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px";
-
       const title = document.createElement("div");
       title.className = "pf-card-title";
-      title.style.margin = "0";
       title.textContent = buildTitle(row, colMap);
-      titleRow.appendChild(title);
-
-      if (intakeId) {
-        const badge = document.createElement("span");
-        badge.textContent = "View Intake →";
-        badge.style.cssText = [
-          "font-size:10px", "font-weight:700", "letter-spacing:.4px",
-          "padding:3px 9px", "border-radius:20px",
-          "background:var(--accent)", "color:#fff",
-          "white-space:nowrap", "flex-shrink:0",
-        ].join(";");
-        titleRow.appendChild(badge);
-      }
-
-      card.appendChild(titleRow);
+      card.appendChild(title);
 
       const kv = document.createElement("div");
       kv.className = "pf-kv";

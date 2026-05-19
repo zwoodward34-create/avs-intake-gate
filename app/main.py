@@ -16,6 +16,7 @@ from slowapi.errors import RateLimitExceeded
 import csv
 import io
 import json as _json
+import re as _re
 from datetime import date, timedelta
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -915,10 +916,12 @@ async def intake_upload_post(
 
 @app.post("/intakes/{intake_id}/generate-proposal")
 def generate_proposal_route(
+    request: Request,
     intake_id: int,
     fee_amount: float = Form(...),
     structural_system: Optional[str] = Form(None),
 ) -> RedirectResponse:
+    _api_require(request)
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -1128,9 +1131,25 @@ async def api_mo_review_json(request: Request, intake_id: int) -> dict:
 
 @app.post("/api/intakes/{intake_id}/generate-proposal")
 async def api_generate_proposal_json(request: Request, intake_id: int) -> dict:
+    _api_require(request)
     intake = db.get_intake(intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="Not found.")
+    # Cooldown: prevent repeated AI generation within 60 seconds
+    if intake.proposal_generated_at:
+        try:
+            _last_gen = datetime.fromisoformat(intake.proposal_generated_at.replace("Z", "+00:00"))
+            _now_utc = datetime.now(_last_gen.tzinfo)
+            if (_now_utc - _last_gen).total_seconds() < 60:
+                _wait = int(60 - (_now_utc - _last_gen).total_seconds())
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Proposal was just generated. Please wait {_wait}s before regenerating.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # If timestamp parsing fails, allow generation
     body = await request.json()
     fee_amount = float(body.get("fee_amount") or 0)
     structural_system = str(body.get("structural_system") or "")
@@ -1304,15 +1323,18 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
             approved_fee = float(intake.mo_fee_override)
         except (ValueError, TypeError):
             pass
+    _win_warnings: list[str] = []
     if approved_fee and approved_fee > 0:
         try:
             db.generate_phase_budgets(intake_id, project_number, approved_fee)
-        except Exception:
-            pass
+        except Exception as _e:
+            _win_warnings.append(f"Phase budget generation failed: {_e}")
+            print(f"[mark_project_won] phase_budgets error for intake {intake_id}: {_e}")
         try:
             db.create_billing_phases_for_project(intake_id, approved_fee)
-        except Exception:
-            pass
+        except Exception as _e:
+            _win_warnings.append(f"Billing phase creation failed: {_e}")
+            print(f"[mark_project_won] billing_phases error for intake {intake_id}: {_e}")
 
     # 3. Write calendar events (WEU load committed to engineers)
     _start = intake.proposed_start_date
@@ -1336,8 +1358,9 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
                 selected_phases=_sel or None,
                 phase_due_dates=_dates or None,
             )
-        except Exception:
-            pass
+        except Exception as _e:
+            _win_warnings.append(f"Calendar event generation failed: {_e}")
+            print(f"[mark_project_won] calendar_events error for intake {intake_id}: {_e}")
 
     # 4. Mark as ACTIVE_PROJECT and record win probability
     db.mark_project_won(intake_id, win_probability=win_prob)
@@ -1362,15 +1385,19 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
         }
         db._client().table("historical_projects").insert(hist_record).execute()
         project_search.invalidate_cache()
-    except Exception:
-        pass
+    except Exception as _e:
+        _win_warnings.append(f"Historical record save failed: {_e}")
+        print(f"[mark_project_won] historical_projects error for intake {intake_id}: {_e}")
 
-    return {
+    response: dict[str, Any] = {
         "ok": True,
         "status": "ACTIVE_PROJECT",
         "intake_id": intake_id,
         "project_number": project_number,
     }
+    if _win_warnings:
+        response["warnings"] = _win_warnings
+    return response
 
 
 @app.patch("/api/intakes/{intake_id}/project-details")
@@ -1900,6 +1927,7 @@ def api_past_projects_refresh() -> dict[str, str]:
 
 @app.post("/api/nl-search-projects")
 async def api_nl_search_projects(request: Request) -> dict[str, Any]:
+    _api_require(request)
     body = await request.json()
     query = (body.get("query") or "").strip()
     if not query:
@@ -2006,6 +2034,7 @@ async def api_nl_search_projects(request: Request) -> dict[str, Any]:
 
 @app.post("/api/analyze-project")
 async def api_analyze_project(request: Request) -> dict[str, Any]:
+    _api_require(request)
     body = await request.json()
     description = (body.get("description") or "").strip()
     if not description:
@@ -2044,6 +2073,7 @@ async def api_analyze_project(request: Request) -> dict[str, Any]:
 
 @app.post("/api/historical-projects")
 async def api_save_historical_project(request: Request) -> dict[str, Any]:
+    _api_require(request)
     body = await request.json()
     try:
         year = int(body["year_completed"]) if body.get("year_completed") else None
@@ -3522,8 +3552,10 @@ async def api_create_expense(request: Request) -> dict[str, Any]:
                 import mimetypes as _mt
                 _ALLOWED_RECEIPT_EXT  = {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic"}
                 _MAX_RECEIPT_BYTES    = 10 * 1024 * 1024  # 10 MB
-                # Sanitize: strip path components, normalize spaces
-                safe_name = os.path.basename(receipt_file.filename).replace(" ", "_")
+                # Sanitize: strip path components, then remove any character that
+                # isn't alphanumeric, a dot, a hyphen, or an underscore.
+                _raw_name = os.path.basename(receipt_file.filename.replace("\\", "/"))
+                safe_name = _re.sub(r"[^\w.\-]", "_", _raw_name).strip("._") or "receipt"
                 ext = Path(safe_name).suffix.lower()
                 if ext not in _ALLOWED_RECEIPT_EXT:
                     raise HTTPException(

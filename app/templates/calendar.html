@@ -631,25 +631,6 @@
   </div>
 </div>
 
-<!-- ── Employee Quick-Filter ───────────────────────────────── -->
-<div id="emp-filter-bar" style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);flex-shrink:0">Person</span>
-  <button id="emp-chip-all" onclick="empFilterAll()"
-    style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:all .12s">
-    All
-  </button>
-  {% for m in team_members %}
-  {% if m != 'NS' %}{# Natalie is office manager, not on project phases #}
-  <button class="emp-chip" data-ini="{{ m }}"
-    onclick="empFilterToggle('{{ m }}')"
-    style="font-size:11px;font-weight:700;padding:4px 11px;border-radius:20px;border:1px solid var(--border);background:var(--card-bg-deeper);color:var(--text);cursor:pointer;transition:all .12s;display:flex;align-items:center;gap:5px">
-    <span class="emp-chip-dot" style="width:8px;height:8px;border-radius:50%;background:{{ db_team_colors.get(m, '#9ca3af') }};flex-shrink:0"></span>
-    {{ m }}
-  </button>
-  {% endif %}
-  {% endfor %}
-</div>
-
 <!-- ── Filter Panel ─────────────────────────────────────────── -->
 <div style="margin-bottom:12px;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
   <div id="cal-filter-bar" onclick="calFilterToggle()" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;user-select:none;transition:background .12s">
@@ -1015,18 +996,7 @@
     const projectMap = {};
     phaseEvents.forEach(ev => {
       const pn = ev.project_number || '—';
-      if (!projectMap[pn]) {
-        projectMap[pn] = {
-          project_number:  pn,
-          project_name:    ev.project_name    || pn,
-          cad_or_revit:    ev.cad_or_revit    || '',
-          project_overview:ev.project_overview|| '',
-          phase_jump:      false,
-          phases: [],
-        };
-      }
-      // phase_jump is true for the project if ANY event on it has it set
-      if (ev.phase_jump) projectMap[pn].phase_jump = true;
+      if (!projectMap[pn]) projectMap[pn] = { project_number: pn, project_name: ev.project_name || pn, phases: [] };
       projectMap[pn].phases.push(ev);
     });
     const projects = Object.values(projectMap);
@@ -1167,40 +1137,13 @@
       lbl.style.minHeight = ROW_H + 'px';
       const numEl = document.createElement('div');
       numEl.className = 'gantt-project-num';
-      // Row header: project number + optional badges
-      const numRow = document.createElement('div');
-      numRow.style.cssText = 'display:flex;align-items:center;gap:5px;flex-wrap:wrap;';
-      const numTxt = document.createElement('span');
-      numTxt.textContent = proj.project_number;
-      numRow.appendChild(numTxt);
-      if (proj.phase_jump) {
-        const jb = document.createElement('span');
-        jb.textContent = '⚡';
-        jb.title = 'Non-standard phase sequence';
-        jb.style.cssText = 'font-size:10px;color:#fb923c;flex-shrink:0;';
-        numRow.appendChild(jb);
-      }
-      if (proj.cad_or_revit) {
-        const cb = document.createElement('span');
-        cb.textContent = proj.cad_or_revit;
-        cb.style.cssText = 'font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;background:rgba(255,255,255,.08);color:var(--muted);border:1px solid var(--border);white-space:nowrap;';
-        numRow.appendChild(cb);
-      }
-      numEl.appendChild(numRow);
+      numEl.textContent = proj.project_number;
       lbl.appendChild(numEl);
       if (proj.project_name && proj.project_name !== proj.project_number) {
         const nameEl = document.createElement('div');
         nameEl.className = 'gantt-project-name';
         nameEl.textContent = proj.project_name;
         lbl.appendChild(nameEl);
-      }
-      // Project overview (if set, show as a muted tooltip-style subtitle)
-      if (proj.project_overview) {
-        const ovEl = document.createElement('div');
-        ovEl.style.cssText = 'font-size:9px;color:var(--muted);line-height:1.3;margin-top:1px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;';
-        ovEl.title = proj.project_overview;
-        ovEl.textContent = proj.project_overview;
-        lbl.appendChild(ovEl);
       }
       row.appendChild(lbl);
 
@@ -1270,17 +1213,7 @@
             bar.appendChild(chips);
           }
 
-          // Phase-jump badge — shown when standard intermediate phases are skipped
-          if (ev.phase_jump) {
-            const jumpBadge = document.createElement('span');
-            jumpBadge.textContent = '⚡';
-            jumpBadge.title = 'Non-standard phase sequence — one or more standard phases skipped';
-            jumpBadge.style.cssText = 'font-size:10px;flex-shrink:0;margin-left:2px;opacity:.85;';
-            bar.appendChild(jumpBadge);
-            bar.style.outline = '1px solid rgba(251,146,60,.55)';
-          }
-
-          bar.title = `${proj.project_number} — ${PHASE_LABELS[ev.phase_code] || ev.phase_code}\n${fmtDate(s)} → ${fmtDate(e)}${ev.weu_hours ? '\n' + ev.weu_hours + ' WEU hrs' : ''}${ev.phase_jump ? '\n⚡ Non-standard phase sequence' : ''}\nTeam: ${(ev.team||[]).join(', ')||'—'}`;
+          bar.title = `${proj.project_number} — ${PHASE_LABELS[ev.phase_code] || ev.phase_code}\n${fmtDate(s)} → ${fmtDate(e)}${ev.weu_hours ? '\n' + ev.weu_hours + ' WEU hrs' : ''}\nTeam: ${(ev.team||[]).join(', ')||'—'}`;
           bar.addEventListener('click', evt => { evt.stopPropagation(); openPhaseEventDetail(ev, color); });
           track.appendChild(bar);
         }
@@ -1498,51 +1431,6 @@
   let _cachedOooEvents   = [];
   let _filterPhasesBuilt = false;
   let _filterOpen        = false;
-  // Employee filter: empty Set = show all; non-empty = show only projects with these people
-  let _filterEmployees   = new Set();
-
-  // ── Employee chip functions ────────────────────────────────────────────────
-  window.empFilterAll = function() {
-    _filterEmployees.clear();
-    document.querySelectorAll('.emp-chip').forEach(c => _empChipInactive(c));
-    const allBtn = document.getElementById('emp-chip-all');
-    if (allBtn) { allBtn.style.background = 'var(--accent)'; allBtn.style.color = '#fff'; allBtn.style.borderColor = 'var(--accent)'; }
-    _updateFilterBadge(); _applyRender();
-  };
-
-  window.empFilterToggle = function(ini) {
-    if (_filterEmployees.has(ini)) {
-      _filterEmployees.delete(ini);
-    } else {
-      _filterEmployees.add(ini);
-    }
-    // Update "All" button appearance
-    const allBtn = document.getElementById('emp-chip-all');
-    if (_filterEmployees.size === 0) {
-      if (allBtn) { allBtn.style.background = 'var(--accent)'; allBtn.style.color = '#fff'; allBtn.style.borderColor = 'var(--accent)'; }
-    } else {
-      if (allBtn) { allBtn.style.background = 'var(--card-bg-deeper)'; allBtn.style.color = 'var(--muted)'; allBtn.style.borderColor = 'var(--border)'; }
-    }
-    // Update individual chip
-    const chip = document.querySelector(`.emp-chip[data-ini="${ini}"]`);
-    if (chip) {
-      if (_filterEmployees.has(ini)) _empChipActive(chip, ini);
-      else _empChipInactive(chip);
-    }
-    _updateFilterBadge(); _applyRender();
-  };
-
-  function _empChipActive(chip, ini) {
-    const color = TEAM_COLORS[ini] || '#9ca3af';
-    chip.style.background   = color + '22';
-    chip.style.borderColor  = color;
-    chip.style.color        = color;
-  }
-  function _empChipInactive(chip) {
-    chip.style.background  = 'var(--card-bg-deeper)';
-    chip.style.borderColor = 'var(--border)';
-    chip.style.color       = 'var(--text)';
-  }
 
   function calFilterToggle() {
     _filterOpen = !_filterOpen;
@@ -1550,7 +1438,7 @@
     document.getElementById('cal-filter-caret').style.transform = _filterOpen ? 'rotate(180deg)' : '';
   }
   function _updateFilterBadge() {
-    const active = _hiddenProjects.size > 0 || _hiddenPhases.size > 0 || _filterEmployees.size > 0;
+    const active = _hiddenProjects.size > 0 || _hiddenPhases.size > 0;
     document.getElementById('cal-filter-badge').style.display = active ? '' : 'none';
   }
   function _applyRender() {
@@ -1558,32 +1446,19 @@
     else renderGrid(_cachedPhaseEvents, _cachedOooEvents);
   }
   function filteredEvents(events) {
-    return events.filter(ev => {
-      if (_hiddenProjects.has(ev.project_number)) return false;
-      if (_hiddenPhases.has(ev.phase_code)) return false;
-      // Employee filter: keep event if any selected employee is on this phase's team
-      if (_filterEmployees.size > 0) {
-        const team = ev.team || [];
-        if (!team.some(m => _filterEmployees.has(m))) return false;
-      }
-      return true;
-    });
+    return events.filter(ev =>
+      !_hiddenProjects.has(ev.project_number) &&
+      !_hiddenPhases.has(ev.phase_code)
+    );
   }
 
-  function calFilterAll()          {
-    _hiddenProjects.clear(); _hiddenPhases.clear(); _filterEmployees.clear();
+  function calFilterAll()          { _hiddenProjects.clear(); _hiddenPhases.clear();
     document.querySelectorAll('#filter-projects input,#filter-phases input').forEach(c=>c.checked=true);
-    document.querySelectorAll('.emp-chip').forEach(c=>_empChipInactive(c));
-    const allBtn = document.getElementById('emp-chip-all');
-    if (allBtn) { allBtn.style.background='var(--accent)'; allBtn.style.color='#fff'; allBtn.style.borderColor='var(--accent)'; }
-    _updateFilterBadge(); _applyRender();
-  }
-  function calFilterNone()         {
-    _cachedPhaseEvents.forEach(ev=>_hiddenProjects.add(ev.project_number));
+    _updateFilterBadge(); _applyRender(); }
+  function calFilterNone()         { _cachedPhaseEvents.forEach(ev=>_hiddenProjects.add(ev.project_number));
     Object.keys(PHASE_LABELS).forEach(p=>_hiddenPhases.add(p));
     document.querySelectorAll('#filter-projects input,#filter-phases input').forEach(c=>c.checked=false);
-    _updateFilterBadge(); _applyRender();
-  }
+    _updateFilterBadge(); _applyRender(); }
   function calFilterAllProjects()  { _hiddenProjects.clear();
     document.querySelectorAll('#filter-projects input').forEach(c=>c.checked=true);
     _updateFilterBadge(); _applyRender(); }

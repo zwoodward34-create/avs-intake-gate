@@ -1305,7 +1305,7 @@ def get_active_intake_pseudo_events(covered_project_numbers: set) -> list[dict[s
                 "assigned_engineers,current_phase,proposed_start_date,proposed_end_date,"
                 "mo_fee_override"
             )
-            .eq("status", "active")
+            .eq("status", "ACTIVE_PROJECT")
             .not_.is_("assigned_engineers", "null")
             .execute()
         )
