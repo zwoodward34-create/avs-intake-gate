@@ -1057,9 +1057,13 @@ function updateInvoiceStatus(invoiceId, newStatus) {
 
 // ── Logo preload for PDF ───────────────────────────────────────────────────
 var _pdfLogoDataUrl = null;
+var _pdfLogoNaturalW = 0;
+var _pdfLogoNaturalH = 0;
 (function() {
   var img = new Image();
-  img.crossOrigin = 'anonymous';
+  // NOTE: do NOT set crossOrigin here — same-origin static file, CORS is not
+  // needed and setting crossOrigin='anonymous' causes canvas taint when the
+  // server doesn't echo Access-Control-Allow-Origin, breaking toDataURL().
   img.onload = function() {
     try {
       var canvas = document.createElement('canvas');
@@ -1067,7 +1071,9 @@ var _pdfLogoDataUrl = null;
       canvas.height = img.naturalHeight;
       canvas.getContext('2d').drawImage(img, 0, 0);
       _pdfLogoDataUrl = canvas.toDataURL('image/png');
-    } catch(e) {}
+      _pdfLogoNaturalW = img.naturalWidth;
+      _pdfLogoNaturalH = img.naturalHeight;
+    } catch(e) { console.warn('PDF logo preload failed:', e); }
   };
   img.src = '/static/avs_logo.png';
 })();
@@ -1090,10 +1096,22 @@ function generatePDF(data) {
   doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, pageW, hdrH, 'F');
 
-  // Logo image (if preloaded)
-  var logoW = 180, logoH = 90;
+  // Logo image (if preloaded) — height-constrained to fit within header band
+  // Max height = 78pt (header is 90pt; leaves room for top/bottom margin).
+  // Width is derived proportionally from natural dimensions.
+  var maxLogoH = 78;
+  var logoH, logoW;
+  if (_pdfLogoNaturalW > 0 && _pdfLogoNaturalH > 0) {
+    logoH = maxLogoH;
+    logoW = Math.round(maxLogoH * (_pdfLogoNaturalW / _pdfLogoNaturalH));
+    if (logoW > 220) { logoW = 220; logoH = Math.round(220 * (_pdfLogoNaturalH / _pdfLogoNaturalW)); }
+  } else {
+    // Fallback: reasonable dims for the AVS square-ish logo
+    logoH = maxLogoH;
+    logoW = Math.round(maxLogoH * 1.19); // approximate aspect ratio
+  }
   if (_pdfLogoDataUrl) {
-    doc.addImage(_pdfLogoDataUrl, 'PNG', margin - 10, 4, logoW, logoH);
+    doc.addImage(_pdfLogoDataUrl, 'PNG', margin - 10, (hdrH - logoH) / 2, logoW, logoH);
   } else {
     // Fallback text header
     doc.setTextColor(30,41,59);
