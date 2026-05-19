@@ -116,6 +116,18 @@ async def _parse_intake_form(request: Request) -> dict[str, Any]:
         "notes": _as_str(form.get("notes")),
     }
 
+    # Phase bypass — hidden field set by AI prefill or preserved from edit
+    _sp_raw = form.get("skipped_phases")
+    _skipped_phases: list[str] = []
+    if _sp_raw:
+        try:
+            _parsed = _json.loads(str(_sp_raw))
+            if isinstance(_parsed, list):
+                _skipped_phases = [str(x) for x in _parsed if str(x).strip()]
+        except Exception:
+            pass
+    answers["skipped_phases"] = _skipped_phases
+
     return answers
 
 

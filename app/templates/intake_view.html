@@ -229,6 +229,16 @@
       {# Phase Selection #}
       <div style="margin-bottom:10px">
         <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);display:block;margin-bottom:6px">Phases</label>
+        {% set _ai_skipped = intake.answers.get('skipped_phases', []) %}
+        {% if _ai_skipped %}
+        <div style="background:rgba(255,183,77,0.10);border:1px solid rgba(255,183,77,0.35);border-radius:6px;padding:7px 11px;margin-bottom:8px;display:flex;align-items:center;gap:8px">
+          <span style="color:#ffb74d;font-size:13px;flex-shrink:0">⚠</span>
+          <div>
+            <span style="font-size:11px;font-weight:700;color:#ffb74d">Phase bypass detected in RFP</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:5px">{{ _ai_skipped | join(', ') }} marked as skipped — verify below</span>
+          </div>
+        </div>
+        {% endif %}
         <div id="pd-phases-grid" style="display:flex;flex-wrap:wrap;gap:6px"></div>
       </div>
 
@@ -1317,8 +1327,15 @@ async function markProposalSent(intakeId) {
   var ALL_PHASES   = ['SD','50%','75%','90%','IFP','CA','REV'];
   var PHASE_COLORS_MAP = {{ phase_colors_json | safe }};
   var _selPhases   = {{ (intake.selected_phases or '[]') | safe }};
-  // If nothing stored yet, default to all phases
-  if (!_selPhases || !_selPhases.length) _selPhases = ALL_PHASES.slice();
+  var _aiSkipped   = {{ (intake.answers.get('skipped_phases', []) | tojson) }};
+  // If nothing stored yet, pre-apply AI-detected skips (or default to all phases)
+  if (!_selPhases || !_selPhases.length) {
+    if (_aiSkipped && _aiSkipped.length) {
+      _selPhases = ALL_PHASES.filter(function(p) { return _aiSkipped.indexOf(p) < 0; });
+    } else {
+      _selPhases = ALL_PHASES.slice();
+    }
+  }
   var _phaseDates  = {{ (intake.phase_due_dates or '{}') | safe }};
 
   function renderChips() {

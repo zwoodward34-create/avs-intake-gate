@@ -178,6 +178,15 @@ notes: A single concise paragraph (4-6 sentences max) summarizing the project \
   relationship context he needs to know. Do not repeat field values verbatim — \
   synthesize. This is the one prose field.
 
+skipped_phases: JSON array of phase codes the RFP explicitly requests to skip or \
+  bypass. Phase codes: "SD" (Schematic Design), "50%" (50% CD set), "75%" (75% CD set), \
+  "90%" (90% CD set), "CA" (Construction Administration), "REV" (Review). \
+  Detect bypass language such as: "go straight to 90% CDs", "permit set only", \
+  "no SD needed", "skip schematic", "we already have 50% drawings", \
+  "only construction documents required", "bypass design development", \
+  "jump directly to permit drawings", "start at DD", "no design phase needed". \
+  Return [] if no phase bypass is mentioned — never infer bypass unless explicitly stated.
+
 confidence: Object with a score for every top-level field:
   Values: "high", "medium", "low"
   Rules:
@@ -430,6 +439,7 @@ OUTPUT SCHEMA (your response must match this exactly):
     }
   },
   "notes": "string",
+  "skipped_phases": ["string"],
   "confidence": {
     "scores": {
       "project_name": "string",
@@ -559,6 +569,9 @@ def _validate(data: dict[str, Any]) -> bool:
     if not isinstance(qf, dict) or set(qf.keys()) != _QUICK_FLAGS_KEYS:
         return False
     if not isinstance(ds, dict) or not _SCREENING_KEYS.issubset(ds.keys()):
+        return False
+    sp = data.get("skipped_phases")
+    if sp is not None and not isinstance(sp, list):
         return False
     return True
 

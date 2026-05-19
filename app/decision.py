@@ -264,6 +264,24 @@ def compute_decision(answers: dict[str, Any]) -> dict[str, Any]:
             )
         )
 
+    # Phase bypass
+    skipped_phases = answers.get("skipped_phases") or []
+    if isinstance(skipped_phases, list) and skipped_phases:
+        phases_str = ", ".join(str(p) for p in skipped_phases)
+        red_flags.append(
+            RedFlag(
+                key="phase_bypass",
+                title="Phase bypass requested",
+                severity="high",
+                category="Scope",
+                detail=(
+                    f"RFP requests skipping phases: {phases_str}. "
+                    "Coordination Debt Penalty (1.15×) applies; "
+                    "if 50%+ delivery is under 8 weeks, Rush Multiplier (1.25×) compounds."
+                ),
+            )
+        )
+
     scope_creep = answers.get("scope_creep_likelihood")
     if scope_creep == "likely":
         red_flags.append(
