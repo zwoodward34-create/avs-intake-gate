@@ -1338,7 +1338,9 @@ async def api_mark_project_won(request: Request, intake_id: int) -> dict[str, An
     _win_warnings: list[str] = []
     if approved_fee and approved_fee > 0:
         try:
-            db.generate_phase_budgets(intake_id, project_number, approved_fee)
+            _sel_for_budget = intake.selected_phases_list or None
+            db.generate_phase_budgets(intake_id, project_number, approved_fee,
+                                      selected_phases=_sel_for_budget)
         except Exception as _e:
             _win_warnings.append(f"Phase budget generation failed: {_e}")
             print(f"[mark_project_won] phase_budgets error for intake {intake_id}: {_e}")
@@ -1438,30 +1440,46 @@ async def api_update_project_details(request: Request, intake_id: int) -> dict[s
         phase_due_dates=phase_due_dates,
     )
 
-    # If the project is already ACTIVE and has calendar events, regenerate them
-    # with the new phase config so the calendar stays in sync.
-    if intake.status == "ACTIVE_PROJECT" and intake.proposed_start_date and intake.ifp_due_date:
+    # If the project is already ACTIVE, regenerate calendar and phase budgets
+    # with the new phase config so both stay in sync.
+    if intake.status == "ACTIVE_PROJECT":
         fresh = db.get_intake(intake_id)
         if fresh:
-            _team  = _json.loads(fresh.assigned_engineers or "[]")
-            _tier  = db.infer_tier_from_intake(fresh)
             _sel   = fresh.selected_phases_list or None
             _dates = fresh.phase_due_dates_dict or None
-            try:
-                db.generate_phase_calendar_events(
-                    intake_id=intake_id,
-                    project_number=fresh.project_number or "",
-                    start_date=fresh.proposed_start_date,
-                    ifp_date=fresh.ifp_due_date,
-                    team=_team,
-                    weu_hours=40.0,
-                    replace_existing=True,
-                    tier=_tier,
-                    selected_phases=_sel,
-                    phase_due_dates=_dates,
-                )
-            except Exception:
-                pass
+
+            # Regenerate calendar if schedule info is present
+            if fresh.proposed_start_date and fresh.ifp_due_date:
+                _team  = _json.loads(fresh.assigned_engineers or "[]")
+                _tier  = db.infer_tier_from_intake(fresh)
+                try:
+                    db.generate_phase_calendar_events(
+                        intake_id=intake_id,
+                        project_number=fresh.project_number or "",
+                        start_date=fresh.proposed_start_date,
+                        ifp_date=fresh.ifp_due_date,
+                        team=_team,
+                        weu_hours=40.0,
+                        replace_existing=True,
+                        tier=_tier,
+                        selected_phases=_sel,
+                        phase_due_dates=_dates,
+                    )
+                except Exception:
+                    pass
+
+            # Regenerate phase budgets if phases changed and an approved fee exists
+            if selected_phases is not None and fresh.project_number:
+                existing_budgets = db.list_phase_budgets(intake_id)
+                _fee = existing_budgets[0]["approved_fee"] if existing_budgets else None
+                if _fee and _fee > 0:
+                    try:
+                        db.generate_phase_budgets(
+                            intake_id, fresh.project_number, _fee,
+                            selected_phases=_sel,
+                        )
+                    except Exception:
+                        pass
 
     return {"ok": True, "intake_id": intake_id}
 
@@ -2318,6 +2336,8 @@ def api_regenerate_calendar(intake_id: int) -> dict[str, Any]:
             team=team,
             weu_hours=40.0,
             replace_existing=True,
+            selected_phases=intake.selected_phases_list or None,
+            phase_due_dates=intake.phase_due_dates_dict or None,
         )
         return {"ok": True, "phases_generated": len(events)}
     except ValueError as exc:

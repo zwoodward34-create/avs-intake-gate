@@ -941,12 +941,26 @@ def update_project_details(
 
 # ── Phase Budgets ────────────────────────────────────────────────────────────
 
-def generate_phase_budgets(intake_id: int, project_number: str, approved_fee: float) -> None:
+def generate_phase_budgets(
+    intake_id: int,
+    project_number: str,
+    approved_fee: float,
+    selected_phases: Optional[list[str]] = None,
+) -> None:
     now = _utc_now_iso()
     rows: list[dict] = []
     budget_per_phase: dict[str, float] = {}
-    for phase_code, split in DEFAULT_PHASE_SPLITS.items():
-        total_hours = round((approved_fee * split) / BILLING_RATE, 2)
+
+    # Filter to active phases; normalize splits so the full fee is still distributed
+    active_splits = {
+        code: split for code, split in DEFAULT_PHASE_SPLITS.items()
+        if selected_phases is None or code in selected_phases
+    }
+    total_split = sum(active_splits.values()) or 1.0
+
+    for phase_code, split in active_splits.items():
+        normalized_split = split / total_split
+        total_hours = round((approved_fee * normalized_split) / BILLING_RATE, 2)
         dollar_budget = round(total_hours * TARGET_EFFICIENCY_RATIO, 2)
         budget_per_phase[phase_code] = dollar_budget
         rows.append({
@@ -963,6 +977,20 @@ def generate_phase_budgets(intake_id: int, project_number: str, approved_fee: fl
             "created_at":   now,
             "updated_at":   now,
         })
+
+    # Delete rows for phases no longer in the active set
+    if selected_phases is not None:
+        skipped = [p for p in DEFAULT_PHASE_SPLITS if p not in selected_phases]
+        for phase_code in skipped:
+            (
+                _client()
+                .table("phase_budgets")
+                .delete()
+                .eq("intake_id", intake_id)
+                .eq("phase_code", phase_code)
+                .execute()
+            )
+
     (
         _client()
         .table("phase_budgets")
